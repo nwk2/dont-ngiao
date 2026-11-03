@@ -1,0 +1,34 @@
+import React, { useState } from 'react';
+// Calendar picker: button showing formatted date, month grid, no native date input.
+export function fmtDate(iso: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const [y,m,d] = iso.split('-').map(Number);
+  return new Date(y, m-1, d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+export function todayIso() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+export function DateField({ value, onChange, id }: { value: string; onChange: (v: string)=>void; id: string }) {
+  const [open, setOpen] = useState(false);
+  const [ym, setYm] = useState(() => { const [y,m] = value.split('-').map(Number); return { y, m: m-1 }; });
+  const first = new Date(ym.y, ym.m, 1); const startDay = (first.getDay()+6)%7; // Mon-first
+  const daysIn = new Date(ym.y, ym.m+1, 0).getDate();
+  const cells: (number|null)[] = [...Array(startDay).fill(null), ...Array.from({length: daysIn}, (_,i)=>i+1)];
+  return (<div>
+    <button type="button" id={id} onClick={()=>setOpen(o=>!o)} style={{width:'100%',padding:'10px',textAlign:'left',border:'1px solid #ccc',borderRadius:8,background:'#fff'}}>{fmtDate(value)} 📅</button>
+    {open && <div role="dialog" aria-label="Choose date" style={{border:'1px solid #ccc',borderRadius:8,padding:10,marginTop:6,background:'#fff'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <button type="button" onClick={()=>setYm(({y,m})=> m===0?{y:y-1,m:11}:{y,m:m-1})}>‹</button>
+        <strong>{first.toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</strong>
+        <button type="button" onClick={()=>setYm(({y,m})=> m===11?{y:y+1,m:0}:{y,m:m+1})}>›</button>
+      </div>
+      <div style={{display:'flex',gap:4,marginTop:8,alignItems:'center'}}>
+        <label>Jump to year <select value={ym.y} onChange={e=>setYm(s=>({...s,y:Number(e.target.value)}))}>{Array.from({length:211},(_,i)=>1900+i).map(y=><option key={y} value={y}>{y}</option>)}</select></label>
+        <button type="button" onClick={()=>{onChange(todayIso()); setOpen(false);}}>Today</button>
+        <button type="button" onClick={()=>setOpen(false)}>Close</button>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2,marginTop:8}}>
+        {['Mo','Tu','We','Th','Fr','Sa','Su'].map(d=><div key={d} style={{textAlign:'center',fontSize:12,color:'#666'}}>{d}</div>)}
+        {cells.map((d,i)=> d===null ? <div key={i}/> : <button type="button" key={i} aria-label={fmtDate(`${ym.y}-${String(ym.m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`)} onClick={()=>{onChange(`${ym.y}-${String(ym.m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`); setOpen(false);}} style={{padding:6,background: value===`${ym.y}-${String(ym.m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}` ? '#1a1a1a' : '#fff', color: value===`${ym.y}-${String(ym.m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}` ? '#fff' : '#000', border:'1px solid #ddd', borderRadius:6}}>{d}</button>)}
+      </div>
+    </div>}
+  </div>);
+}

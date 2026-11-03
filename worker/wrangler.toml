@@ -1,0 +1,13 @@
+name = "dont-ngiao-api"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Create the D1 database first, then replace database_id with the real id:
+#   wrangler d1 create dont-ngiao
+#   wrangler d1 migrations apply dont-ngiao --remote
+[[d1_databases]]
+binding = "DB"
+database_name = "dont-ngiao"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
