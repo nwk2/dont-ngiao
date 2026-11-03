@@ -1,3 +1,4 @@
+// Deploy trigger: 2026-11-04 — no logic change, only to trigger a Workers Builds deployment
 // Don't Ngiao — Cloudflare Worker API (TypeScript, D1 SQLite, no external deps)
 // All money is integer minor units; zero-decimal currencies in whole units.
 // Balances/suggestions are per currency, never converted. Activity log is append-only.
