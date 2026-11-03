@@ -47,7 +47,7 @@ async function claimPlaceholders(env: Env, user: Row) {
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
-    if (req.method === 'OPTIONS') return json({}, 204);
+    if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS' } });
     const url = new URL(req.url);
     const path = url.pathname.replace(/\/$/, '') || '/';
     let body: any = {};
