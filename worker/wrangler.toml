@@ -9,5 +9,5 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "dont-ngiao"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "216c4612-3535-4087-b4f1-f0f38bfb5214"
 migrations_dir = "migrations"
