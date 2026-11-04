@@ -16,6 +16,15 @@ const rowCard: React.CSSProperties = { ...card, padding:'12px 14px', lineHeight:
 const balCard: React.CSSProperties = { background:'#1c1c1e', borderRadius:20, padding:'6px 0', marginBottom:12, color:'#f5f5f5', lineHeight:1.45 };
 const balRow: React.CSSProperties = { display:'flex', alignItems:'center', gap:12, padding:'12px 14px' };
 const balHairline = '1px solid #2e2e2e';
+// HOME + TABS REVAMP 2026-11-05 (dark only, restyle only): borderless
+// radius-20 cards (same language as balCard) for Home group cards, and a
+// segmented pill track for group tabs, matching the approved prototype.
+// Shared card/rowCard untouched, so Expenses/Members/Activity rows keep
+// their current cards until their own chunks. Logic unchanged everywhere:
+// Home group list, archived Restore/Open, account menu, Edit name,
+// group header, changeTab behaviour, tab keys.
+const homeCard: React.CSSProperties = { background:'#1c1c1e', borderRadius:20, padding:16, marginBottom:12, color:'#f5f5f5', lineHeight:1.45 };
+const tabTrack: React.CSSProperties = { display:'flex', gap:0, background:'#242424', borderRadius:999, padding:3, marginBottom:16 };
 const avatar: React.CSSProperties = { width:40, height:40, borderRadius:'50%', background:'#65a30d', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:15, flexShrink:0 };
 const noAccountChip: React.CSSProperties = { fontSize:11, background:'#422006', color:'#fbbf24', padding:'2px 8px', borderRadius:99, fontWeight:600, whiteSpace:'nowrap', marginLeft:8, verticalAlign:'middle' };
 const currencyChip: React.CSSProperties = { fontSize:12, background:'#134e4a', padding:'3px 10px', borderRadius:99, color:'#5eead4', fontWeight:600, whiteSpace:'nowrap' };
@@ -246,7 +255,6 @@ function Sk({ w, h, r }: { w: string | number; h: number; r?: number }) {
 function HomeSkeleton({ user }: { user: any }) {
   return (<div style={S} aria-label="Loading">
     {user ? (<><div style={{fontSize:20,fontWeight:700}}>Hi, {user.name}</div><div style={{fontSize:13,color:'#a3a3a3',marginTop:2}}>{user.email}</div></>) : (<><Sk w={180} h={24} /><div style={{marginTop:6}}><Sk w={220} h={16} /></div></>)}
-    <h1 style={{marginBottom:4}}>Don't Ngiao</h1><p style={{color:'#a3a3a3',marginTop:0}}>Mai ngiao, mai drama.</p>
     <div style={{background:'#1c1c1e',borderRadius:24,padding:20,marginBottom:20}}><Sk w={140} h={12} /><div style={{marginTop:16}}><Sk w="60%" h={32} /></div><div style={{marginTop:10}}><Sk w="45%" h={32} /></div></div>
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}><Sk w={120} h={24} /><Sk w={110} h={38} r={999} /></div>
     {[0,1,2].map(i => (<div key={i} style={card}><Sk w="55%" h={20} /><div style={{marginTop:8}}><Sk w="85%" h={14} /></div><div style={{marginTop:8}}><Sk w="40%" h={14} /></div></div>))}
@@ -318,10 +326,14 @@ function Home({ user, setUser, onLogout, groups, loadGroups, loadGroup, error, s
         <button aria-label="Account menu" style={{width:48,height:48,borderRadius:'50%',background:'#65a30d',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:18,flexShrink:0,border:'none',padding:0,cursor:'pointer'}} onClick={()=>setShowAccountMenu(true)}>{initials(user.name)}</button>
         <div style={{flex:1,minWidth:0}}>
           {editingName ? (<input style={{...input,margin:0}} value={nameDraft} onChange={e=>setNameDraft(e.target.value)} aria-label="Name" />) : (<>
-            <div style={{fontSize:20,fontWeight:700}}>Hi, {user.name}</div>
-            <div style={{fontSize:13,color:'#a3a3a3',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',lineHeight:1.4}}>{user.email}</div>
+            <div style={{fontSize:20,fontWeight:700}}>{user.name}</div>
+            <div style={{fontSize:13,color:'#a3a3a3',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',lineHeight:1.4}}>Mai ngiao, mai drama.</div>
           </>)}
         </div>
+        <button type="button" aria-label="Dark / light mode (coming soon)" title="Dark / light mode — coming soon" disabled style={{width:88,height:40,borderRadius:999,border:'1px solid #333',background:'#242424',padding:3,boxSizing:'border-box',display:'flex',alignItems:'stretch',cursor:'not-allowed',flexShrink:0}}>
+          <span aria-hidden="true" style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:999,color:'#a3a3a3'}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg></span>
+          <span aria-hidden="true" style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:999,background:'#3f4756',color:'#ffffff'}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z" /></svg></span>
+        </button>
       </div>
       {editingName ? (<div style={{display:'flex',justifyContent:'flex-end',gap:8,marginTop:12}}>
         <AsyncButton style={primary} onClick={async()=>{try{const d = await api('/api/me','PATCH',{name:nameDraft}); setUser(d.user); setEditingName(false);}catch(e:any){setError(e.message);}}}>Save</AsyncButton>
@@ -340,20 +352,20 @@ function Home({ user, setUser, onLogout, groups, loadGroups, loadGroup, error, s
     </div>
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
       <h2 style={{margin:0}}>Your groups</h2>
-      <button style={{...primary,borderRadius:999,padding:'10px 18px'}} onClick={()=>setShowCreate(true)}>+ New group</button>
+      <button style={{...btn,borderRadius:999,padding:'10px 18px'}} onClick={()=>setShowCreate(true)}>+ New group</button>
     </div>
     {groups?.active?.length === 0 && <p style={{color:'#a3a3a3'}}>No groups yet — tap + New group to create one.</p>}
     {groups?.active?.map((g:any)=>{
       const spent: any[] = g.spent || [];
       const my: any[] = g.myBalances || [];
-      return (<div key={g.id} style={{...card,cursor:'pointer'}} onClick={()=>loadGroup(g.id)}>
+      return (<div key={g.id} style={{...homeCard,cursor:'pointer'}} onClick={()=>loadGroup(g.id)}>
         <strong style={{fontSize:17}}>{g.name}</strong>
         <div style={{fontSize:13,color:'#a3a3a3',marginTop:6}}>{g.memberCount ?? '?'} {(g.memberCount===1)?'person':'people'} · {g.expenseCount ?? '?'} expenses{spent.length>0 ? ` · ${spent.map((s:any)=>fmt(s.amount,s.currency)).join(' + ')} spent` : ''}</div>
         {my.length>0 && <div style={{marginTop:8}}>{my.map((b:any)=>(<div key={b.currency} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,fontSize:14,color:b.balance>0?'#5eead4':b.balance<0?'#f87171':'#a3a3a3'}}><span>{b.balance>0 ? 'You are owed' : b.balance<0 ? 'You owe' : 'Settled'}</span><span style={{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'}}>{fmt(Math.abs(b.balance),b.currency)}</span></div>))}</div>}
       </div>);
     })}
-    {groups?.archived?.length > 0 && <><h2>Archived groups</h2>{groups.archived.map((g:any)=>(<div key={g.id} style={{...rowCard,display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}><strong style={{flex:1,minWidth:0}}>{g.name}</strong><span style={{display:'flex',gap:8,flexShrink:0}}><AsyncButton style={btn} onClick={async()=>{await api(`/api/groups/${g.id}/restore`,'POST'); loadGroups();}}>Restore</AsyncButton><AsyncButton style={btn} onClick={()=>loadGroup(g.id)}>Open</AsyncButton></span></div>))}</>}
-    <div style={{...card,marginTop:20}}>
+    {groups?.archived?.length > 0 && <><h2>Archived groups</h2>{groups.archived.map((g:any)=>(<div key={g.id} style={{...homeCard,display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}><strong style={{flex:1,minWidth:0}}>{g.name}</strong><span style={{display:'flex',gap:8,flexShrink:0}}><AsyncButton style={btn} onClick={async()=>{await api(`/api/groups/${g.id}/restore`,'POST'); loadGroups();}}>Restore</AsyncButton><AsyncButton style={btn} onClick={()=>loadGroup(g.id)}>Open</AsyncButton></span></div>))}</>}
+    <div style={{...homeCard,marginTop:20}}>
       <h3 style={{marginTop:0}}>How settling works here</h3>
       <p style={{fontSize:13,color:'#a3a3a3',marginBottom:0}}>Balances are per currency and never converted. Recording a payment never moves real money — it just records that money changed hands. Settle from a group's Balances tab, for one currency at a time.</p>
     </div>
@@ -586,8 +598,8 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
     {group.isArchived && <p style={{background:'#422006',padding:8,borderRadius:8}}>This group is archived. Restore it from Settings or the home screen to edit it again.</p>}
     <p style={{color:'#a3a3a3',marginTop:0,lineHeight:1.4}}>Default currency: {group.defaultCurrency} · {group.members.length} members</p>
     {error && <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:12}}><span style={{color:'#f87171'}}>{error}</span><button style={btn} onClick={()=>reload()}>Retry</button></div>}
-    <div style={{display:'flex',gap:0,borderBottom:'1px solid #333',marginBottom:12,background:'#1c1c1e'}}>
-      {(['expenses','balances','members','activity'] as const).map(t=>(<button key={t} onClick={()=>changeTab(t)} style={{flex:1,padding:'10px 4px',fontSize:14,color:tab===t?'#fff':'#a3a3a3',background:'transparent',border:'none',borderBottom:tab===t?'3px solid #2dd4bf':'none',textTransform:'capitalize'}}>{t}</button>))}
+    <div style={tabTrack}>
+      {(['expenses','balances','members','activity'] as const).map(t=>(<button key={t} onClick={()=>changeTab(t)} style={{flex:1,padding:'10px 4px',fontSize:14,color:tab===t?'#0f172a':'#a3a3a3',background:tab===t?'#fff':'transparent',border:'none',borderRadius:999,fontWeight:tab===t?600:400,textTransform:'capitalize'}}>{t}</button>))}
     </div>
     {tab==='expenses' && <>
       <div style={card}><h3 style={{marginTop:0}}>Spend by category</h3>
@@ -647,9 +659,9 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         return balCurrencies.map((cur, ci) => {
           const spent = group.expenses.filter((e:any)=>e.currency===cur).reduce((sum:number,e:any)=>sum+e.amount_minor, 0);
           return (<div key={cur}>
-            <div style={{display:'flex',alignItems:'center',gap:8,margin:`${ci===0?0:16}px 0 8px`}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,margin:`${ci===0?0:16}px 0 8px`}}>
               <span style={currencyChip}>{cur}</span>
-              <span style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4}}>{fmt(spent, cur)} spent</span>
+              <span style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4,whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'}}>spent {fmt(spent, cur)}</span>
             </div>
             <div style={balCard}>{group.balances.filter((b:any)=>b.currency===cur).map((b:any,bi:number,arr:any[])=>{
               const member = group.members.find((x:any)=>x.id===b.memberId);
@@ -658,7 +670,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
                 <div style={avatar}>{initials(b.memberName)}</div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:600,lineHeight:1.4}}>{displayName}{member && !member.user_id ? <span style={noAccountChip}>No account yet</span> : null}</div>
-                  <div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4}}>Paid {fmt(b.paid ?? 0, cur)} · share {fmt(b.share ?? 0, cur)}</div>
+                  <div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4}}>Paid {fmt(b.paid ?? 0, cur)} · Share {fmt(b.share ?? 0, cur)}</div>
                 </div>
                 <strong style={{color:b.balance>0?'#5eead4':b.balance<0?'#f87171':'#a3a3a3',fontSize:16,whiteSpace:'nowrap',flexShrink:0,textAlign:'right'}}>{b.balance>0?'+':''}{b.display}</strong>
               </div>);
@@ -666,7 +678,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
           </div>);
         });
       })()}
-      <h3 style={{margin:'20px 0 8px',fontSize:17}}>Settle up</h3>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:12,margin:'20px 0 8px'}}><h3 style={{margin:0,fontSize:17}}>Settle up</h3><span style={{fontSize:13,color:'#a3a3a3'}}>Simplified debts</span></div>
       {group.suggestions.length===0 && <p>All settled.</p>}
       {group.suggestions.length>0 && <div style={balCard}>{group.suggestions.map((s:any,i:number)=>{
         const from = personDisplay(group, s.fromMemberId, s.fromName);
@@ -681,38 +693,31 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         const canSettle = group.myMemberId === s.toMemberId || (toMember && !toMember.user_id && group.myMemberId === s.fromMemberId);
         return (<div key={i} style={{...balRow,justifyContent:'space-between',borderBottom:i===group.suggestions.length-1?'none':balHairline}}>
           <div style={{flex:1,minWidth:0,lineHeight:1.4}}>
-            <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:6}}>
+            <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:8}}>
               <span style={{width:10,height:10,borderRadius:'50%',background:memberDotColor(group, from.memberId),flexShrink:0}} />
-              <span>{from.label}</span>
-              <span style={{color:'#a3a3a3'}}>owes</span>
-              <span style={{width:10,height:10,borderRadius:'50%',background:memberDotColor(group, to.memberId),flexShrink:0}} />
-              <span>{to.label}</span>
+              <span>{from.label} <span style={{color:'#a3a3a3'}}>owes</span> {to.label}</span>
             </div>
-            <div style={{marginLeft:16,marginTop:4}}><strong>{s.display}</strong></div>
-            {!canSettle && <div style={{marginLeft:16,marginTop:4,fontSize:13,color:'#a3a3a3'}}>Only {to.label} can settle this</div>}
+            <div style={{marginLeft:18,marginTop:4}}><strong>{s.display}</strong></div>
           </div>
-          <button style={{...primary,flexShrink:0,opacity:canSettle?1:0.5,cursor:canSettle?'pointer':'not-allowed'}} disabled={!canSettle} onClick={()=>setSettle(s)}>Settle</button>
+          <button style={{...primary,flexShrink:0,background:canSettle?'#2dd4bf':'#1f4d4a',borderColor:canSettle?'#2dd4bf':'#1f4d4a',color:canSettle?'#0f172a':'#0f172a',cursor:canSettle?'pointer':'not-allowed'}} disabled={!canSettle} onClick={()=>setSettle(s)}>Settle</button>
         </div>);
       })}</div>}
+      <p style={{fontSize:13,color:'#a3a3a3',lineHeight:1.45,margin:'8px 0 0'}}>Only the creditor can settle a debt — if a Settle button is dark, you're not part of that pair. Settling records a payment between the two people — partial amounts are fine, edit the amount in the sheet.</p>
       <h3 style={{margin:'20px 0 8px',fontSize:17}}>Recorded payments</h3>
       {group.payments.length>0 && <div style={balCard}>{group.payments.map((p:any,pi:number)=>{
         const from = personDisplay(group, p.from_member_id, p.fromName);
         const to = personDisplay(group, p.to_member_id, p.toName);
         return (<div key={p.id} style={{...balRow,justifyContent:'space-between',borderBottom:pi===group.payments.length-1?'none':balHairline}}>
+          <div style={{display:'flex',alignItems:'center',flexShrink:0}}><span style={{...avatar,width:28,height:28,fontSize:12}}>{initials(from.name)}</span><span style={{...avatar,width:28,height:28,fontSize:12,marginLeft:-10,border:'2px solid #1c1c1e'}}>{initials(to.name)}</span></div>
           <div style={{flex:1,minWidth:0,lineHeight:1.4}}>
-            <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:6}}>
-              <span style={{...avatar,width:28,height:28,fontSize:12}}>{initials(from.name)}</span>
-              <strong>{from.label}</strong>
-              <span style={{color:'#a3a3a3'}}>paid</span>
-              <span style={{...avatar,width:28,height:28,fontSize:12}}>{initials(to.name)}</span>
-              <strong>{to.label}</strong>
-            </div>
-            <div style={{fontSize:13,lineHeight:1.4,marginTop:4,marginLeft:34}}><strong>{p.display}</strong> <span style={{color:'#a3a3a3'}}>· {fmtDate(p.date)}</span></div>
+            <div>{from.label} <span style={{color:'#a3a3a3'}}>paid</span> {to.label}</div>
+            <div style={{fontSize:13,lineHeight:1.4,marginTop:4}}><strong>{p.display}</strong> <span style={{color:'#a3a3a3'}}>· {fmtDate(p.date).replace(/ \d{4}$/,'')}</span></div>
             {paymentErrors[p.id] && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:4,marginBottom:0}}>{paymentErrors[p.id]}</p>}
           </div>
-          {(group.myMemberId === p.from_member_id || group.myMemberId === p.to_member_id) && <button style={{...btn,flexShrink:0}} onClick={()=>setConfirm({title:'Delete payment?',message:`Delete the ${p.display} payment from ${from.label} to ${to.label} on ${fmtDate(p.date)}? This cannot be undone.`,onError:(msg:string)=>setPaymentErrors(prev=>({...prev,[p.id]:msg})),action:async()=>{const d = await api(`/api/groups/${group.id}/payments/${p.id}`,'DELETE'); reload(d);}})}>Delete</button>}
+          {(group.myMemberId === p.from_member_id || group.myMemberId === p.to_member_id) && <button style={{...btn,flexShrink:0,background:'#422006',borderColor:'#422006',color:'#f87171',fontWeight:600}} onClick={()=>setConfirm({title:'Delete payment?',message:`Delete the ${p.display} payment from ${from.label} to ${to.label} on ${fmtDate(p.date)}? This cannot be undone.`,onError:(msg:string)=>setPaymentErrors(prev=>({...prev,[p.id]:msg})),action:async()=>{const d = await api(`/api/groups/${group.id}/payments/${p.id}`,'DELETE'); reload(d);}})}>Delete</button>}
         </div>);
       })}</div>}
+      <p style={{fontSize:13,color:'#a3a3a3',lineHeight:1.45,margin:'8px 0 0'}}>Delete shows only on payments you're part of — as the person who paid or the person who was paid.</p>
     </>}
     {tab==='members' && <>
       {group.members.map((m:any)=>{
