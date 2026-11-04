@@ -108,20 +108,23 @@ function Home({ user, setUser, groups, loadGroups, loadGroup, error, setError }:
   const [nameDraft, setNameDraft] = useState(user.name || '');
   const totals: any[] = groups?.totals || [];
   return (<div style={S}>
-    <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:16}}>
-      <div style={{width:48,height:48,borderRadius:'50%',background:'#65a30d',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:18,flexShrink:0}}>{initials(user.name)}</div>
-      <div style={{flex:1,minWidth:0}}>
-        {editingName ? (<div style={{display:'flex',gap:8,alignItems:'center'}}>
-          <input style={{...input,margin:0}} value={nameDraft} onChange={e=>setNameDraft(e.target.value)} aria-label="Name" />
-          <AsyncButton style={primary} onClick={async()=>{try{const d = await api('/api/me','PATCH',{name:nameDraft}); setUser(d.user); setEditingName(false);}catch(e:any){setError(e.message);}}}>Save</AsyncButton>
-          <button style={btn} onClick={()=>{setEditingName(false); setNameDraft(user.name);}}>Cancel</button>
-        </div>) : (<>
-          <div style={{fontSize:20,fontWeight:700}}>Hi, {user.name}</div>
-          <div style={{fontSize:13,color:'#a3a3a3',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',lineHeight:1.4}}>{user.email}</div>
-        </>)}
+    <div style={{marginBottom:16}}>
+      <div style={{display:'flex',alignItems:'center',gap:12}}>
+        <div style={{width:48,height:48,borderRadius:'50%',background:'#65a30d',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:18,flexShrink:0}}>{initials(user.name)}</div>
+        <div style={{flex:1,minWidth:0}}>
+          {editingName ? (<input style={{...input,margin:0}} value={nameDraft} onChange={e=>setNameDraft(e.target.value)} aria-label="Name" />) : (<>
+            <div style={{fontSize:20,fontWeight:700}}>Hi, {user.name}</div>
+            <div style={{fontSize:13,color:'#a3a3a3',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',lineHeight:1.4}}>{user.email}</div>
+          </>)}
+        </div>
       </div>
-      {!editingName && <><button style={btn} onClick={()=>{setNameDraft(user.name); setEditingName(true);}}>Edit name</button>
-      <AsyncButton style={btn} onClick={async()=>{await api('/api/auth/logout','POST'); setToken(null); setUser(null);}}>Log out</AsyncButton></>}
+      {editingName ? (<div style={{display:'flex',justifyContent:'flex-end',gap:8,marginTop:12}}>
+        <AsyncButton style={primary} onClick={async()=>{try{const d = await api('/api/me','PATCH',{name:nameDraft}); setUser(d.user); setEditingName(false);}catch(e:any){setError(e.message);}}}>Save</AsyncButton>
+        <button style={btn} onClick={()=>{setEditingName(false); setNameDraft(user.name);}}>Cancel</button>
+      </div>) : (<div style={{display:'flex',justifyContent:'flex-end',gap:8,marginTop:12}}>
+        <button style={btn} onClick={()=>{setNameDraft(user.name); setEditingName(true);}}>Edit name</button>
+        <AsyncButton style={btn} onClick={async()=>{await api('/api/auth/logout','POST'); setToken(null); setUser(null);}}>Log out</AsyncButton>
+      </div>)}
     </div>
     <h1 style={{marginBottom:4}}>Don't Ngiao</h1><p style={{color:'#a3a3a3',marginTop:0}}>Mai ngiao, mai drama.</p>
     {error && <p style={{color:'#f87171'}}>{error}</p>}
@@ -180,7 +183,7 @@ function Auth({ onAuth, error, loading }: any) {
     <label>Email</label><input style={input} value={email} onChange={e=>setEmail(e.target.value)} />
     <label>Password</label><input type="password" style={input} value={password} onChange={e=>setPassword(e.target.value)} />
     <button style={{...primary, opacity: loading ? 0.6 : 1, cursor: loading ? 'not-allowed' : 'pointer'}} disabled={loading} onClick={()=>onAuth(mode,name,email,password)}>{loading && <span className="btn-spinner" aria-hidden="true" />}{loading ? (mode==='login' ? 'Logging in…' : 'Creating account…') : (mode==='login' ? 'Log in' : 'Create account')}</button>{' '}
-    <button style={btn} onClick={()=>setMode(mode==='login'?'register':'login')}>{mode==='login'?'Need an account? Register':'Already have an account? Log in'}</button>
+    <button style={btn} onClick={()=>setMode(mode==='login'?'register':'login')}>{mode==='login'?'Register':'Log in'}</button>
     <p style={{color:'#a3a3a3',fontSize:13}}>Prototype port: email/password only, no email verification or password reset yet.</p>
   </div>);
 }
@@ -317,11 +320,14 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         {isEditing ? (<span style={{display:'flex',gap:8,flexShrink:0}}>
           <AsyncButton style={primary} onClick={async()=>{try{await api(`/api/groups/${group.id}/members/${m.id}`,'PATCH',{email:emailDraft}); setEditingMemberId(null); reload();}catch(er:any){setError(er.message);}}}>Save</AsyncButton>
           <button style={btn} onClick={()=>setEditingMemberId(null)}>Cancel</button>
-        </span>) : (<span style={{display:'flex',gap:8,flexShrink:0}}>
-          {!m.user_id ? (<button style={btn} onClick={()=>{setEditingMemberId(m.id); setEmailDraft(m.email || '');}}>Edit email</button>) : null}
+        </span>) : (!m.user_id ? null : (<span style={{display:'flex',gap:8,flexShrink:0}}>
           <button style={{...btn,flexShrink:0}} onClick={()=>setConfirm({title:'Remove member?',message:`Remove ${m.name} from this group? This cannot be undone.`,onError:(msg:string)=>setMemberErrors(prev=>({...prev,[m.id]:msg})),action:async()=>{await api(`/api/groups/${group.id}/members/${m.id}`,'DELETE'); reload();}})}>Remove</button>
-        </span>)}
+        </span>))}
         </div>
+        {!isEditing && !m.user_id ? (<div style={{display:'flex',justifyContent:'flex-end',gap:8,marginTop:12}}>
+          <button style={btn} onClick={()=>{setEditingMemberId(m.id); setEmailDraft(m.email || '');}}>Edit email</button>
+          <button style={{...btn,flexShrink:0}} onClick={()=>setConfirm({title:'Remove member?',message:`Remove ${m.name} from this group? This cannot be undone.`,onError:(msg:string)=>setMemberErrors(prev=>({...prev,[m.id]:msg})),action:async()=>{await api(`/api/groups/${group.id}/members/${m.id}`,'DELETE'); reload();}})}>Remove</button>
+        </div>) : null}
         {memberErrors[m.id] && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{memberErrors[m.id]}</p>}
       </div>);})}
       <AddMember groupId={group.id} reload={reload} />
