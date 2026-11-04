@@ -737,11 +737,11 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
       <p style={{fontSize:13,color:'#a3a3a3',lineHeight:1.45,margin:'8px 0 0'}}>Delete shows only on payments you're part of — as the person who paid or the person who was paid.</p>
     </>}
     {tab==='members' && <>
-      {group.members.map((m:any)=>{
+      {group.members.length>0 && <div style={balCard}>{group.members.map((m:any,mi:number,arr:any[])=>{
         const isEditing = editingMemberId===m.id;
-        return (<div key={m.id} style={rowCard}>
+        return (<div key={m.id} style={{...balRow,flexDirection:'column',alignItems:'stretch',borderBottom:mi===arr.length-1?'none':balHairline}}>
         <div style={{display:'flex',alignItems:'center',gap:12}}>
-        <div style={avatar}>{initials(m.name)}</div>
+        <div style={{...avatar,background:memberDotColor(group, m.id)}}>{initials(m.name)}</div>
         <div style={{flex:1,minWidth:0}}>
           {isEditing ? (<input style={{...input,margin:0}} placeholder="Email" value={emailDraft} onChange={e=>setEmailDraft(e.target.value)} aria-label="Member email" />) : (<>
           <div style={{fontWeight:600,lineHeight:1.4}}>{m.id === group.myMemberId ? `You (${m.name})` : m.name}{!m.user_id ? <span style={noAccountChip}>No account yet</span> : null}</div>
@@ -766,7 +766,8 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
           <button style={{...btn,flexShrink:0}} onClick={()=>setConfirm({title:'Remove member?',message:`Remove ${m.name} from this group? This cannot be undone.`,onError:(msg:string)=>setMemberErrors(prev=>({...prev,[m.id]:msg})),action:async()=>{const d = await api(`/api/groups/${group.id}/members/${m.id}`,'DELETE'); reload(d);}})}>Remove</button>
         </div>) : null}
         {memberErrors[m.id] && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{memberErrors[m.id]}</p>}
-      </div>);})}
+      </div>);})}</div>}
+      <p style={{fontSize:13,color:'#a3a3a3',lineHeight:1.45,margin:'8px 0 12px'}}>Email is optional — add a placeholder now and attach an email later to link their account.</p>
       <AddMember groupId={group.id} reload={reload} />
     </>}
     {tab==='activity' && <>
@@ -786,7 +787,7 @@ function activityTitle(a:any) {
 }
 function AddMember({ groupId, reload }: any) {
   const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [addError, setAddError] = useState('');
-  return (<div style={card}><h3 style={{marginTop:0}}>Add member</h3>
+  return (<div style={homeCard}><h3 style={{marginTop:0}}>Add member</h3>
     <input style={input} placeholder="Name" value={name} onChange={e=>setName(e.target.value)} />
     <input style={input} placeholder="Email (optional)" value={email} onChange={e=>setEmail(e.target.value)} />
     <p style={{fontSize:13,color:'#a3a3a3',marginTop:-6,marginBottom:10,lineHeight:1.4}}>Links an existing account, or a placeholder they can claim.</p>
