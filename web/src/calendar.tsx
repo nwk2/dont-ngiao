@@ -13,8 +13,8 @@ export function DateField({ value, onChange, id }: { value: string; onChange: (v
   const daysIn = new Date(ym.y, ym.m+1, 0).getDate();
   const cells: (number|null)[] = [...Array(startDay).fill(null), ...Array.from({length: daysIn}, (_,i)=>i+1)];
   return (<div>
-    <button type="button" id={id} onClick={()=>setOpen(o=>!o)} style={{width:'100%',padding:'10px',textAlign:'left',border:'1px solid #ccc',borderRadius:8,background:'#fff'}}>{fmtDate(value)} 📅</button>
-    {open && <div role="dialog" aria-label="Choose date" style={{border:'1px solid #ccc',borderRadius:8,padding:10,marginTop:6,background:'#fff'}}>
+    <button type="button" id={id} onClick={()=>setOpen(o=>!o)} style={{width:'100%',padding:'10px',textAlign:'left',border:'1px solid #333',borderRadius:8,background:'#242424',color:'#fff'}}>{fmtDate(value)} 📅</button>
+    {open && <div role="dialog" aria-label="Choose date" style={{border:'1px solid #333',borderRadius:8,padding:10,marginTop:6,background:'#1c1c1e',color:'#fff'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
         <button type="button" onClick={()=>setYm(({y,m})=> m===0?{y:y-1,m:11}:{y,m:m-1})}>‹</button>
         <strong>{first.toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</strong>
@@ -26,8 +26,8 @@ export function DateField({ value, onChange, id }: { value: string; onChange: (v
         <button type="button" onClick={()=>setOpen(false)}>Close</button>
       </div>
       <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2,marginTop:8}}>
-        {['Mo','Tu','We','Th','Fr','Sa','Su'].map(d=><div key={d} style={{textAlign:'center',fontSize:12,color:'#666'}}>{d}</div>)}
-        {cells.map((d,i)=> d===null ? <div key={i}/> : <button type="button" key={i} aria-label={fmtDate(`${ym.y}-${String(ym.m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`)} onClick={()=>{onChange(`${ym.y}-${String(ym.m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`); setOpen(false);}} style={{padding:6,background: value===`${ym.y}-${String(ym.m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}` ? '#1a1a1a' : '#fff', color: value===`${ym.y}-${String(ym.m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}` ? '#fff' : '#000', border:'1px solid #ddd', borderRadius:6}}>{d}</button>)}
+        {['Mo','Tu','We','Th','Fr','Sa','Su'].map(d=><div key={d} style={{textAlign:'center',fontSize:12,color:'#a3a3a3'}}>{d}</div>)}
+        {cells.map((d,i)=> d===null ? <div key={i}/> : <button type="button" key={i} aria-label={fmtDate(`${ym.y}-${String(ym.m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`)} onClick={()=>{onChange(`${ym.y}-${String(ym.m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`); setOpen(false);}} style={{padding:6,background: value===`${ym.y}-${String(ym.m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}` ? '#2dd4bf' : '#242424', color: value===`${ym.y}-${String(ym.m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}` ? '#0f172a' : '#fff', border:'1px solid #333', borderRadius:6}}>{d}</button>)}
       </div>
     </div>}
   </div>);

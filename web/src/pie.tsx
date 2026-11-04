@@ -5,7 +5,7 @@ const COLORS = ['#2563eb','#16a34a','#dc2626','#d97706','#7c3aed','#0891b2','#64
 export function Pie({ data, currency }: { data: Record<string, number>; currency: string }) {
   const entries = Object.entries(data).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
   const total = entries.reduce((a,[,v])=>a+v,0);
-  if (total === 0) return <p style={{color:'#666'}}>No spend in {currency} yet.</p>;
+  if (total === 0) return <p style={{color:'#a3a3a3'}}>No spend in {currency} yet.</p>;
   let acc = 0;
   const slices = entries.map(([cat, v], i) => {
     const a0 = acc/total*Math.PI*2; acc += v; const a1 = acc/total*Math.PI*2;

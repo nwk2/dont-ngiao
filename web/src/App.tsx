@@ -4,10 +4,10 @@ import { DateField, fmtDate, todayIso } from './calendar';
 import { Pie } from './pie';
 
 const S = { maxW: 640, margin: '0 auto', padding: '16px', paddingBottom: 90 } as const;
-const card: React.CSSProperties = { background:'#fff', border:'1px solid #e5e5e5', borderRadius:12, padding:12, marginBottom:10 };
-const btn: React.CSSProperties = { padding:'9px 14px', borderRadius:8, border:'1px solid #ccc', background:'#fff', color:'#1a1a1a' };
-const primary: React.CSSProperties = { ...btn, background:'#1a1a1a', color:'#fff', borderColor:'#1a1a1a' };
-const input: React.CSSProperties = { width:'100%', boxSizing:'border-box', padding:'9px', border:'1px solid #ccc', borderRadius:8, margin:'4px 0 10px' };
+const card: React.CSSProperties = { background:'#1c1c1e', border:'1px solid #2e2e2e', borderRadius:16, padding:14, marginBottom:12, color:'#f5f5f5' };
+const btn: React.CSSProperties = { padding:'9px 14px', borderRadius:10, border:'1px solid #333', background:'#242424', color:'#fff' };
+const primary: React.CSSProperties = { ...btn, background:'#2dd4bf', color:'#0f172a', borderColor:'#2dd4bf', fontWeight:600 };
+const input: React.CSSProperties = { width:'100%', boxSizing:'border-box', padding:'10px', border:'1px solid #333', borderRadius:10, margin:'4px 0 10px', background:'#242424', color:'#fff' };
 
 // Per-button async loader: each button tracks its own busy state, so one
 // in-flight action does not disable the whole screen. While busy the button
@@ -50,18 +50,79 @@ export default function App() {
   }
   if (!user) return <Auth onAuth={doAuth} error={error} loading={loading} />;
   if (group) return <GroupView group={group} setGroup={setGroup} tab={tab} setTab={setTab} back={()=>{setGroup(null); loadGroups();}} reload={()=>loadGroup(group.id)} error={error} setError={setError} />;
+  return <Home user={user} setUser={setUser} groups={groups} loadGroups={loadGroups} loadGroup={loadGroup} error={error} setError={setError} />;
+}
+
+function initials(name: string) {
+  return (name || '?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();
+}
+
+function Home({ user, setUser, groups, loadGroups, loadGroup, error, setError }: any) {
+  const [showCreate, setShowCreate] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(user.name || '');
+  const totals: any[] = groups?.totals || [];
   return (<div style={S}>
-    <h1>Don't Ngiao</h1><p style={{color:'#666'}}>Mai ngiao, mai drama.</p>
-    {error && <p style={{color:'red'}}>{error}</p>}
-    <CreateGroup onDone={loadGroups} setError={setError} />
-    <h2>Your groups</h2>
-    {groups?.active?.length === 0 && <p>No groups yet — create one above.</p>}
-    {groups?.active?.map((g:any)=>(<div key={g.id} style={card} onClick={()=>loadGroup(g.id)}>
-      <strong>{g.name}</strong> <span style={{color:'#666'}}>({g.defaultCurrency})</span>
-      <div style={{fontSize:13,marginTop:4}}>{g.balances.map((b:any)=><span key={b.currency} style={{marginRight:10}}>{b.currency}: {fmt(b.balance,b.currency)}</span>)}</div>
-    </div>))}
-    {groups?.archived?.length > 0 && <><h2>Archived groups</h2>{groups.archived.map((g:any)=>(<div key={g.id} style={card}><strong>{g.name}</strong> <AsyncButton style={btn} onClick={async()=>{await api(`/api/groups/${g.id}/restore`,'POST'); loadGroups();}}>Restore</AsyncButton> <AsyncButton style={btn} onClick={()=>loadGroup(g.id)}>Open</AsyncButton></div>))}</>}
-    <AsyncButton style={btn} onClick={async()=>{await api('/api/auth/logout','POST'); setToken(null); setUser(null);}}>Log out</AsyncButton>
+    <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:16}}>
+      <div style={{width:48,height:48,borderRadius:'50%',background:'#65a30d',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:18,flexShrink:0}}>{initials(user.name)}</div>
+      <div style={{flex:1,minWidth:0}}>
+        {editingName ? (<div style={{display:'flex',gap:8,alignItems:'center'}}>
+          <input style={{...input,margin:0}} value={nameDraft} onChange={e=>setNameDraft(e.target.value)} aria-label="Name" />
+          <AsyncButton style={primary} onClick={async()=>{try{const d = await api('/api/me','PATCH',{name:nameDraft}); setUser(d.user); setEditingName(false);}catch(e:any){setError(e.message);}}}>Save</AsyncButton>
+          <button style={btn} onClick={()=>{setEditingName(false); setNameDraft(user.name);}}>Cancel</button>
+        </div>) : (<>
+          <div style={{fontSize:20,fontWeight:700}}>Hi, {user.name}</div>
+          <div style={{fontSize:13,color:'#a3a3a3',overflow:'hidden',textOverflow:'ellipsis'}}>{user.email}</div>
+        </>)}
+      </div>
+      {!editingName && <><button style={btn} onClick={()=>{setNameDraft(user.name); setEditingName(true);}}>Edit name</button>
+      <AsyncButton style={btn} onClick={async()=>{await api('/api/auth/logout','POST'); setToken(null); setUser(null);}}>Log out</AsyncButton></>}
+    </div>
+    <h1 style={{marginBottom:4}}>Don't Ngiao</h1><p style={{color:'#a3a3a3',marginTop:0}}>Mai ngiao, mai drama.</p>
+    {error && <p style={{color:'#f87171'}}>{error}</p>}
+    <div style={{background:'linear-gradient(135deg,#0f766e,#059669,#10b981)',borderRadius:24,padding:20,marginBottom:20,color:'#fff'}}>
+      <div style={{fontSize:12,letterSpacing:1.5,color:'#ccfbf1',fontWeight:600}}>ACROSS ALL YOUR GROUPS</div>
+      {totals.length === 0 || totals.every((t:any)=>t.balance===0) ? (<p style={{margin:'12px 0 0'}}>All settled.</p>) : totals.map((t:any)=>(<div key={t.currency} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginTop:10}}>
+        <strong style={{fontSize:28}}>{fmt(t.balance,t.currency)}</strong>
+        <span style={{color:'#ccfbf1'}}>{t.balance>0 ? 'owed to you' : 'you owe'}</span>
+      </div>))}
+      <p style={{fontSize:13,color:'#ccfbf1',marginBottom:0}}>Kept separate per currency — no conversion. Check a group below for who to pay.</p>
+    </div>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+      <h2 style={{margin:0}}>Your groups</h2>
+      <button style={{...primary,borderRadius:999,padding:'10px 18px'}} onClick={()=>setShowCreate(true)}>+ New group</button>
+    </div>
+    {groups?.active?.length === 0 && <p style={{color:'#a3a3a3'}}>No groups yet — tap + New group to create one.</p>}
+    {groups?.active?.map((g:any)=>{
+      const spent: any[] = g.spent || [];
+      const my: any[] = g.myBalances || [];
+      return (<div key={g.id} style={{...card,cursor:'pointer'}} onClick={()=>loadGroup(g.id)}>
+        <div style={{display:'flex',justifyContent:'space-between',gap:8}}>
+          <strong style={{fontSize:17}}>{g.name}</strong>
+          <span style={{fontSize:12,background:'#2a2a2a',padding:'3px 10px',borderRadius:99,color:'#a3a3a3'}}>{g.defaultCurrency}</span>
+        </div>
+        <div style={{fontSize:13,color:'#a3a3a3',marginTop:6}}>{g.memberCount ?? '?'} {(g.memberCount===1)?'person':'people'} · {g.expenseCount ?? '?'} expenses{spent.length>0 ? ` · ${spent.map((s:any)=>fmt(s.amount,s.currency)).join(' + ')} spent` : ''}</div>
+        {my.length>0 && <div style={{marginTop:8}}>{my.map((b:any)=>(<div key={b.currency} style={{fontSize:14,color:b.balance>0?'#5eead4':b.balance<0?'#f87171':'#a3a3a3'}}>{fmt(b.balance,b.currency)} {b.balance>0?'owed to you':b.balance<0?'you owe':'settled'}</div>))}</div>}
+      </div>);
+    })}
+    {groups?.archived?.length > 0 && <><h2>Archived groups</h2>{groups.archived.map((g:any)=>(<div key={g.id} style={card}><strong>{g.name}</strong>{' '}<AsyncButton style={btn} onClick={async()=>{await api(`/api/groups/${g.id}/restore`,'POST'); loadGroups();}}>Restore</AsyncButton>{' '}<AsyncButton style={btn} onClick={()=>loadGroup(g.id)}>Open</AsyncButton></div>))}</>}
+    <div style={{...card,marginTop:20}}>
+      <h3 style={{marginTop:0}}>How settling works here</h3>
+      <p style={{fontSize:13,color:'#a3a3a3',marginBottom:0}}>Balances are per currency and never converted. Recording a payment never moves real money — it just records that money changed hands. Settle from a group's Balances tab, for one currency at a time.</p>
+    </div>
+    {showCreate && <CreateGroupModal onClose={()=>setShowCreate(false)} onDone={()=>{setShowCreate(false); loadGroups();}} setError={setError} />}
+  </div>);
+}
+
+function CreateGroupModal({ onClose, onDone, setError }: any) {
+  const [name, setName] = useState(''); const [cur, setCur] = useState('SGD');
+  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'#111111',zIndex:50,overflowY:'auto'}}>
+    <div style={{maxWidth:640,margin:'0 auto',padding:16}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h2>New group</h2><button style={btn} onClick={onClose}>Close</button></div>
+      <label>Group name</label><input style={input} placeholder="Group name, e.g. KL Trip" value={name} onChange={e=>setName(e.target.value)} />
+      <label>Default currency <select style={input} value={cur} onChange={e=>setCur(e.target.value)}>{CURRENCIES.map(c=><option key={c}>{c}</option>)}</select></label>
+      <AsyncButton style={primary} onClick={async()=>{try{await api('/api/groups','POST',{name,defaultCurrency:cur}); onDone();}catch(e:any){setError(e.message);}}}>Create group</AsyncButton>
+    </div>
   </div>);
 }
 
@@ -69,21 +130,13 @@ function Auth({ onAuth, error, loading }: any) {
   const [mode, setMode] = useState<'login'|'register'>('login');
   const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [password, setPassword] = useState('');
   return (<div style={S}><h1>Don't Ngiao</h1><p>Mai ngiao, mai drama.</p>
-    {error && <p style={{color:'red'}}>{error}</p>}
+    {error && <p style={{color:'#f87171'}}>{error}</p>}
     {mode==='register' && <><label>Name</label><input style={input} value={name} onChange={e=>setName(e.target.value)} /></>}
     <label>Email</label><input style={input} value={email} onChange={e=>setEmail(e.target.value)} />
     <label>Password</label><input type="password" style={input} value={password} onChange={e=>setPassword(e.target.value)} />
     <button style={{...primary, opacity: loading ? 0.6 : 1, cursor: loading ? 'not-allowed' : 'pointer'}} disabled={loading} onClick={()=>onAuth(mode,name,email,password)}>{loading && <span className="btn-spinner" aria-hidden="true" />}{loading ? (mode==='login' ? 'Logging in…' : 'Creating account…') : (mode==='login' ? 'Log in' : 'Create account')}</button>{' '}
     <button style={btn} onClick={()=>setMode(mode==='login'?'register':'login')}>{mode==='login'?'Need an account? Register':'Already have an account? Log in'}</button>
-    <p style={{color:'#666',fontSize:13}}>Prototype port: email/password only, no email verification or password reset yet.</p>
-  </div>);
-}
-function CreateGroup({ onDone, setError }: any) {
-  const [name, setName] = useState(''); const [cur, setCur] = useState('SGD');
-  return (<div style={card}><h3 style={{marginTop:0}}>Create group</h3>
-    <input style={input} placeholder="Group name, e.g. KL Trip" value={name} onChange={e=>setName(e.target.value)} />
-    <label>Default currency <select style={input} value={cur} onChange={e=>setCur(e.target.value)}>{CURRENCIES.map(c=><option key={c}>{c}</option>)}</select></label>
-    <AsyncButton style={primary} onClick={async()=>{try{await api('/api/groups','POST',{name,defaultCurrency:cur}); setName(''); onDone();}catch(e:any){setError(e.message);}}}>Create group</AsyncButton>
+    <p style={{color:'#a3a3a3',fontSize:13}}>Prototype port: email/password only, no email verification or password reset yet.</p>
   </div>);
 }
 
@@ -100,31 +153,31 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
     <button style={btn} onClick={back}>← Groups</button>{' '}
     <button style={btn} onClick={()=>setShowSettings(true)} aria-label="Group settings">⚙ Settings</button>
     <h1 style={{marginBottom:4}}>{group.name}</h1>
-    {group.isArchived && <p style={{background:'#fff3cd',padding:8,borderRadius:8}}>This group is archived. Restore it from Settings or the home screen to edit it again.</p>}
-    <p style={{color:'#666',marginTop:0}}>Default currency: {group.defaultCurrency} · {group.members.length} members</p>
-    {error && <p style={{color:'red'}}>{error}</p>}
-    <div style={{display:'flex',gap:0,borderBottom:'1px solid #ddd',marginBottom:12,background:'#fff'}}>
-      {(['expenses','balances','members','activity'] as const).map(t=>(<button key={t} onClick={()=>setTab(t)} style={{flex:1,padding:'10px 4px',fontSize:14,color:tab===t?'#1a1a1a':'#666',background:'transparent',border:'none',borderBottom:tab===t?'3px solid #1a1a1a':'none',textTransform:'capitalize'}}>{t}</button>))}
+    {group.isArchived && <p style={{background:'#422006',padding:8,borderRadius:8}}>This group is archived. Restore it from Settings or the home screen to edit it again.</p>}
+    <p style={{color:'#a3a3a3',marginTop:0}}>Default currency: {group.defaultCurrency} · {group.members.length} members</p>
+    {error && <p style={{color:'#f87171'}}>{error}</p>}
+    <div style={{display:'flex',gap:0,borderBottom:'1px solid #333',marginBottom:12,background:'#1c1c1e'}}>
+      {(['expenses','balances','members','activity'] as const).map(t=>(<button key={t} onClick={()=>setTab(t)} style={{flex:1,padding:'10px 4px',fontSize:14,color:tab===t?'#fff':'#a3a3a3',background:'transparent',border:'none',borderBottom:tab===t?'3px solid #2dd4bf':'none',textTransform:'capitalize'}}>{t}</button>))}
     </div>
     {tab==='expenses' && <>
       <div style={card}><h3 style={{marginTop:0}}>Spend by category</h3>
         <div><button style={catView==='group'?primary:btn} onClick={()=>setCatView('group')}>Group</button>{' '}<button style={catView==='mine'?primary:btn} onClick={()=>setCatView('mine')}>Mine</button>{' '}
         {currencies.length>1 && <select value={cur} onChange={e=>setCatCur(e.target.value)}>{currencies.map(c=><option key={c}>{c}</option>)}</select>}</div>
         <Pie data={catData} currency={cur} />
-        <p style={{fontSize:12,color:'#666'}}>{catView==='mine' ? 'Mine = your split shares only, computed on the server. Other members\' individual breakdowns are never sent to you.' : 'Group = total spend for the whole group.'} Per currency only, never converted.</p>
+        <p style={{fontSize:12,color:'#a3a3a3'}}>{catView==='mine' ? 'Mine = your split shares only, computed on the server. Other members\' individual breakdowns are never sent to you.' : 'Group = total spend for the whole group.'} Per currency only, never converted.</p>
       </div>
       {group.expenses.length===0 && <p>No expenses yet.</p>}
       {group.expenses.map((e:any)=>(<div key={e.id} style={card}>
-        <div style={{display:'flex',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}><div><strong>{e.description}</strong> <span style={{fontSize:12,background:'#eee',padding:'2px 6px',borderRadius:99}}>{e.category}</span> <span style={{fontSize:12,background:'#e8f0fe',padding:'2px 6px',borderRadius:99}}>{e.currency}</span><div style={{fontSize:13,color:'#666'}}>Paid by {e.payerName} · {fmtDate(e.date)}</div></div>
-        <div style={{textAlign:'right'}}><div><strong>{e.display}</strong></div><div style={{fontSize:12,color:'#666'}}>{e.currency}</div></div></div>
+        <div style={{display:'flex',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}><div><strong>{e.description}</strong> <span style={{fontSize:12,background:'#2a2a2a',padding:'2px 6px',borderRadius:99}}>{e.category}</span> <span style={{fontSize:12,background:'#134e4a',padding:'2px 6px',borderRadius:99}}>{e.currency}</span><div style={{fontSize:13,color:'#a3a3a3'}}>Paid by {e.payerName} · {fmtDate(e.date)}</div></div>
+        <div style={{textAlign:'right'}}><div><strong>{e.display}</strong></div><div style={{fontSize:12,color:'#a3a3a3'}}>{e.currency}</div></div></div>
         <div style={{fontSize:13,marginTop:6}}>{e.splits.map((s:any)=>{const m=group.members.find((x:any)=>x.id===s.member_id); return `${m?.name}: ${fmt(s.amount_minor,e.currency)}`;}).join(' · ')}</div>
         <AsyncButton style={{...btn,marginTop:8}} onClick={async()=>{try{await api(`/api/groups/${group.id}/expenses/${e.id}`,'DELETE'); reload();}catch(er:any){setError(er.message);}}}>Delete expense</AsyncButton>
       </div>))}
-      {!showExpense && <div style={{position:'fixed',left:0,right:0,bottom:0,background:'#fff',borderTop:'1px solid #ddd',padding:12,textAlign:'center'}}><button style={primary} onClick={()=>setShowExpense(true)}>+ Add expense</button></div>}
+      {!showExpense && <div style={{position:'fixed',left:0,right:0,bottom:0,background:'#1c1c1e',borderTop:'1px solid #333',padding:12,textAlign:'center'}}><button style={primary} onClick={()=>setShowExpense(true)}>+ Add expense</button></div>}
     </>}
     {tab==='balances' && <>
       {group.balances.length===0 && <p>No balances yet.</p>}
-      {group.balances.map((b:any)=>(<div key={b.memberId+b.currency} style={card}>{b.memberName}: {b.display} <span style={{color:'#666'}}>({b.currency})</span></div>))}
+      {group.balances.map((b:any)=>(<div key={b.memberId+b.currency} style={card}>{b.memberName}: {b.display} <span style={{color:'#a3a3a3'}}>({b.currency})</span></div>))}
       <h3>Settle up</h3>
       {group.suggestions.length===0 && <p>All settled.</p>}
       {group.suggestions.map((s:any,i:number)=>(<div key={i} style={card}>{s.fromName} owes {s.toName}: <strong>{s.display}</strong>{' '}<button style={primary} onClick={()=>setSettle(s)}>Settle</button></div>))}
@@ -137,7 +190,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
     </>}
     {tab==='activity' && <>
       {group.activity.length===0 && <p>No activity yet.</p>}
-      {group.activity.map((a:any)=>(<div key={a.id} style={card}><strong>{activityTitle(a)}</strong><div style={{fontSize:13,color:'#666'}}>{a.actor_name} · {new Date(a.created_at).toLocaleString()} {a.amount_minor!=null ? `· ${fmt(a.amount_minor,a.currency)}` : ''} {a.detail?`· ${a.detail}`:''}</div></div>))}
+      {group.activity.map((a:any)=>(<div key={a.id} style={card}><strong>{activityTitle(a)}</strong><div style={{fontSize:13,color:'#a3a3a3'}}>{a.actor_name} · {new Date(a.created_at).toLocaleString()} {a.amount_minor!=null ? `· ${fmt(a.amount_minor,a.currency)}` : ''} {a.detail?`· ${a.detail}`:''}</div></div>))}
     </>}
     {showExpense && <ExpenseModal group={group} onClose={()=>setShowExpense(false)} reload={()=>{setShowExpense(false); reload();}} setError={setError} />}
     {settle && <SettleModal group={group} suggestion={settle} onClose={()=>setSettle(null)} reload={()=>{setSettle(null); reload();}} setError={setError} />}
@@ -164,9 +217,9 @@ function ExpenseModal({ group, onClose, reload, setError }: any) {
   const [selected, setSelected] = useState<string[]>(group.members.map((m:any)=>m.id));
   const [percents, setPercents] = useState<Record<string,string>>({}); const [exact, setExact] = useState<Record<string,string>>({});
   const toggle = (id:string)=> setSelected(s=> s.includes(id) ? s.filter(x=>x!==id) : [...s, id]);
-  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'#f6f5f2',zIndex:50,overflowY:'auto'}}>
+  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'#111111',zIndex:50,overflowY:'auto'}}>
     <div style={{maxWidth:640,margin:'0 auto',padding:16}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,background:'#f6f5f2',padding:'8px 0'}}><h2 style={{margin:0}}>Add expense</h2><button style={btn} onClick={onClose}>Close</button></div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,background:'#111111',padding:'8px 0'}}><h2 style={{margin:0}}>Add expense</h2><button style={btn} onClick={onClose}>Close</button></div>
       <label>Description</label><input style={input} value={description} onChange={e=>setDescription(e.target.value)} />
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}><div><label>Amount</label><input style={input} inputMode="decimal" value={amount} onChange={e=>setAmount(e.target.value)} /></div>
       <div><label>Currency</label><select style={input} value={currency} onChange={e=>setCurrency(e.target.value)}>{CURRENCIES.map(c=><option key={c}>{c}</option>)}</select></div></div>
@@ -194,12 +247,12 @@ function SettleModal({ group, suggestion, onClose, reload, setError }: any) {
   const minor = toMinor(amount, suggestion.currency);
   const remaining = minor===null ? null : suggestion.amountMinor - minor;
   return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
-    <div style={{background:'#fff',borderRadius:'16px 16px 0 0',padding:16,width:'100%',maxWidth:640}}>
+    <div style={{background:'#1c1c1e',borderRadius:'16px 16px 0 0',padding:16,width:'100%',maxWidth:640}}>
       <h2 style={{marginTop:0}}>Settle</h2><p>{suggestion.fromName} → {suggestion.toName} · {suggestion.currency}</p>
-      <p style={{color:'#666'}}>Recording a payment never moves real money — it just records that money changed hands.</p>
+      <p style={{color:'#a3a3a3'}}>Recording a payment never moves real money — it just records that money changed hands.</p>
       <label>Amount ({suggestion.currency})</label><input style={input} value={amount} onChange={e=>setAmount(e.target.value)} />
-      {remaining!==null && remaining>0 && <p style={{color:'#b45309'}}>Partial payment: {fmt(remaining, suggestion.currency)} will remain outstanding.</p>}
-      {remaining!==null && remaining<0 && <p style={{color:'red'}}>Amount exceeds the outstanding {fmt(suggestion.amountMinor, suggestion.currency)}.</p>}
+      {remaining!==null && remaining>0 && <p style={{color:'#fbbf24'}}>Partial payment: {fmt(remaining, suggestion.currency)} will remain outstanding.</p>}
+      {remaining!==null && remaining<0 && <p style={{color:'#f87171'}}>Amount exceeds the outstanding {fmt(suggestion.amountMinor, suggestion.currency)}.</p>}
       <label>Date</label><div style={{marginBottom:10}}><DateField id="pay-date" value={date} onChange={setDate} /></div>
       <AsyncButton style={primary} disabled={minor===null || minor<=0 || minor>suggestion.amountMinor} onClick={async()=>{try{await api(`/api/groups/${group.id}/payments`,'POST',{fromMemberId:suggestion.fromMemberId,toMemberId:suggestion.toMemberId,amountMinor:minor,currency:suggestion.currency,date}); reload();}catch(e:any){setError(e.message);}}}>Settle</AsyncButton>{' '}<button style={btn} onClick={onClose}>Cancel</button>
     </div>
@@ -208,7 +261,7 @@ function SettleModal({ group, suggestion, onClose, reload, setError }: any) {
 function SettingsModal({ group, onClose, reload, back, setError }: any) {
   const [name, setName] = useState(group.name); const [cur, setCur] = useState(group.defaultCurrency);
   const hasExpense = !!group.myHasExpense;
-  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'#f6f5f2',zIndex:50,overflowY:'auto'}}>
+  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'#111111',zIndex:50,overflowY:'auto'}}>
     <div style={{maxWidth:640,margin:'0 auto',padding:16}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h2>Group settings</h2><button style={btn} onClick={onClose}>Close</button></div>
       <label>Group name</label><input style={input} value={name} onChange={e=>setName(e.target.value)} />
@@ -218,11 +271,11 @@ function SettingsModal({ group, onClose, reload, back, setError }: any) {
       {group.isArchived
         ? <AsyncButton style={btn} onClick={async()=>{try{await api(`/api/groups/${group.id}/restore`,'POST'); reload();}catch(e:any){setError(e.message);}}}>Restore group</AsyncButton>
         : <AsyncButton style={btn} onClick={async()=>{try{await api(`/api/groups/${group.id}/archive`,'POST'); reload();}catch(e:any){setError(e.message);}}}>Archive group</AsyncButton>}
-      <p style={{fontSize:13,color:'#666'}}>Archiving hides the group from the active list and preserves all expenses, payments, members and activity. It can be restored.</p>
+      <p style={{fontSize:13,color:'#a3a3a3'}}>Archiving hides the group from the active list and preserves all expenses, payments, members and activity. It can be restored.</p>
       <div style={{marginTop:16}}>
         <AsyncButton style={{...btn, opacity: hasExpense?0.5:1, cursor: hasExpense?'not-allowed':'pointer'}} disabled={hasExpense} aria-disabled={hasExpense} onClick={async()=>{try{const r = await api(`/api/groups/${group.id}/leave`,'POST'); if (r.groupDeleted || r.groupArchived) back(); else reload();}catch(e:any){setError(e.message);}}}>Leave group</AsyncButton>
-        {hasExpense && <p style={{fontSize:13,color:'#666'}}>Leave is greyed out because you have an expense in this group, as payer or as a split participant — even if balances are settled. The server enforces the same rule.</p>}
-        {!hasExpense && <p style={{fontSize:13,color:'#666'}}>You have no expenses in this group, so you can leave. If you are the last member, the group is deleted (it has no expenses to preserve).</p>}
+        {hasExpense && <p style={{fontSize:13,color:'#a3a3a3'}}>Leave is greyed out because you have an expense in this group, as payer or as a split participant — even if balances are settled. The server enforces the same rule.</p>}
+        {!hasExpense && <p style={{fontSize:13,color:'#a3a3a3'}}>You have no expenses in this group, so you can leave. If you are the last member, the group is deleted (it has no expenses to preserve).</p>}
       </div>
     </div>
   </div>);

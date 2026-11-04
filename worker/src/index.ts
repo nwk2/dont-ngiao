@@ -103,9 +103,22 @@ export default {
         const g = await env.DB.prepare('SELECT * FROM groups WHERE id=?').bind(m.group_id).first<Row>();
         if (!g) continue;
         const detail = await groupSummary(env, g.id, user.id);
-        const item = { id: g.id, name: g.name, defaultCurrency: g.default_currency, isArchived: !!g.is_archived, balances: detail.balances };
+        // Additive fields only: balances (existing shape) is unchanged.
+        // totals previously summed ALL members' balances, which nets to ~0 per
+        // currency; it now sums only the requesting user's balances, so the
+        // home hero ("owed to you" / "you owe") is meaningful.
+        const myMember = (detail.members || []).find((mm: any) => mm.user_id === user.id) || null;
+        const myBalances = myMember ? detail.balances.filter((b: any) => b.memberId === myMember.id) : [];
+        const spentMap: Record<string, number> = {};
+        for (const e of detail.expenses || []) spentMap[e.currency] = (spentMap[e.currency] || 0) + e.amount_minor;
+        const item = {
+          id: g.id, name: g.name, defaultCurrency: g.default_currency, isArchived: !!g.is_archived, balances: detail.balances,
+          memberCount: (detail.members || []).length, expenseCount: (detail.expenses || []).length,
+          spent: Object.entries(spentMap).map(([currency, amount]) => ({ currency, amount })),
+          myBalances: myBalances.map((b: any) => ({ currency: b.currency, balance: b.balance })),
+        };
         if (g.is_archived) archived.push(item);
-        else { active.push(item); for (const b of detail.balances) totals[b.currency] = (totals[b.currency] || 0) + b.balance; }
+        else { active.push(item); for (const b of myBalances) totals[b.currency] = (totals[b.currency] || 0) + b.balance; }
       }
       return json({ active, archived, totals: Object.entries(totals).map(([currency, balance]) => ({ currency, balance })) });
     }
