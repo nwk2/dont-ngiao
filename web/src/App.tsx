@@ -125,7 +125,7 @@ function Home({ user, setUser, groups, loadGroups, loadGroup, error, setError }:
         <strong style={{fontSize:28}}>{fmt(t.balance,t.currency)}</strong>
         <span style={{color:'#ccfbf1'}}>{t.balance>0 ? 'owed to you' : 'you owe'}</span>
       </div>))}
-      <p style={{fontSize:13,color:'#ccfbf1',marginBottom:0}}>Kept separate per currency — no conversion. Check a group below for who to pay.</p>
+      <p style={{fontSize:13,color:'#ccfbf1',marginBottom:0}}>Kept separate per currency — no conversion. Tap a group below to see who to pay.</p>
     </div>
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
       <h2 style={{margin:0}}>Your groups</h2>
