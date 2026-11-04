@@ -497,15 +497,23 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       if (dp && req.method === 'DELETE') {
         const p = await env.DB.prepare('SELECT * FROM payments WHERE id=? AND group_id=?').bind(decodeURIComponent(dp[1]), groupId).first<Row>();
         if (!p) return err('Payment not found', 404, origin);
+        // CHUNK 1, Nov 2026: payment_deleted used to log member IDs
+        // (from_member_id -> to_member_id), so Activity showed UUIDs.
+        // payment_recorded logs names; deleted must match, so look up
+        // the two members' names first (fall back to IDs if a member
+        // row is somehow gone, rather than failing the delete).
         // DELETE AUTH, Nov 2026: only the two parties to the payment
         // (debtor from_member_id, creditor to_member_id) may delete it.
         // An uninvolved member cannot erase someone else's settlement.
         // Same server-enforcement principle as the Settle guard: the
         // frontend hiding the button is not the protection.
         if (member.id !== p.from_member_id && member.id !== p.to_member_id) return err('Only the debtor or creditor can delete this payment', 403, origin);
+        const payMembers = await env.DB.prepare('SELECT id, name FROM group_members WHERE group_id=?').bind(groupId).all<Row>();
+        const payFromName = (payMembers.results || []).find((m: any) => m.id === p.from_member_id)?.name || p.from_member_id;
+        const payToName = (payMembers.results || []).find((m: any) => m.id === p.to_member_id)?.name || p.to_member_id;
         await env.DB.batch([
           env.DB.prepare('DELETE FROM payments WHERE id=?').bind(p.id),
-          activityStmt(env, groupId, user.name, 'payment_deleted', p.amount_minor, p.currency, `${p.from_member_id} -> ${p.to_member_id}`),
+          activityStmt(env, groupId, user.name, 'payment_deleted', p.amount_minor, p.currency, `${payFromName} -> ${payToName}`),
         ]);
         return json(await groupDetail(env, g, user.id), 200, origin);
       }

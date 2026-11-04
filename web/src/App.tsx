@@ -300,7 +300,7 @@ function Home({ user, setUser, onLogout, groups, loadGroups, loadGroup, error, s
       </div>) : null}
     </div>
     <h1 style={{marginBottom:4}}>Don't Ngiao</h1><p style={{color:'#a3a3a3',marginTop:0}}>Mai ngiao, mai drama.</p>
-    {error && <p style={{color:'#f87171'}}>{error}</p>}
+    {error && <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:12}}><span style={{color:'#f87171'}}>{error}</span><button style={btn} onClick={()=>loadGroups()}>Retry</button></div>}
     <div style={{background:'linear-gradient(135deg,#0f766e,#059669,#10b981)',borderRadius:24,padding:20,marginBottom:20,color:'#fff'}}>
       <div style={{fontSize:12,letterSpacing:1.5,color:'#ccfbf1',fontWeight:600}}>ALL ACROSS {(groups?.active?.length ?? 0)} {((groups?.active?.length ?? 0) === 1) ? 'GROUP' : 'GROUPS'}</div>
       {totals.length === 0 || totals.every((t:any)=>t.balance===0) ? (<p style={{margin:'12px 0 0'}}>All settled.</p>) : totals.map((t:any)=>(<div key={t.currency} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:12,marginTop:10}}>
@@ -373,7 +373,7 @@ function Auth({ onAuth, error, loading }: any) {
     <button style={{...primary, width:'100%', opacity: loading ? 0.6 : 1, cursor: loading ? 'not-allowed' : 'pointer'}} disabled={loading} onClick={()=>onAuth(mode,name,email,password)}>{loading && <span className="btn-spinner" aria-hidden="true" />}{loading ? (mode==='login' ? 'Logging in…' : 'Creating account…') : (mode==='login' ? 'Log in' : 'Create account')}</button>
     <button style={{...btn, width:'100%'}} onClick={()=>setMode(mode==='login'?'register':'login')}>{mode==='login'?'Register':'Log in'}</button>
     </div>
-    <p style={{color:'#a3a3a3',fontSize:13}}>Prototype port: email/password only, no email verification or password reset yet.</p>
+    <p style={{color:'#a3a3a3',fontSize:13}}>Forgot your password? Ask the admin for a reset link.</p>
   </div>);
 }
 
@@ -517,7 +517,14 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
   function changeTab(t: 'expenses'|'balances'|'members'|'activity') { setTab(t); setError(''); setMemberErrors({}); setPaymentErrors({}); }
   const [catCur, setCatCur] = useState<string>('');
   const currencies = Object.keys(group.categoryGroup || {});
-  const cur = catCur || currencies[0] || group.defaultCurrency;
+  // CHUNK 1, Nov 2026: catCur persists across groups (GroupView state
+  // is not reset when a new group loads), so a currency picked in one
+  // group could be absent from the next, rendering a blank chart with
+  // no explanation. Clamp per render: use the picked currency only if
+  // this group actually has it, otherwise fall back to the group's
+  // first currency. The preference itself is kept (not cleared), so
+  // returning to a group that has that currency restores it.
+  const cur = (catCur && currencies.includes(catCur)) ? catCur : (currencies[0] || group.defaultCurrency);
   const catData = (catView==='group' ? group.categoryGroup?.[cur] : group.categoryMine?.[cur]) || {};
   return (<div style={S}>
     <div style={{display:'flex',gap:8,alignItems:'center'}}>
@@ -527,7 +534,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
     <h1 style={{marginBottom:4}}>{group.name}</h1>
     {group.isArchived && <p style={{background:'#422006',padding:8,borderRadius:8}}>This group is archived. Restore it from Settings or the home screen to edit it again.</p>}
     <p style={{color:'#a3a3a3',marginTop:0,lineHeight:1.4}}>Default currency: {group.defaultCurrency} · {group.members.length} members</p>
-    {error && <p style={{color:'#f87171'}}>{error}</p>}
+    {error && <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:12}}><span style={{color:'#f87171'}}>{error}</span><button style={btn} onClick={()=>reload()}>Retry</button></div>}
     <div style={{display:'flex',gap:0,borderBottom:'1px solid #333',marginBottom:12,background:'#1c1c1e'}}>
       {(['expenses','balances','members','activity'] as const).map(t=>(<button key={t} onClick={()=>changeTab(t)} style={{flex:1,padding:'10px 4px',fontSize:14,color:tab===t?'#fff':'#a3a3a3',background:'transparent',border:'none',borderBottom:tab===t?'3px solid #2dd4bf':'none',textTransform:'capitalize'}}>{t}</button>))}
     </div>
@@ -653,7 +660,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         <div style={avatar}>{initials(m.name)}</div>
         <div style={{flex:1,minWidth:0}}>
           {isEditing ? (<input style={{...input,margin:0}} placeholder="Email" value={emailDraft} onChange={e=>setEmailDraft(e.target.value)} aria-label="Member email" />) : (<>
-          <div style={{fontWeight:600,lineHeight:1.4}}>{m.name}{!m.user_id ? <span style={noAccountChip}>No account yet</span> : null}</div>
+          <div style={{fontWeight:600,lineHeight:1.4}}>{m.id === group.myMemberId ? `You (${m.name})` : m.name}{!m.user_id ? <span style={noAccountChip}>No account yet</span> : null}</div>
           {m.email ? (<div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.email}</div>) : (!m.user_id ? (<div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4}}>Placeholder — no email set, no one can claim this yet</div>) : null)}
           {!m.user_id && m.email ? (<div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4}}>Placeholder — they can claim this by signing up with the same email</div>) : null}
           </>)}
