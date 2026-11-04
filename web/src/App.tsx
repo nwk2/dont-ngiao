@@ -348,11 +348,12 @@ function CreateGroupModal({ onClose, onDone }: any) {
 function Auth({ onAuth, error, loading }: any) {
   const [mode, setMode] = useState<'login'|'register'>('login');
   const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   return (<div style={S}><h1>Don't Ngiao</h1><p>Mai ngiao, mai drama.</p>
     {error && <p style={{color:'#f87171'}}>{error}</p>}
     {mode==='register' && <><label>Name</label><input style={input} value={name} onChange={e=>setName(e.target.value)} /></>}
     <label>Email</label><input style={input} value={email} onChange={e=>setEmail(e.target.value)} />
-    <label>Password</label><input type="password" style={input} value={password} onChange={e=>setPassword(e.target.value)} />
+    <label>Password</label><div style={{display:'flex',gap:8,alignItems:'center'}}><input type={showPassword ? 'text' : 'password'} style={{...input,flex:1,minWidth:0,margin:0}} value={password} onChange={e=>setPassword(e.target.value)} /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} style={{...btn,flexShrink:0}} onClick={()=>setShowPassword(v=>!v)}>{showPassword ? 'Hide' : 'Show'}</button></div>
     <button style={{...primary, opacity: loading ? 0.6 : 1, cursor: loading ? 'not-allowed' : 'pointer'}} disabled={loading} onClick={()=>onAuth(mode,name,email,password)}>{loading && <span className="btn-spinner" aria-hidden="true" />}{loading ? (mode==='login' ? 'Logging in…' : 'Creating account…') : (mode==='login' ? 'Log in' : 'Create account')}</button>{' '}
     <button style={btn} onClick={()=>setMode(mode==='login'?'register':'login')}>{mode==='login'?'Register':'Log in'}</button>
     <p style={{color:'#a3a3a3',fontSize:13}}>Prototype port: email/password only, no email verification or password reset yet.</p>
@@ -532,7 +533,12 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         {isEditing ? (<span style={{display:'flex',gap:8,flexShrink:0}}>
           <AsyncButton style={primary} onClick={async()=>{try{const d = await api(`/api/groups/${group.id}/members/${m.id}`,'PATCH',{email:emailDraft}); setEditingMemberId(null); reload(d);}catch(er:any){setError(er.message);}}}>Save</AsyncButton>
           <button style={btn} onClick={()=>setEditingMemberId(null)}>Cancel</button>
-        </span>) : (!m.user_id ? null : (<span style={{display:'flex',gap:8,flexShrink:0}}>
+        </span>) : (!m.user_id || m.id === group.myMemberId ? null : (<span style={{display:'flex',gap:8,flexShrink:0}}>
+          {/* Remove is for OTHER members only. Your own row gets no
+          Remove button (2026-11-04): self-removal is Settings -> Leave
+          group, which has the last-member cleanup (delete/archive) and
+          navigates back to Home. Remove on yourself used to leave a
+          0-member orphan group in D1 that no one could see or delete. */}
           <button style={{...btn,flexShrink:0}} onClick={()=>setConfirm({title:'Remove member?',message:`Remove ${m.name} from this group? This cannot be undone.`,onError:(msg:string)=>setMemberErrors(prev=>({...prev,[m.id]:msg})),action:async()=>{const d = await api(`/api/groups/${group.id}/members/${m.id}`,'DELETE'); reload(d);}})}>Remove</button>
         </span>))}
         </div>

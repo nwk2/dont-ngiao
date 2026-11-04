@@ -368,6 +368,15 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       }
       if (rm && req.method === 'DELETE') {
         const targetId = decodeURIComponent(rm[1]);
+        // SERVER GUARD, 2026-11-04: self-removal must go through Leave
+        // (POST /leave), not DELETE /members/:id. Leave has the
+        // last-member cleanup (delete the group if empty, else archive
+        // it) and the frontend navigates back to Home on it. DELETE on
+        // your own row used to succeed in a solo group and leave a
+        // 0-member orphan group in D1 that no one could see, restore
+        // or delete. Rejecting here makes the API match the UI, where
+        // your own row now has no Remove button at all.
+        if (targetId === member.id) return err('Use Leave group in Settings to remove yourself from a group', 400, origin);
         const target = await env.DB.prepare('SELECT * FROM group_members WHERE id=? AND group_id=?').bind(targetId, groupId).first<Row>();
         if (!target) return err('Member not found', 404, origin);
         if (await hasAnyExpense(env, groupId, targetId)) return err('Member has expenses and cannot be removed', 403, origin);
