@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api, setToken, getToken, CURRENCIES, CATEGORIES, fmt, toMinor, fromMinor } from './api';
 import { DateField, fmtDate, todayIso } from './calendar';
-import { Pie } from './pie';
+import { Pie, DailyBar } from './pie';
 
 const S = { maxW: 640, margin: '0 auto', padding: '16px', paddingBottom: 90 } as const;
 const card: React.CSSProperties = { background:'#1c1c1e', border:'1px solid #2e2e2e', borderRadius:16, padding:14, marginBottom:12, color:'#f5f5f5', lineHeight:1.45 };
@@ -217,6 +217,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
   const [editingMemberId, setEditingMemberId] = useState<string|null>(null);
   const [emailDraft, setEmailDraft] = useState('');
   const [catView, setCatView] = useState<'group'|'mine'>('group');
+  const [catChart, setCatChart] = useState<'pie'|'bar'>('pie');
   // Chunk 4: row-local errors. Kept in GroupView (not the App-level global)
   // so they render inside the row that caused them. A successful reload
   // replaces the group object, which clears them; a tab change clears
@@ -246,9 +247,10 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
     {tab==='expenses' && <>
       <div style={card}><h3 style={{marginTop:0}}>Spend by category</h3>
         <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}><button style={catView==='group'?catControlActive:catControl} onClick={()=>setCatView('group')}>Group</button><button style={catView==='mine'?catControlActive:catControl} onClick={()=>setCatView('mine')}>Mine</button>
-        {currencies.length>1 && <select style={catControl} value={cur} onChange={e=>setCatCur(e.target.value)}>{currencies.map(c=><option key={c}>{c}</option>)}</select>}</div>
-        <Pie data={catData} currency={cur} />
-        <p style={{fontSize:12,color:'#a3a3a3'}}>{catView==='mine' ? 'Mine = your split shares only, computed on the server. Other members\' individual breakdowns are never sent to you.' : 'Group = total spend for the whole group.'} Per currency only, never converted.</p>
+        {currencies.length>1 && <select style={catControl} value={cur} onChange={e=>setCatCur(e.target.value)}>{currencies.map(c=><option key={c}>{c}</option>)}</select>}
+        <button style={catChart==='pie'?catControlActive:catControl} onClick={()=>setCatChart('pie')}>Pie</button><button style={catChart==='bar'?catControlActive:catControl} onClick={()=>setCatChart('bar')}>Bar</button></div>
+        {catChart==='pie' ? <Pie data={catData} currency={cur} /> : <DailyBar expenses={group.expenses} myMemberId={group.myMemberId} view={catView} currency={cur} />}
+        <p style={{fontSize:12,color:'#a3a3a3'}}>{catView==='mine' ? 'Mine = your split shares only. Other members\' individual breakdowns are never sent to you.' : 'Group = total spend for the whole group.'} Pie = overall breakdown. Bar = spend per day, stacked by category. Per currency only, never converted.</p>
       </div>
       {group.expenses.length===0 && <p>No expenses yet.</p>}
       {group.expenses.map((e:any)=>{const mySplit = group.myMemberId ? e.splits.find((s:any)=>s.member_id===group.myMemberId) : null; const n = e.splits.length; return (<div key={e.id} style={{...rowCard,cursor:'pointer'}} onClick={()=>setDetailExpense(e)}>
