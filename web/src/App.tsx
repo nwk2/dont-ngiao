@@ -602,6 +602,14 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
       {group.suggestions.map((s:any,i:number)=>{
         const from = personDisplay(group, s.fromMemberId, s.fromName);
         const to = personDisplay(group, s.toMemberId, s.toName);
+        // SETTLE AUTH, Nov 2026: mirror the server rule in the UI — only
+        // the creditor can settle, except when the creditor is a
+        // placeholder (no account), in which case the debtor may. Anyone
+        // else gets a disabled button + an explanation, not a hidden
+        // button, so a debtor is not left wondering why there is no
+        // Settle button (same pattern as the Leave grey-out).
+        const toMember = group.members.find((m:any)=>m.id===s.toMemberId);
+        const canSettle = group.myMemberId === s.toMemberId || (toMember && !toMember.user_id && group.myMemberId === s.fromMemberId);
         return (<div key={i} style={{...rowCard,display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
           <div style={{flex:1,minWidth:0,lineHeight:1.4}}>
             <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:6}}>
@@ -612,8 +620,9 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
               <span>{to.label}</span>
             </div>
             <div style={{marginLeft:16,marginTop:4}}><strong>{s.display}</strong></div>
+            {!canSettle && <div style={{marginLeft:16,marginTop:4,fontSize:13,color:'#a3a3a3'}}>Only {to.label} can settle this</div>}
           </div>
-          <button style={{...primary,flexShrink:0}} onClick={()=>setSettle(s)}>Settle</button>
+          <button style={{...primary,flexShrink:0,opacity:canSettle?1:0.5,cursor:canSettle?'pointer':'not-allowed'}} disabled={!canSettle} onClick={()=>setSettle(s)}>Settle</button>
         </div>);
       })}
       <h3>Recorded payments</h3>
@@ -632,7 +641,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
             <div style={{fontSize:13,lineHeight:1.4,marginTop:4,marginLeft:34}}><strong>{p.display}</strong> <span style={{color:'#a3a3a3'}}>· {fmtDate(p.date)}</span></div>
             {paymentErrors[p.id] && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:4,marginBottom:0}}>{paymentErrors[p.id]}</p>}
           </div>
-          <button style={{...btn,flexShrink:0}} onClick={()=>setConfirm({title:'Delete payment?',message:`Delete the ${p.display} payment from ${from.label} to ${to.label} on ${fmtDate(p.date)}? This cannot be undone.`,onError:(msg:string)=>setPaymentErrors(prev=>({...prev,[p.id]:msg})),action:async()=>{const d = await api(`/api/groups/${group.id}/payments/${p.id}`,'DELETE'); reload(d);}})}>Delete</button>
+          {(group.myMemberId === p.from_member_id || group.myMemberId === p.to_member_id) && <button style={{...btn,flexShrink:0}} onClick={()=>setConfirm({title:'Delete payment?',message:`Delete the ${p.display} payment from ${from.label} to ${to.label} on ${fmtDate(p.date)}? This cannot be undone.`,onError:(msg:string)=>setPaymentErrors(prev=>({...prev,[p.id]:msg})),action:async()=>{const d = await api(`/api/groups/${group.id}/payments/${p.id}`,'DELETE'); reload(d);}})}>Delete</button>}
         </div>);
       })}
     </>}

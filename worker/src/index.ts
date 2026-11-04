@@ -497,6 +497,12 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       if (dp && req.method === 'DELETE') {
         const p = await env.DB.prepare('SELECT * FROM payments WHERE id=? AND group_id=?').bind(decodeURIComponent(dp[1]), groupId).first<Row>();
         if (!p) return err('Payment not found', 404, origin);
+        // DELETE AUTH, Nov 2026: only the two parties to the payment
+        // (debtor from_member_id, creditor to_member_id) may delete it.
+        // An uninvolved member cannot erase someone else's settlement.
+        // Same server-enforcement principle as the Settle guard: the
+        // frontend hiding the button is not the protection.
+        if (member.id !== p.from_member_id && member.id !== p.to_member_id) return err('Only the debtor or creditor can delete this payment', 403, origin);
         await env.DB.batch([
           env.DB.prepare('DELETE FROM payments WHERE id=?').bind(p.id),
           activityStmt(env, groupId, user.name, 'payment_deleted', p.amount_minor, p.currency, `${p.from_member_id} -> ${p.to_member_id}`),
@@ -658,6 +664,18 @@ async function recordPayment(env: Env, g: Row, user: Row, body: any, origin: str
   const from = String(body.fromMemberId||''); const to = String(body.toMemberId||'');
   const currency = String(body.currency||''); const amountMinor = body.amountMinor;
   if (!ids.has(from) || !ids.has(to) || from===to) return err('Payment must be between two different group members', 400, origin);
+  // SETTLE AUTH, Nov 2026: only the creditor (the person owed, toMemberId)
+  // may record a payment — not the debtor, and not an uninvolved member.
+  // This is the server enforcement; hiding/disabling the button in the
+  // frontend alone would not stop a direct API call. Exception: if the
+  // creditor is a placeholder (no account, user_id NULL), they cannot
+  // log in to confirm at all, so the debtor may record instead — the
+  // activity log still records who did it (created_by_user_id).
+  const myMemberRow = (members.results || []).find((m: any) => m.user_id === user.id);
+  const toMemberRow = (members.results || []).find((m: any) => m.id === to);
+  const creditorIsPlaceholder = toMemberRow && !toMemberRow.user_id;
+  const allowed = myMemberRow && (myMemberRow.id === to || (creditorIsPlaceholder && myMemberRow.id === from));
+  if (!allowed) return err('Only the person owed can record this payment (or the debtor, if the person owed has no account yet)', 403, origin);
   if (!amountMinor || amountMinor <= 0) return err('Amount must be positive', 400, origin);
   const date = String(body.date||'').slice(0,10); if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return err('Date must be YYYY-MM-DD', 400, origin);
   // Guard: payment must not exceed the outstanding simplified suggestion for that pair+currency at this moment (partial allowed, overpayment rejected).
