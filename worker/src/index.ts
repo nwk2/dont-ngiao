@@ -365,39 +365,60 @@ async function hasAnyExpense(env: Env, groupId: string, memberId: string): Promi
 }
 
 async function groupSummary(env: Env, groupId: string, _userId: string) {
-  const members = await env.DB.prepare('SELECT * FROM group_members WHERE group_id=? ORDER BY created_at').bind(groupId).all<Row>();
-  const expenses = await env.DB.prepare('SELECT * FROM expenses WHERE group_id=? ORDER BY date DESC, created_at DESC').bind(groupId).all<Row>();
-  const payments = await env.DB.prepare('SELECT * FROM payments WHERE group_id=? ORDER BY date DESC, created_at DESC').bind(groupId).all<Row>();
+  // PERFORMANCE, Nov 2026: this used to be O(members x currencies x
+  // expenses) SEQUENTIAL D1 queries — for every member, for every
+  // currency, for every expense, it re-queried expense_splits for that
+  // expense. A group with 5 members, 2 currencies and 15 expenses did
+  // ~150 sequential D1 round-trips per groupDetail call, and every write
+  // (Save, Add expense) returned a groupDetail AND the frontend then
+  // re-fetched it, doubling it again. On a Singapore phone hitting a
+  // far-away D1, that was tens of seconds per update — the video at
+  // 19:23 SGT shows exactly that: Save/Add-expense spinners spinning
+  // for ages, then the user having to refresh the whole page to see
+  // the (already persisted) data. Now: 4 queries, fetched in parallel,
+  // all aggregation in memory. Response shape is unchanged.
+  const [membersRes, expensesRes, paymentsRes, splitsRes] = await Promise.all([
+    env.DB.prepare('SELECT * FROM group_members WHERE group_id=? ORDER BY created_at').bind(groupId).all<Row>(),
+    env.DB.prepare('SELECT * FROM expenses WHERE group_id=? ORDER BY date DESC, created_at DESC').bind(groupId).all<Row>(),
+    env.DB.prepare('SELECT * FROM payments WHERE group_id=? ORDER BY date DESC, created_at DESC').bind(groupId).all<Row>(),
+    env.DB.prepare('SELECT s.* FROM expense_splits s JOIN expenses e ON e.id=s.expense_id WHERE e.group_id=? ORDER BY s.rowid').bind(groupId).all<Row>(),
+  ]);
+  const members = membersRes.results || [];
+  const expenses = expensesRes.results || [];
+  const payments = paymentsRes.results || [];
+  const splits = splitsRes.results || [];
   const currencies = new Set<string>();
-  (expenses.results||[]).forEach(e=>currencies.add(e.currency)); (payments.results||[]).forEach(p=>currencies.add(p.currency));
+  expenses.forEach(e=>currencies.add(e.currency)); payments.forEach(p=>currencies.add(p.currency));
+  const expenseById = new Map<string, Row>(expenses.map((e: any) => [e.id, e]));
+  const splitsByExpense: Record<string, Row[]> = {};
+  for (const sp of splits) { (splitsByExpense[sp.expense_id] = splitsByExpense[sp.expense_id] || []).push(sp); }
+  // In-memory aggregates, keyed memberId + currency. Share uses the
+  // expense's currency (a split has no currency of its own).
+  const key = (memberId: string, cur: string) => memberId + '\0' + cur;
+  const paidMap = new Map<string, number>(); const shareMap = new Map<string, number>();
+  const sentMap = new Map<string, number>(); const receivedMap = new Map<string, number>();
+  for (const e of expenses) paidMap.set(key(e.paid_by_member_id, e.currency), (paidMap.get(key(e.paid_by_member_id, e.currency)) || 0) + e.amount_minor);
+  for (const sp of splits) { const cur = expenseById.get(sp.expense_id)?.currency; if (!cur) continue; shareMap.set(key(sp.member_id, cur), (shareMap.get(key(sp.member_id, cur)) || 0) + sp.amount_minor); }
+  for (const pay of payments) { sentMap.set(key(pay.from_member_id, pay.currency), (sentMap.get(key(pay.from_member_id, pay.currency)) || 0) + pay.amount_minor); receivedMap.set(key(pay.to_member_id, pay.currency), (receivedMap.get(key(pay.to_member_id, pay.currency)) || 0) + pay.amount_minor); }
   const balances: any[] = [];
-  for (const m of members.results || []) {
+  for (const m of members) {
     for (const cur of currencies) {
-      let paid=0, share=0, sent=0, received=0;
-      for (const e of expenses.results||[]) if (e.currency===cur) {
-        if (e.paid_by_member_id===m.id) paid += e.amount_minor;
-        const splits = await env.DB.prepare('SELECT * FROM expense_splits WHERE expense_id=?').bind(e.id).all<Row>();
-        for (const s of splits.results||[]) if (s.member_id===m.id) share += s.amount_minor;
-      }
-      for (const p of payments.results||[]) if (p.currency===cur) {
-        if (p.from_member_id===m.id) sent += p.amount_minor;
-        if (p.to_member_id===m.id) received += p.amount_minor;
-      }
+      const paid = paidMap.get(key(m.id, cur)) || 0; const share = shareMap.get(key(m.id, cur)) || 0;
+      const sent = sentMap.get(key(m.id, cur)) || 0; const received = receivedMap.get(key(m.id, cur)) || 0;
       const bal = balanceOf({memberId:m.id, paid, share, sent, received});
       if (paid||share||sent||received||bal!==0) balances.push({ memberId: m.id, memberName: m.name, currency: cur, balance: bal, paid, share });
     }
   }
-  return { members: members.results||[], expenses: expenses.results||[], payments: payments.results||[], balances };
+  return { members, expenses, payments, balances, splitsByExpense };
+
 }
 
 async function groupDetail(env: Env, g: Row, userId: string) {
   const s = await groupSummary(env, g.id, userId);
   const myMemberRow = s.members.find(m=>m.user_id===userId) || null;
-  const splitsByExpense: Record<string, Row[]> = {};
-  for (const e of s.expenses) {
-    const sp = await env.DB.prepare('SELECT * FROM expense_splits WHERE expense_id=?').bind(e.id).all<Row>();
-    splitsByExpense[e.id] = sp.results||[];
-  }
+  // Reuse the splits already fetched by groupSummary — do NOT re-query
+  // per expense here (that was a second N-query loop on top of the first).
+  const splitsByExpense = s.splitsByExpense;
   const activity = await env.DB.prepare('SELECT * FROM activity_log WHERE group_id=? ORDER BY created_at DESC LIMIT 200').bind(g.id).all<Row>();
   const suggestions: any[] = [];
   const byCur = new Map<string, {memberId:string; balance:number}[]>();
