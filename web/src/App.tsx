@@ -772,7 +772,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
     </>}
     {tab==='activity' && <>
       {group.activity.length===0 && <p>No activity yet.</p>}
-      {group.activity.map((a:any)=>(<div key={a.id} style={card}><strong>{activityTitle(a)}</strong><div style={{fontSize:13,color:'#a3a3a3'}}>{a.actor_name} · {new Date(a.created_at).toLocaleString()} {a.amount_minor!=null ? `· ${fmt(a.amount_minor,a.currency)}` : ''} {a.detail?`· ${a.detail}`:''}</div></div>))}
+      {group.activity.length>0 && <div style={balCard}>{group.activity.map((a:any,ai:number,arr:any[])=>{const d = new Date(a.created_at); const dateStr = `${d.getDate()} ${d.toLocaleString('en-GB',{month:'short'})} · ${d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}`; return (<div key={a.id} style={{...balRow,flexDirection:'column',alignItems:'stretch',gap:2,borderBottom:ai===arr.length-1?'none':balHairline}}><div style={{fontWeight:600,lineHeight:1.4}}>{activityTitle(a)}{a.amount_minor!=null ? ` · ${fmt(a.amount_minor,a.currency)}` : ''}</div><div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4}}>{a.actor_name} · {dateStr}{a.detail?` · ${a.detail}`:''}</div></div>);})}</div>}
     </>}
     {detailExpense && <ExpenseDetailSheet group={group} expense={detailExpense} onClose={()=>setDetailExpense(null)} setConfirm={setConfirm} reload={reload} />}
     {showExpense && <ExpenseModal group={group} onClose={()=>setShowExpense(false)} reload={(d?:any)=>{setShowExpense(false); reload(d);}} />}
