@@ -67,7 +67,7 @@ async function authUser(req: Request, env: Env): Promise<Row | null> {
   // Aliases matter: users.created_at and sessions.created_at are
   // different dates; expiry uses the SESSION's dates only.
   let s: Row | null = null;
-  try { s = await env.DB.prepare('SELECT u.id, u.name, u.email, u.created_at, s.created_at AS session_created_at, s.last_seen_at AS session_last_seen_at FROM users u JOIN sessions s ON s.user_id = u.id WHERE s.token=?').bind(tok).first<Row>(); }
+  try { s = await env.DB.prepare('SELECT u.id, u.name, u.email, u.created_at, u.is_admin, s.created_at AS session_created_at, s.last_seen_at AS session_last_seen_at FROM users u JOIN sessions s ON s.user_id = u.id WHERE s.token=?').bind(tok).first<Row>(); }
   catch { s = await env.DB.prepare('SELECT u.id, u.name, u.email, u.created_at, s.created_at AS session_created_at FROM users u JOIN sessions s ON s.user_id = u.id WHERE s.token=?').bind(tok).first<Row>(); }
   if (!s) return null;
   const lastActivity = s.session_last_seen_at || s.session_created_at;
@@ -83,7 +83,20 @@ async function authUser(req: Request, env: Env): Promise<Row | null> {
   if (Number.isFinite(lastMs) && Date.now() - lastMs > SESSION_TOUCH_INTERVAL_MS) {
     try { await env.DB.prepare('UPDATE sessions SET last_seen_at=? WHERE token=?').bind(nowIso(), tok).run(); } catch {}
   }
-  return { id: s.id, name: s.name, email: s.email, created_at: s.created_at };
+  return { id: s.id, name: s.name, email: s.email, created_at: s.created_at, is_admin: Number(s.is_admin || 0) };
+}
+// ADMIN, Nov 2026: separate admin user, separate login page. Admin
+// endpoints must check this server-side on every call — hiding the
+// admin UI in the frontend is not protection, since anyone can call
+// the API directly. A regular user (is_admin=0, or pre-0005 where the
+// column does not exist yet) gets the same generic 403 as an
+// unauthenticated caller gets 401 elsewhere; the admin login endpoint
+// below returns a generic error for the same reason (it must not leak
+// whether an account exists or just is not admin).
+async function authAdmin(req: Request, env: Env): Promise<Row | null> {
+  const user = await authUser(req, env);
+  if (!user || !user.is_admin) return null;
+  return user;
 }
 async function myMember(env: Env, groupId: string, userId: string): Promise<Row | null> {
   return env.DB.prepare('SELECT * FROM group_members WHERE group_id=? AND user_id=?').bind(groupId, userId).first<Row>();
@@ -133,6 +146,22 @@ function activityStmt(env: Env, groupId: string, actor: string, type: string, am
   return env.DB.prepare('INSERT INTO activity_log (id, group_id, actor_name, type, amount_minor, currency, detail, created_at) VALUES (?,?,?,?,?,?,?,?)')
     .bind(uid(), groupId, actor, type, amountMinor, currency, detail, nowIso());
 }
+// RESET TOKENS, Nov 2026: 32 random bytes -> base64url (256-bit, not
+// guessable). Only the SHA-256 hash is stored in password_resets; the
+// plain token only ever appears in the link the admin copies and sends.
+// Single-use is enforced by deletion: a successful reset deletes all
+// tokens for that user, and generating a new token deletes the old ones
+// first, so an old link cannot be reused after a newer one is issued.
+function newResetToken(): string {
+  const b = new Uint8Array(32); crypto.getRandomValues(b);
+  let bin = ''; for (const x of b) bin += String.fromCharCode(x);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+async function hashToken(token: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
+  return Array.from(new Uint8Array(buf)).map(x => x.toString(16).padStart(2, '0')).join('');
+}
+const RESET_TTL_MS = 24 * 60 * 60 * 1000;
 async function claimPlaceholders(env: Env, user: Row) {
   await env.DB.prepare('UPDATE group_members SET user_id=? WHERE email=? AND user_id IS NULL').bind(user.id, user.email).run();
 }
@@ -215,6 +244,67 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       if (!body.name) return err('Name is required', 400, origin);
       await env.DB.prepare('UPDATE users SET name=? WHERE id=?').bind(body.name, user.id).run();
       return json({ user: { ...user, name: body.name } }, 200, origin);
+    }
+
+    // ---- Password reset (public, token is the auth) ----
+    // POST /api/auth/reset-password { token, newPassword }
+    // Generic error for every failure (unknown / expired / already-used
+    // token all look identical) so the endpoint cannot be used to probe
+    // whether a token exists. On success: new salt + PBKDF2 hash, all
+    // reset tokens for the user deleted (single-use), and all sessions
+    // for the user deleted (the reset logs them out everywhere, so a
+    // lost/stolen session cannot keep working after the reset).
+    if (path === '/api/auth/reset-password' && req.method === 'POST') {
+      const { token, newPassword } = body;
+      if (!token || !newPassword || String(newPassword).length < 6) return err('This reset link is invalid or expired', 400, origin);
+      const tokenHash = await hashToken(String(token));
+      const row = await env.DB.prepare('SELECT * FROM password_resets WHERE token_hash=?').bind(tokenHash).first<Row>();
+      if (!row || Date.parse(String(row.expires_at)) <= Date.now()) return err('This reset link is invalid or expired', 400, origin);
+      const salt = newSalt(); const hash = await hashPassword(String(newPassword), salt);
+      await env.DB.batch([
+        env.DB.prepare('UPDATE users SET password_salt=?, password_hash=? WHERE id=?').bind(salt, hash, row.user_id),
+        env.DB.prepare('DELETE FROM password_resets WHERE user_id=?').bind(row.user_id),
+        env.DB.prepare('DELETE FROM sessions WHERE user_id=?').bind(row.user_id),
+      ]);
+      return json({ ok: true }, 200, origin);
+    }
+
+    // ---- Admin (separate user, separate page) ----
+    if (path === '/api/admin/login' && req.method === 'POST') {
+      const { email, password } = body;
+      const u = await env.DB.prepare('SELECT * FROM users WHERE email=?').bind(String(email || '').toLowerCase()).first<Row>();
+      // Generic error for all failures: wrong email, wrong password, or
+      // a real user who is not admin must be indistinguishable.
+      if (!u) return err('Invalid admin credentials', 401, origin);
+      if ((await hashPassword(String(password || ''), u.password_salt)) !== u.password_hash) return err('Invalid admin credentials', 401, origin);
+      if (!Number(u.is_admin || 0)) return err('Invalid admin credentials', 401, origin);
+      const token = uid();
+      await env.DB.prepare('INSERT INTO sessions (token,user_id,created_at) VALUES (?,?,?)').bind(token, u.id, nowIso()).run();
+      return json({ user: { id: u.id, name: u.name, email: u.email }, token }, 200, origin);
+    }
+    if (path === '/api/admin/users' && req.method === 'GET') {
+      const admin = await authAdmin(req, env); if (!admin) return err('Admin access required', 403, origin);
+      const users = await env.DB.prepare('SELECT id, name, email, is_admin, created_at FROM users ORDER BY created_at').bind().all<Row>();
+      return json({ users: (users.results || []).map((u: any) => ({ id: u.id, name: u.name, email: u.email, isAdmin: !!u.is_admin, createdAt: u.created_at })) }, 200, origin);
+    }
+    const ar = path.match(/^\/api\/admin\/users\/([^/]+)\/reset$/);
+    if (ar && req.method === 'POST') {
+      const admin = await authAdmin(req, env); if (!admin) return err('Admin access required', 403, origin);
+      const targetId = decodeURIComponent(ar[1]);
+      const target = await env.DB.prepare('SELECT id, name, email FROM users WHERE id=?').bind(targetId).first<Row>();
+      if (!target) return err('User not found', 404, origin);
+      // Invalidate any previous links for this user, then issue one new
+      // link. The plain token is returned ONCE, here, for the admin to
+      // copy and send himself — it is never stored, and never returned
+      // again. The frontend builds the full link from its own origin.
+      const token = newResetToken();
+      const tokenHash = await hashToken(token);
+      const expiresAt = new Date(Date.now() + RESET_TTL_MS).toISOString();
+      await env.DB.batch([
+        env.DB.prepare('DELETE FROM password_resets WHERE user_id=?').bind(targetId),
+        env.DB.prepare('INSERT INTO password_resets (id,user_id,token_hash,expires_at,created_at,created_by_admin_id) VALUES (?,?,?,?,?,?)').bind(uid(), targetId, tokenHash, expiresAt, nowIso(), admin.id),
+      ]);
+      return json({ user: { id: target.id, name: target.name, email: target.email }, token, expiresAt }, 200, origin);
     }
 
     // ---- Groups list / create ----

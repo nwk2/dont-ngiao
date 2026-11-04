@@ -171,6 +171,21 @@ export default function App() {
   // restore switches to the group skeleton. If no group was saved, the
   // destination is Home, so HomeSkeleton (with its real title, which is
   // also the Home page title) is correct and causes no flash.
+  // ADMIN + RESET routing, Nov 2026: the regular app has no router
+  // (deliberately — hash routing was decided against for groups), so
+  // these two special views are gated by URL query params, read once
+  // on mount. ?admin shows the separate admin login page (different
+  // user, different token key, see AdminView); ?reset=<token> shows the
+  // password-reset form for a link the admin sent manually. Both take
+  // precedence over the regular Auth/Home/Group flow, and neither
+  // requires the regular token — a reset link must work for a user who
+  // is logged out, and an admin login must work in a browser where a
+  // regular session already exists.
+  const [urlParams] = useState(() => new URLSearchParams(window.location.search));
+  const resetToken = urlParams.get('reset');
+  const isAdminPage = urlParams.has('admin');
+  if (resetToken) return <ResetPasswordView token={resetToken} />;
+  if (isAdminPage) return <AdminView />;
   if (authState === 'checking') {
     if (readSavedGroup()) return <GroupSkeleton />;
     return <HomeSkeleton user={null} />;
@@ -359,6 +374,108 @@ function Auth({ onAuth, error, loading }: any) {
     <button style={{...btn, width:'100%'}} onClick={()=>setMode(mode==='login'?'register':'login')}>{mode==='login'?'Register':'Log in'}</button>
     </div>
     <p style={{color:'#a3a3a3',fontSize:13}}>Prototype port: email/password only, no email verification or password reset yet.</p>
+  </div>);
+}
+
+
+// ---- Admin (separate user, separate page) ----
+// Admin token lives under its own localStorage key, NOT the regular
+// dont-ngiao-token, so an admin session and a regular session can
+// coexist in the same browser without logging each other out.
+// Modules scaffold: AdminView renders a module bar; today there is one
+// module (Users). Adding a module later = adding a tab + a view
+// component here, plus its server endpoints — no restructuring.
+const ADMIN_TOKEN_KEY = 'dont-ngiao-admin-token';
+function getAdminToken() { try { return localStorage.getItem(ADMIN_TOKEN_KEY); } catch { return null; } }
+function setAdminToken(t: string | null) { try { if (t) localStorage.setItem(ADMIN_TOKEN_KEY, t); else localStorage.removeItem(ADMIN_TOKEN_KEY); } catch { /* ignore */ } }
+async function adminApi(path: string, method = 'GET', body?: any, token?: string | null) {
+  const tok = token ?? getAdminToken();
+  const res = await fetch(((import.meta as any).env?.VITE_API_URL || '') + path, {
+    method, headers: { 'Content-Type': 'application/json', ...(tok ? { Authorization: `Bearer ${tok}` } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  return data;
+}
+// Fuzzy match: substring wins, otherwise the query's characters must
+// appear in order (subsequence) in the text — so "wk" matches "Wai Kit",
+// "lcs" matches "Lucas", and a typo-free prefix still works. Lists are
+// small (friends/family), so filtering is client-side over the full
+// user list fetched once — no server search endpoint needed yet.
+function fuzzyMatch(query: string, text: string): boolean {
+  const q = query.trim().toLowerCase(); const t = text.toLowerCase();
+  if (!q) return true; if (t.includes(q)) return true;
+  let qi = 0; for (let i = 0; i < t.length && qi < q.length; i++) if (t[i] === q[qi]) qi++;
+  return qi === q.length;
+}
+function AdminView() {
+  const [adminUser, setAdminUser] = useState<any>(null);
+  const [adminToken, setAdminTokenState] = useState<string | null>(() => getAdminToken());
+  const [users, setUsers] = useState<any[]>([]);
+  const [search, setSearch] = useState('');
+  const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState(''); const [loading, setLoading] = useState(false);
+  const [resettingId, setResettingId] = useState<string | null>(null);
+  const [resetResult, setResetResult] = useState<any>(null); const [copyStatus, setCopyStatus] = useState('');
+  async function loadUsers(tok: string) { const d = await adminApi('/api/admin/users', 'GET', undefined, tok); setUsers(d.users || []); }
+  useEffect(() => {
+    if (!adminToken) return;
+    adminApi('/api/admin/users', 'GET', undefined, adminToken).then(d => setUsers(d.users || [])).catch(() => { setAdminToken(null); setAdminTokenState(null); setAdminUser(null); });
+  }, []);
+  async function doAdminLogin() {
+    setError(''); setLoading(true);
+    try {
+      const d = await adminApi('/api/admin/login', 'POST', { email, password });
+      setAdminToken(d.token); setAdminTokenState(d.token); setAdminUser(d.user); await loadUsers(d.token);
+    } catch (e: any) { setError(e.message); } finally { setLoading(false); }
+  }
+  function doAdminLogout() { setAdminToken(null); setAdminTokenState(null); setAdminUser(null); setUsers([]); setResetResult(null); }
+  if (!adminUser) return (<div style={S}><h1>Admin</h1><p style={{color:'#a3a3a3'}}>Separate admin login — this is not the regular Don't Ngiao login. Only an admin account can sign in here.</p>
+    {error && <p style={{color:'#f87171'}}>{error}</p>}
+    <label>Email</label><input style={input} value={email} onChange={e=>setEmail(e.target.value)} />
+    <label>Password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={showPassword ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={password} onChange={e=>setPassword(e.target.value)} /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onClick={()=>setShowPassword(v=>!v)}>{showPassword ? '🙈' : '👁️'}</button></div>
+    <button style={{...primary, width:'100%', opacity: loading ? 0.6 : 1, cursor: loading ? 'not-allowed' : 'pointer'}} disabled={loading} onClick={doAdminLogin}>{loading ? 'Logging in…' : 'Log in as admin'}</button>
+    <p><button style={btn} onClick={()=>{ window.location.href = '/'; }}>← Back to Don't Ngiao</button></p>
+  </div>);
+  const filtered = users.filter((u:any) => fuzzyMatch(search, u.name || '') || fuzzyMatch(search, u.email || ''));
+  async function doReset(u: any) {
+    setError(''); setCopyStatus(''); setResettingId(u.id);
+    try {
+      const d = await adminApi(`/api/admin/users/${u.id}/reset`, 'POST');
+      const link = `${window.location.origin}/?reset=${d.token}`;
+      setResetResult({ user: u, link, expiresAt: d.expiresAt });
+      try { await navigator.clipboard.writeText(link); setCopyStatus('Copied to clipboard — send this link to the user yourself.'); }
+      catch { setCopyStatus('Could not copy automatically — select the link below and copy it manually.'); }
+    } catch (e: any) { setError(e.message); } finally { setResettingId(null); }
+  }
+  return (<div style={S}><h1>Admin</h1><p style={{color:'#a3a3a3'}}>Signed in as {adminUser.name} ({adminUser.email}) · Modules: Users</p>
+    <div style={{display:'flex',gap:8,marginBottom:16}}><button style={primary} onClick={()=>{}}>Users</button><button style={btn} onClick={doAdminLogout}>Log out</button><button style={btn} onClick={()=>{ window.location.href = '/'; }}>← Back to app</button></div>
+    {error && <p style={{color:'#f87171'}}>{error}</p>}
+    {resetResult && <div style={card}><strong>Reset link for {resetResult.user.name} ({resetResult.user.email})</strong><p style={{fontSize:13,color:'#a3a3a3'}}>Single-use, expires {new Date(resetResult.expiresAt).toLocaleString()}. Send this link to the user yourself — the app does not email it.</p><input readOnly style={input} value={resetResult.link} onFocus={e=>e.target.select()} /><button style={btn} onClick={async()=>{ try { await navigator.clipboard.writeText(resetResult.link); setCopyStatus('Copied to clipboard.'); } catch { setCopyStatus('Could not copy automatically.'); } }}>Copy link again</button>{copyStatus && <p style={{fontSize:13,color:'#a3a3a3'}}>{copyStatus}</p>}</div>}
+    <label>Search users</label><input style={input} placeholder="Name or email (fuzzy: wk matches Wai Kit)" value={search} onChange={e=>setSearch(e.target.value)} />
+    {filtered.length === 0 && <p style={{color:'#a3a3a3'}}>No users match.</p>}
+    {filtered.map((u:any)=>(<div key={u.id} style={rowCard}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}><div style={{flex:1,minWidth:0}}><strong>{u.name}</strong>{u.isAdmin ? <span style={{fontSize:12,background:'#134e4a',padding:'2px 6px',borderRadius:99,marginLeft:8}}>Admin</span> : null}<div style={{fontSize:13,color:'#a3a3a3',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.email}</div><div style={{fontSize:13,color:'#a3a3a3'}}>Joined {new Date(u.createdAt).toLocaleDateString()}</div></div><button style={{...btn,flexShrink:0}} disabled={resettingId===u.id} onClick={()=>doReset(u)}>{resettingId===u.id ? 'Creating…' : 'Reset'}</button></div></div>))}
+  </div>);
+}
+
+// ---- Password reset (link the admin sent manually) ----
+function ResetPasswordView({ token }: { token: string }) {
+  const [newPassword, setNewPassword] = useState(''); const [confirm, setConfirm] = useState(''); const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState(''); const [loading, setLoading] = useState(false); const [done, setDone] = useState(false);
+  async function doReset() {
+    if (newPassword.length < 6) { setError('Password must be at least 6 characters'); return; }
+    if (newPassword !== confirm) { setError('Passwords do not match'); return; }
+    setError(''); setLoading(true);
+    try { await api('/api/auth/reset-password', 'POST', { token, newPassword }); setDone(true); }
+    catch (e: any) { setError(e.message); } finally { setLoading(false); }
+  }
+  if (done) return (<div style={S}><h1>Password reset</h1><p>Your password has been changed. You can now log in with the new password.</p><button style={primary} onClick={()=>{ window.location.href = '/'; }}>Go to log in</button></div>);
+  return (<div style={S}><h1>Reset password</h1><p style={{color:'#a3a3a3'}}>Choose a new password. This link is single-use and expires after 24 hours.</p>
+    {error && <p style={{color:'#f87171'}}>{error}</p>}
+    <label>New password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={showPassword ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={newPassword} onChange={e=>setNewPassword(e.target.value)} /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onClick={()=>setShowPassword(v=>!v)}>{showPassword ? '🙈' : '👁️'}</button></div>
+    <label>Confirm new password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={showPassword ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={confirm} onChange={e=>setConfirm(e.target.value)} /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onClick={()=>setShowPassword(v=>!v)}>{showPassword ? '🙈' : '👁️'}</button></div>
+    <button style={{...primary, width:'100%', opacity: loading ? 0.6 : 1, cursor: loading ? 'not-allowed' : 'pointer'}} disabled={loading} onClick={doReset}>{loading ? 'Resetting…' : 'Reset password'}</button>
   </div>);
 }
 
