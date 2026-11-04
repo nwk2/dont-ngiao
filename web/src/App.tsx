@@ -77,24 +77,80 @@ function ConfirmSheet({ title, message, confirmLabel, onConfirm, onCancel }: any
   </div>);
 }
 
+// Loading state, explained: the old code had only two states — user null
+// (render Auth) or user set (render Home/Group). On refresh, the first
+// paint always had user null, so it flashed Auth even with a valid token,
+// until /api/me returned. Now there are three states: 'checking' (token
+// present, /api/me in flight — render a skeleton, never Auth), 'guest' (no
+// token, or /api/me failed — render Auth), 'authed' (render Home/Group).
+// A failed /api/me still clears the token, exactly as before; the only
+// change is what the user sees while the check is in flight.
 export default function App() {
   const [user, setUser] = useState<any>(null);
+  const [authState, setAuthState] = useState<'checking'|'guest'|'authed'>(()=> getToken() ? 'checking' : 'guest');
   const [groups, setGroups] = useState<any>(null);
   const [group, setGroup] = useState<any>(null);
+  const [groupLoading, setGroupLoading] = useState(false);
+  const loadSeq = useRef(0);
   const [tab, setTab] = useState<'expenses'|'balances'|'members'|'activity'>('expenses');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   async function loadGroups() { try { setGroups(await api('/api/groups')); setError(''); } catch(e:any){ setError(e.message); } }
-  async function loadGroup(id: string) { try { const d = await api(`/api/groups/${id}`); setGroup(d); setTab('expenses'); setError(''); } catch(e:any){ setError(e.message); } }
-  useEffect(()=>{ if (getToken()) api('/api/me').then(d=>{ setUser(d.user); loadGroups(); }).catch(()=>setToken(null)); }, []);
+  // skeleton=true only for a first tap into a group (Home -> group): show
+  // the group skeleton immediately so the tap feels instant, instead of
+  // sitting on Home with no feedback until the fetch returns. Reloads from
+  // inside a group (after save/settle/delete) do NOT use the skeleton —
+  // the old group stays on screen (stale-but-real) plus the button loader,
+  // so the screen never flickers to grey on every save.
+  async function loadGroup(id: string, opts?: { skeleton?: boolean }) {
+    const seq = ++loadSeq.current;
+    if (opts?.skeleton) setGroupLoading(true);
+    try { const d = await api(`/api/groups/${id}`); if (seq !== loadSeq.current) return; setGroup(d); setTab('expenses'); setError(''); }
+    catch(e:any){ if (seq === loadSeq.current) setError(e.message); }
+    finally { if (seq === loadSeq.current) setGroupLoading(false); }
+  }
+  useEffect(()=>{ if (getToken()) api('/api/me').then(d=>{ setUser(d.user); setAuthState('authed'); loadGroups(); }).catch(()=>{ setToken(null); setUser(null); setAuthState('guest'); }); }, []);
   async function doAuth(mode: 'login'|'register', name: string, email: string, password: string) {
     setError(''); setLoading(true);
-    try { const d = await api(`/api/auth/${mode}`, 'POST', mode==='register' ? {name,email,password} : {email,password}); setToken(d.token); setUser(d.user); await loadGroups(); }
+    try { const d = await api(`/api/auth/${mode}`, 'POST', mode==='register' ? {name,email,password} : {email,password}); setToken(d.token); setUser(d.user); setAuthState('authed'); await loadGroups(); }
     catch(e:any){ setError(e.message); } finally { setLoading(false); }
   }
-  if (!user) return <Auth onAuth={doAuth} error={error} loading={loading} />;
+  function doLogout() { setToken(null); setUser(null); setGroup(null); setGroups(null); setAuthState('guest'); }
+  if (authState === 'checking') return <HomeSkeleton user={null} />;
+  if (authState === 'guest' || !user) return <Auth onAuth={doAuth} error={error} loading={loading} />;
+  if (groupLoading) return <GroupSkeleton onBack={()=>{ loadSeq.current++; setGroupLoading(false); }} />;
   if (group) return <GroupView group={group} setGroup={setGroup} tab={tab} setTab={setTab} back={()=>{setGroup(null); loadGroups();}} reload={()=>loadGroup(group.id)} error={error} setError={setError} />;
-  return <Home user={user} setUser={setUser} groups={groups} loadGroups={loadGroups} loadGroup={loadGroup} error={error} setError={setError} />;
+  if (!groups) return <HomeSkeleton user={user} />;
+  return <Home user={user} setUser={setUser} onLogout={doLogout} groups={groups} loadGroups={loadGroups} loadGroup={(id: string)=>loadGroup(id, { skeleton: true })} error={error} setError={setError} />;
+}
+
+// Skeleton screens: grey blocks in the exact shape of the content that is
+// loading, with a pulse animation (see .skeleton-pulse in index.html).
+// No spinner, no "Loading..." text — the layout itself is the feedback,
+// and because the blocks match the real layout, there is no layout shift
+// when real data replaces them. Used only for first loads (auth check,
+// groups list, first group tap); never for tab switches (data already
+// loaded) or post-action reloads (stale content + button loader instead).
+function Sk({ w, h, r }: { w: string | number; h: number; r?: number }) {
+  return <div className="skeleton-pulse" style={{width:w,height:h,borderRadius:r ?? 8,background:'#2a2a2a',flexShrink:0}} />;
+}
+function HomeSkeleton({ user }: { user: any }) {
+  return (<div style={S} aria-label="Loading">
+    {user ? (<><div style={{fontSize:20,fontWeight:700}}>Hi, {user.name}</div><div style={{fontSize:13,color:'#a3a3a3',marginTop:2}}>{user.email}</div></>) : (<><Sk w={180} h={24} /><div style={{marginTop:6}}><Sk w={220} h={16} /></div></>)}
+    <h1 style={{marginBottom:4}}>Don't Ngiao</h1><p style={{color:'#a3a3a3',marginTop:0}}>Mai ngiao, mai drama.</p>
+    <div style={{background:'#1c1c1e',borderRadius:24,padding:20,marginBottom:20}}><Sk w={140} h={12} /><div style={{marginTop:16}}><Sk w="60%" h={32} /></div><div style={{marginTop:10}}><Sk w="45%" h={32} /></div></div>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}><Sk w={120} h={24} /><Sk w={110} h={38} r={999} /></div>
+    {[0,1,2].map(i => (<div key={i} style={card}><Sk w="55%" h={20} /><div style={{marginTop:8}}><Sk w="85%" h={14} /></div><div style={{marginTop:8}}><Sk w="40%" h={14} /></div></div>))}
+  </div>);
+}
+function GroupSkeleton({ onBack }: { onBack: () => void }) {
+  return (<div style={S} aria-label="Loading group">
+    <div style={{display:'flex',gap:8,alignItems:'center'}}><button style={btn} onClick={onBack}>← Groups</button><Sk w={90} h={38} r={999} /></div>
+    <div style={{marginTop:16}}><Sk w="60%" h={28} /></div>
+    <div style={{marginTop:8}}><Sk w="45%" h={16} /></div>
+    <div style={{display:'flex',gap:0,borderBottom:'1px solid #333',margin:'16px 0 12px'}}>{[0,1,2,3].map(i => (<div key={i} style={{flex:1,padding:'10px 4px',display:'flex',justifyContent:'center'}}><Sk w={56} h={14} /></div>))}</div>
+    {[0,1,2].map(i => (<div key={i} style={rowCard}><Sk w="70%" h={18} /><div style={{marginTop:8}}><Sk w="50%" h={14} /></div></div>))}
+  </div>);
 }
 
 function initials(name: string) {
@@ -128,7 +184,7 @@ function personDisplay(group: any, memberId: string | null | undefined, fallback
   return { name, label, memberId: memberId || null };
 }
 
-function Home({ user, setUser, groups, loadGroups, loadGroup, error, setError }: any) {
+function Home({ user, setUser, onLogout, groups, loadGroups, loadGroup, error, setError }: any) {
   const [showCreate, setShowCreate] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [showAccountMenu, setShowAccountMenu] = useState(false);
@@ -186,7 +242,7 @@ function Home({ user, setUser, groups, loadGroups, loadGroup, error, setError }:
         <div style={{fontSize:13,color:'#a3a3a3',marginTop:2,marginBottom:12,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{user.email}</div>
         <div style={{display:'flex',flexDirection:'column',gap:8}}>
           <button style={{...btn,width:'100%'}} onClick={()=>{setShowAccountMenu(false); setNameDraft(user.name); setEditingName(true);}}>Edit name</button>
-          <AsyncButton style={{...btn,width:'100%'}} onClick={async()=>{await api('/api/auth/logout','POST'); setToken(null); setUser(null);}}>Log out</AsyncButton>
+          <AsyncButton style={{...btn,width:'100%'}} onClick={async()=>{await api('/api/auth/logout','POST'); onLogout();}}>Log out</AsyncButton>
           <button style={{...btn,width:'100%'}} onClick={()=>setShowAccountMenu(false)}>Cancel</button>
         </div>
       </div>
