@@ -546,9 +546,19 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
   const cur = (catCur && currencies.includes(catCur)) ? catCur : (currencies[0] || group.defaultCurrency);
   const catData = (catView==='group' ? group.categoryGroup?.[cur] : group.categoryMine?.[cur]) || {};
   return (<div style={S}>
-    <div style={{display:'flex',gap:8,alignItems:'center'}}>
+    {/* Top bar, Nov 2026: ← Groups stays left alone; Settings moves to
+    the right as a gear icon only, grouped with the theme toggle
+    placeholder. The theme button is a PLACEHOLDER only — disabled, no
+    theme switching yet (the app is dark-only; light mode was deferred
+    in the UI/UX audit) — so it reserves the spot and the grouping
+    without promising a working toggle. Icon buttons are 40px circles
+    (same shape as the Home avatar button) so both stay tappable. */}
+    <div style={{display:'flex',gap:8,alignItems:'center',justifyContent:'space-between'}}>
       <button style={btn} onClick={back}>← Groups</button>
-      <button style={btn} onClick={()=>setShowSettings(true)} aria-label="Group settings">⚙ Settings</button>
+      <span style={{display:'flex',gap:8,alignItems:'center'}}>
+        <button type="button" aria-label="Dark / light mode (coming soon)" title="Dark / light mode — coming soon" disabled style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,padding:0,opacity:0.5,cursor:'not-allowed',flexShrink:0}}>☀️</button>
+        <button type="button" aria-label="Group settings" title="Group settings" onClick={()=>setShowSettings(true)} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,padding:0,cursor:'pointer',flexShrink:0}}>⚙</button>
+      </span>
     </div>
     <h1 style={{marginBottom:4}}>{group.name}</h1>
     {group.isArchived && <p style={{background:'#422006',padding:8,borderRadius:8}}>This group is archived. Restore it from Settings or the home screen to edit it again.</p>}
