@@ -206,9 +206,14 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       const user = await authUser(req, env); if (!user) return err('Unauthorized', 401, origin);
       const memberships = await env.DB.prepare('SELECT group_id FROM group_members WHERE user_id=?').bind(user.id).all<Row>();
       const active: any[] = []; const archived: any[] = []; const totals: Record<string, number> = {};
-      for (const m of memberships.results || []) {
+      // PERFORMANCE, Nov 2026: this loop used to await each group's
+      // summary sequentially, so Home load cost was N x one-group cost.
+      // Promise.all runs all groups in parallel; it preserves input
+      // order, so active/archived order below is unchanged, and the
+      // response shape is unchanged.
+      const groupItems = await Promise.all((memberships.results || []).map(async (m) => {
         const g = await env.DB.prepare('SELECT * FROM groups WHERE id=?').bind(m.group_id).first<Row>();
-        if (!g) continue;
+        if (!g) return null;
         const detail = await groupSummary(env, g.id, user.id);
         // Additive fields only: balances (existing shape) is unchanged.
         // totals previously summed ALL members' balances, which nets to ~0 per
@@ -224,8 +229,12 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
           spent: Object.entries(spentMap).map(([currency, amount]) => ({ currency, amount })),
           myBalances: myBalances.map((b: any) => ({ currency: b.currency, balance: b.balance })),
         };
-        if (g.is_archived) archived.push(item);
-        else { active.push(item); for (const b of myBalances) totals[b.currency] = (totals[b.currency] || 0) + b.balance; }
+        return { item, isArchived: !!g.is_archived, myBalances };
+      }));
+      for (const entry of groupItems) {
+        if (!entry) continue;
+        if (entry.isArchived) archived.push(entry.item);
+        else { active.push(entry.item); for (const b of entry.myBalances) totals[b.currency] = (totals[b.currency] || 0) + b.balance; }
       }
       return json({ active, archived, totals: Object.entries(totals).map(([currency, balance]) => ({ currency, balance })) }, 200, origin);
     }
@@ -265,12 +274,17 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       if (sub === 'archive' && req.method === 'POST') {
         await env.DB.prepare('UPDATE groups SET is_archived=1 WHERE id=?').bind(groupId).run();
         await logActivity(env, groupId, user.name, 'group_archived', null, null, g.name);
-        return json({ ok: true, isArchived: true }, 200, origin);
+        // Return full detail (not just {ok}) so the frontend can use it
+        // directly instead of refetching — same pattern as every other
+        // group write. Note the is_archived flag must be passed explicitly:
+        // g is the pre-archive row, so groupDetail(g) would wrongly report
+        // isArchived: false.
+        return json(await groupDetail(env, { ...g, is_archived: 1 }, user.id), 200, origin);
       }
       if (sub === 'restore' && req.method === 'POST') {
         await env.DB.prepare('UPDATE groups SET is_archived=0 WHERE id=?').bind(groupId).run();
         await logActivity(env, groupId, user.name, 'group_restored', null, null, g.name);
-        return json({ ok: true, isArchived: false }, 200, origin);
+        return json(await groupDetail(env, { ...g, is_archived: 0 }, user.id), 200, origin);
       }
       if (sub === 'leave' && req.method === 'POST') {
         const blocked = await hasAnyExpense(env, groupId, member.id);
