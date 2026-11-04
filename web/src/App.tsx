@@ -127,7 +127,7 @@ function Home({ user, setUser, groups, loadGroups, loadGroup, error, setError }:
       </div>))}
       <p style={{fontSize:13,color:'#ccfbf1',marginBottom:0}}>Kept separate per currency — no conversion. Check a group below for who to pay.</p>
     </div>
-    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
       <h2 style={{margin:0}}>Your groups</h2>
       <button style={{...primary,borderRadius:999,padding:'10px 18px'}} onClick={()=>setShowCreate(true)}>+ New group</button>
     </div>
