@@ -9,7 +9,7 @@ const rowCard: React.CSSProperties = { ...card, padding:'12px 14px', lineHeight:
 const avatar: React.CSSProperties = { width:40, height:40, borderRadius:'50%', background:'#65a30d', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:15, flexShrink:0 };
 const noAccountChip: React.CSSProperties = { fontSize:11, background:'#422006', color:'#fbbf24', padding:'2px 8px', borderRadius:99, fontWeight:600, whiteSpace:'nowrap', marginLeft:8, verticalAlign:'middle' };
 const currencyChip: React.CSSProperties = { fontSize:12, background:'#134e4a', padding:'3px 10px', borderRadius:99, color:'#5eead4', fontWeight:600, whiteSpace:'nowrap' };
-const btn: React.CSSProperties = { padding:'9px 14px', borderRadius:10, border:'1px solid #333', background:'#242424', color:'#fff' };
+const btn: React.CSSProperties = { padding:'9px 14px', borderRadius:999, border:'1px solid #333', background:'#242424', color:'#fff' };
 const primary: React.CSSProperties = { ...btn, background:'#2dd4bf', color:'#0f172a', borderColor:'#2dd4bf', fontWeight:600 };
 // Chunk 9: one shared compact style for the Spend by category controls, so
 // Group, Mine, and the currency select look like a set. Compact (down from
@@ -105,12 +105,13 @@ function personDisplay(group: any, memberId: string | null | undefined, fallback
 function Home({ user, setUser, groups, loadGroups, loadGroup, error, setError }: any) {
   const [showCreate, setShowCreate] = useState(false);
   const [editingName, setEditingName] = useState(false);
+  const [showAccountMenu, setShowAccountMenu] = useState(false);
   const [nameDraft, setNameDraft] = useState(user.name || '');
   const totals: any[] = groups?.totals || [];
   return (<div style={S}>
     <div style={{marginBottom:16}}>
       <div style={{display:'flex',alignItems:'center',gap:12}}>
-        <div style={{width:48,height:48,borderRadius:'50%',background:'#65a30d',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:18,flexShrink:0}}>{initials(user.name)}</div>
+        <button aria-label="Account menu" style={{width:48,height:48,borderRadius:'50%',background:'#65a30d',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:18,flexShrink:0,border:'none',padding:0,cursor:'pointer'}} onClick={()=>setShowAccountMenu(true)}>{initials(user.name)}</button>
         <div style={{flex:1,minWidth:0}}>
           {editingName ? (<input style={{...input,margin:0}} value={nameDraft} onChange={e=>setNameDraft(e.target.value)} aria-label="Name" />) : (<>
             <div style={{fontSize:20,fontWeight:700}}>Hi, {user.name}</div>
@@ -121,10 +122,7 @@ function Home({ user, setUser, groups, loadGroups, loadGroup, error, setError }:
       {editingName ? (<div style={{display:'flex',justifyContent:'flex-end',gap:8,marginTop:12}}>
         <AsyncButton style={primary} onClick={async()=>{try{const d = await api('/api/me','PATCH',{name:nameDraft}); setUser(d.user); setEditingName(false);}catch(e:any){setError(e.message);}}}>Save</AsyncButton>
         <button style={btn} onClick={()=>{setEditingName(false); setNameDraft(user.name);}}>Cancel</button>
-      </div>) : (<div style={{display:'flex',justifyContent:'flex-end',gap:8,marginTop:12}}>
-        <button style={btn} onClick={()=>{setNameDraft(user.name); setEditingName(true);}}>Edit name</button>
-        <AsyncButton style={btn} onClick={async()=>{await api('/api/auth/logout','POST'); setToken(null); setUser(null);}}>Log out</AsyncButton>
-      </div>)}
+      </div>) : null}
     </div>
     <h1 style={{marginBottom:4}}>Don't Ngiao</h1><p style={{color:'#a3a3a3',marginTop:0}}>Mai ngiao, mai drama.</p>
     {error && <p style={{color:'#f87171'}}>{error}</p>}
@@ -147,7 +145,7 @@ function Home({ user, setUser, groups, loadGroups, loadGroup, error, setError }:
       return (<div key={g.id} style={{...card,cursor:'pointer'}} onClick={()=>loadGroup(g.id)}>
         <div style={{display:'flex',justifyContent:'space-between',gap:8}}>
           <strong style={{fontSize:17}}>{g.name}</strong>
-          <span style={{fontSize:12,background:'#2a2a2a',padding:'3px 10px',borderRadius:99,color:'#a3a3a3'}}>{g.defaultCurrency}</span>
+          <span style={currencyChip}>{g.defaultCurrency}</span>
         </div>
         <div style={{fontSize:13,color:'#a3a3a3',marginTop:6}}>{g.memberCount ?? '?'} {(g.memberCount===1)?'person':'people'} · {g.expenseCount ?? '?'} expenses{spent.length>0 ? ` · ${spent.map((s:any)=>fmt(s.amount,s.currency)).join(' + ')} spent` : ''}</div>
         {my.length>0 && <div style={{marginTop:8}}>{my.map((b:any)=>(<div key={b.currency} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,fontSize:14,color:b.balance>0?'#5eead4':b.balance<0?'#f87171':'#a3a3a3'}}><span>{b.balance>0 ? 'You are owed' : b.balance<0 ? 'You owe' : 'settled'}</span><span style={{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'}}>{fmt(Math.abs(b.balance),b.currency)}</span></div>))}</div>}
@@ -159,6 +157,17 @@ function Home({ user, setUser, groups, loadGroups, loadGroup, error, setError }:
       <p style={{fontSize:13,color:'#a3a3a3',marginBottom:0}}>Balances are per currency and never converted. Recording a payment never moves real money — it just records that money changed hands. Settle from a group's Balances tab, for one currency at a time.</p>
     </div>
     {showCreate && <CreateGroupModal onClose={()=>setShowCreate(false)} onDone={()=>{setShowCreate(false); loadGroups();}} setError={setError} />}
+    {showAccountMenu && (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+      <div style={{background:'#1c1c1e',borderRadius:'16px 16px 0 0',padding:16,width:'100%',maxWidth:640}}>
+        <div style={{fontWeight:600}}>{user.name}</div>
+        <div style={{fontSize:13,color:'#a3a3a3',marginTop:2,marginBottom:12,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{user.email}</div>
+        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+          <button style={{...btn,width:'100%'}} onClick={()=>{setShowAccountMenu(false); setNameDraft(user.name); setEditingName(true);}}>Edit name</button>
+          <AsyncButton style={{...btn,width:'100%'}} onClick={async()=>{await api('/api/auth/logout','POST'); setToken(null); setUser(null);}}>Log out</AsyncButton>
+          <button style={{...btn,width:'100%'}} onClick={()=>setShowAccountMenu(false)}>Cancel</button>
+        </div>
+      </div>
+    </div>)}
   </div>);
 }
 
