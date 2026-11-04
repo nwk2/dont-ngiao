@@ -8,13 +8,13 @@ export interface Env { DB: D1Database; }
 type Row = Record<string, any>;
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 const nowIso = () => new Date().toISOString();
-// CORS: the ONE place to edit when the custom domain lands. Add the new
-// frontend origin to this list BEFORE switching the frontend to it, keep
-// the old origin in the list during the transition, and remove it after.
+// CORS: the ONE place to edit when the frontend origin changes. This list
+// holds exactly one origin: the current frontend,
+// https://dont-ngiao-web.wk-io.workers.dev (workers.dev subdomain wk-io).
 // No localhost or other origins are allowed. Requests with no Origin
 // header (curl, non-browser) get no Allow-Origin header — that is correct,
 // they are not browser-CORS-gated, and auth still applies to them.
-const ALLOWED_ORIGINS = ['https://dont-ngiao-web.ng-wai-kit-22.workers.dev'];
+const ALLOWED_ORIGINS = ['https://dont-ngiao-web.wk-io.workers.dev'];
 function corsHeaders(origin: string | null): Record<string, string> {
   if (!origin || !ALLOWED_ORIGINS.includes(origin)) return {};
   return { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS', 'Vary': 'Origin' };
