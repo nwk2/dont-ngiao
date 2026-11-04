@@ -181,6 +181,7 @@ function Auth({ onAuth, error, loading }: any) {
 function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError }: any) {
   const [showExpense, setShowExpense] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [detailExpense, setDetailExpense] = useState<any>(null);
   const [settle, setSettle] = useState<any>(null);
   const [confirm, setConfirm] = useState<any>(null);
   const [editingMemberId, setEditingMemberId] = useState<string|null>(null);
@@ -210,12 +211,11 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         <p style={{fontSize:12,color:'#a3a3a3'}}>{catView==='mine' ? 'Mine = your split shares only, computed on the server. Other members\' individual breakdowns are never sent to you.' : 'Group = total spend for the whole group.'} Per currency only, never converted.</p>
       </div>
       {group.expenses.length===0 && <p>No expenses yet.</p>}
-      {group.expenses.map((e:any)=>(<div key={e.id} style={card}>
+      {group.expenses.map((e:any)=>{const mySplit = group.myMemberId ? e.splits.find((s:any)=>s.member_id===group.myMemberId) : null; const n = e.splits.length; return (<div key={e.id} style={{...rowCard,cursor:'pointer'}} onClick={()=>setDetailExpense(e)}>
         <div style={{display:'flex',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}><div><strong>{e.description}</strong> <span style={{fontSize:12,background:'#2a2a2a',padding:'2px 6px',borderRadius:99}}>{e.category}</span> <span style={{fontSize:12,background:'#134e4a',padding:'2px 6px',borderRadius:99}}>{e.currency}</span><div style={{fontSize:13,color:'#a3a3a3'}}>Paid by {e.payerName} · {fmtDate(e.date)}</div></div>
         <div style={{textAlign:'right'}}><div><strong>{e.display}</strong></div><div style={{fontSize:12,color:'#a3a3a3'}}>{e.currency}</div></div></div>
-        <div style={{fontSize:13,marginTop:6}}>{e.splits.map((s:any)=>{const m=group.members.find((x:any)=>x.id===s.member_id); return `${m?.name}: ${fmt(s.amount_minor,e.currency)}`;}).join(' · ')}</div>
-        <button style={{...btn,marginTop:8}} onClick={()=>setConfirm({title:'Delete expense?',message:`Delete '${e.description}' (${e.display})? This will also remove its splits. This cannot be undone.`,action:async()=>{await api(`/api/groups/${group.id}/expenses/${e.id}`,'DELETE'); reload();}})}>Delete expense</button>
-      </div>))}
+        <div style={{fontSize:13,marginTop:6,color:'#a3a3a3'}}>{mySplit ? `Your share: ${fmt(mySplit.amount_minor,e.currency)} · Split between ${n} people` : `Not involved · Split between ${n} people`}</div>
+      </div>);})}
       {!showExpense && <div style={{position:'fixed',left:0,right:0,bottom:0,background:'#1c1c1e',borderTop:'1px solid #333',padding:12,textAlign:'center'}}><button style={primary} onClick={()=>setShowExpense(true)}>+ Add expense</button></div>}
     </>}
     {tab==='balances' && <>
@@ -307,6 +307,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
       {group.activity.length===0 && <p>No activity yet.</p>}
       {group.activity.map((a:any)=>(<div key={a.id} style={card}><strong>{activityTitle(a)}</strong><div style={{fontSize:13,color:'#a3a3a3'}}>{a.actor_name} · {new Date(a.created_at).toLocaleString()} {a.amount_minor!=null ? `· ${fmt(a.amount_minor,a.currency)}` : ''} {a.detail?`· ${a.detail}`:''}</div></div>))}
     </>}
+    {detailExpense && <ExpenseDetailSheet group={group} expense={detailExpense} onClose={()=>setDetailExpense(null)} setConfirm={setConfirm} reload={reload} />}
     {showExpense && <ExpenseModal group={group} onClose={()=>setShowExpense(false)} reload={()=>{setShowExpense(false); reload();}} setError={setError} />}
     {settle && <SettleModal group={group} suggestion={settle} onClose={()=>setSettle(null)} reload={()=>{setSettle(null); reload();}} setError={setError} />}
     {showSettings && <SettingsModal group={group} onClose={()=>setShowSettings(false)} reload={()=>{setShowSettings(false); reload();}} back={back} setError={setError} />}
@@ -355,6 +356,30 @@ function ExpenseModal({ group, onClose, reload, setError }: any) {
         if (splitType==='exact') { const arr = selected.map(id=>toMinor(exact[id]||'', currency)); if (arr.some(v=>v===null)) { setError('Enter valid exact amounts'); return; } body.exactAmounts = arr; }
         try { await api(`/api/groups/${group.id}/expenses`,'POST',body); reload(); } catch(e:any){ setError(e.message); }
       }}>Add expense</AsyncButton>
+    </div>
+  </div>);
+}
+// Expense detail sheet (Chunk 2): the compact list row opens this bottom
+// sheet, following the SettleModal/ConfirmSheet pattern. It is the only
+// place Delete expense lives — the list card has no splits line and no
+// Delete button. Delete here opens the Chunk 1 ConfirmSheet, so nothing
+// is deleted directly from the sheet either; on a confirmed delete the
+// detail sheet closes and the group reloads. Cancel on the confirm sheet
+// leaves this sheet open (the GroupView confirm wrapper only clears the
+// confirm state). The sheet scrolls internally so a 10-person split fits.
+function ExpenseDetailSheet({ group, expense: e, onClose, setConfirm, reload }: any) {
+  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+    <div style={{background:'#1c1c1e',borderRadius:'16px 16px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'80vh',overflowY:'auto'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}><div><h2 style={{marginTop:0,marginBottom:4}}>{e.description}</h2><div><span style={{fontSize:12,background:'#2a2a2a',padding:'2px 6px',borderRadius:99}}>{e.category}</span>{' '}<span style={{fontSize:12,background:'#134e4a',padding:'2px 6px',borderRadius:99}}>{e.currency}</span></div><div style={{fontSize:13,color:'#a3a3a3',marginTop:6}}>Paid by {e.payerName} · {fmtDate(e.date)}</div></div><div style={{textAlign:'right',flexShrink:0}}><div><strong>{e.display}</strong></div><div style={{fontSize:12,color:'#a3a3a3'}}>{e.currency}</div></div></div>
+      <div style={{marginTop:12}}>{e.splits.map((s:any)=>{const member = group.members.find((x:any)=>x.id===s.member_id); const pd = personDisplay(group, s.member_id, member?.name); const isMine = group.myMemberId && s.member_id===group.myMemberId; return (<div key={s.member_id} style={{...rowCard,display:'flex',alignItems:'center',gap:12,background:isMine?'#134e4a':'#1c1c1e'}}>
+        <div style={avatar}>{initials(pd.name)}</div>
+        <div style={{flex:1,minWidth:0,fontWeight:600,lineHeight:1.4}}>{pd.label}{member && !member.user_id ? <span style={noAccountChip}>No account yet</span> : null}</div>
+        <strong style={{color:isMine?'#5eead4':'#f5f5f5',whiteSpace:'nowrap',flexShrink:0}}>{fmt(s.amount_minor,e.currency)}</strong>
+      </div>);})}</div>
+      <div style={{display:'flex',gap:8,marginTop:12}}>
+        <button style={btn} onClick={()=>setConfirm({title:'Delete expense?',message:`Delete '${e.description}' (${e.display})? This will also remove its splits. This cannot be undone.`,action:async()=>{await api(`/api/groups/${group.id}/expenses/${e.id}`,'DELETE'); onClose(); reload();}})}>Delete expense</button>
+        <button style={btn} onClick={onClose}>Close</button>
+      </div>
     </div>
   </div>);
 }
