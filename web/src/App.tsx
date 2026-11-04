@@ -6,6 +6,16 @@ import { Pie, DailyBar } from './pie';
 const S = { maxW: 640, margin: '0 auto', padding: '16px', paddingBottom: 90 } as const;
 const card: React.CSSProperties = { background:'#1c1c1e', border:'1px solid #2e2e2e', borderRadius:16, padding:14, marginBottom:12, color:'#f5f5f5', lineHeight:1.45 };
 const rowCard: React.CSSProperties = { ...card, padding:'12px 14px', lineHeight:1.4 };
+// BALANCES REVAMP 2026-11-05 (dark only, restyle only): rows inside one
+// borderless card (radius 20, no #2e2e2e border) with hairline dividers,
+// matching the approved prototype Balances look. Shared card/rowCard are
+// untouched, so Expenses/Members/Activity keep their current cards.
+// Logic below is unchanged: net-only Your position, per-member Paid/share,
+// creditor-only Settle (with placeholder-debtor exception), debtor-or-
+// creditor-only payment deletion.
+const balCard: React.CSSProperties = { background:'#1c1c1e', borderRadius:20, padding:'6px 0', marginBottom:12, color:'#f5f5f5', lineHeight:1.45 };
+const balRow: React.CSSProperties = { display:'flex', alignItems:'center', gap:12, padding:'12px 14px' };
+const balHairline = '1px solid #2e2e2e';
 const avatar: React.CSSProperties = { width:40, height:40, borderRadius:'50%', background:'#65a30d', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:15, flexShrink:0 };
 const noAccountChip: React.CSSProperties = { fontSize:11, background:'#422006', color:'#fbbf24', padding:'2px 8px', borderRadius:99, fontWeight:600, whiteSpace:'nowrap', marginLeft:8, verticalAlign:'middle' };
 const currencyChip: React.CSSProperties = { fontSize:12, background:'#134e4a', padding:'3px 10px', borderRadius:99, color:'#5eead4', fontWeight:600, whiteSpace:'nowrap' };
@@ -621,6 +631,17 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
     {tab==='balances' && <>
       {group.balances.length===0 && <p>No balances yet.</p>}
       {(() => {
+        const mine = group.balances.filter((b:any)=>b.memberId===group.myMemberId);
+        if (!mine.length) return null;
+        return (<div style={balCard}>
+          <div style={{padding:'14px 14px 6px',fontSize:12,letterSpacing:1,color:'#a3a3a3',fontWeight:600}}>YOUR POSITION IN THIS GROUP</div>
+          {mine.map((b:any,i:number)=>(<div key={b.currency} style={{...balRow,justifyContent:'space-between',borderBottom:i===mine.length-1?'none':balHairline}}>
+            <div style={{display:'flex',alignItems:'center',gap:8}}><span>{b.balance>0?'You are owed':b.balance<0?'You owe':'Settled'}</span><span style={currencyChip}>{b.currency}</span></div>
+            <strong style={{color:b.balance>0?'#2dd4bf':b.balance<0?'#f5f5f5':'#a3a3a3',fontSize:16,whiteSpace:'nowrap'}}>{b.balance===0?'Settled':fmt(Math.abs(b.balance), b.currency)}</strong>
+          </div>))}
+        </div>);
+      })()}
+      {(() => {
         const balCurrencies: string[] = [];
         for (const b of group.balances) if (!balCurrencies.includes(b.currency)) balCurrencies.push(b.currency);
         return balCurrencies.map((cur, ci) => {
@@ -630,10 +651,10 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
               <span style={currencyChip}>{cur}</span>
               <span style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4}}>{fmt(spent, cur)} spent</span>
             </div>
-            {group.balances.filter((b:any)=>b.currency===cur).map((b:any)=>{
+            <div style={balCard}>{group.balances.filter((b:any)=>b.currency===cur).map((b:any,bi:number,arr:any[])=>{
               const member = group.members.find((x:any)=>x.id===b.memberId);
               const displayName = b.memberId===group.myMemberId ? `You (${b.memberName})` : b.memberName;
-              return (<div key={b.memberId+b.currency} style={{...rowCard,display:'flex',alignItems:'center',gap:12}}>
+              return (<div key={b.memberId+b.currency} style={{...balRow,borderBottom:bi===arr.length-1?'none':balHairline}}>
                 <div style={avatar}>{initials(b.memberName)}</div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:600,lineHeight:1.4}}>{displayName}{member && !member.user_id ? <span style={noAccountChip}>No account yet</span> : null}</div>
@@ -641,13 +662,13 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
                 </div>
                 <strong style={{color:b.balance>0?'#5eead4':b.balance<0?'#f87171':'#a3a3a3',fontSize:16,whiteSpace:'nowrap',flexShrink:0,textAlign:'right'}}>{b.balance>0?'+':''}{b.display}</strong>
               </div>);
-            })}
+            })}</div>
           </div>);
         });
       })()}
-      <h3>Settle up</h3>
+      <h3 style={{margin:'20px 0 8px',fontSize:17}}>Settle up</h3>
       {group.suggestions.length===0 && <p>All settled.</p>}
-      {group.suggestions.map((s:any,i:number)=>{
+      {group.suggestions.length>0 && <div style={balCard}>{group.suggestions.map((s:any,i:number)=>{
         const from = personDisplay(group, s.fromMemberId, s.fromName);
         const to = personDisplay(group, s.toMemberId, s.toName);
         // SETTLE AUTH, Nov 2026: mirror the server rule in the UI — only
@@ -658,7 +679,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         // Settle button (same pattern as the Leave grey-out).
         const toMember = group.members.find((m:any)=>m.id===s.toMemberId);
         const canSettle = group.myMemberId === s.toMemberId || (toMember && !toMember.user_id && group.myMemberId === s.fromMemberId);
-        return (<div key={i} style={{...rowCard,display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
+        return (<div key={i} style={{...balRow,justifyContent:'space-between',borderBottom:i===group.suggestions.length-1?'none':balHairline}}>
           <div style={{flex:1,minWidth:0,lineHeight:1.4}}>
             <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:6}}>
               <span style={{width:10,height:10,borderRadius:'50%',background:memberDotColor(group, from.memberId),flexShrink:0}} />
@@ -672,12 +693,12 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
           </div>
           <button style={{...primary,flexShrink:0,opacity:canSettle?1:0.5,cursor:canSettle?'pointer':'not-allowed'}} disabled={!canSettle} onClick={()=>setSettle(s)}>Settle</button>
         </div>);
-      })}
-      <h3>Recorded payments</h3>
-      {group.payments.map((p:any)=>{
+      })}</div>}
+      <h3 style={{margin:'20px 0 8px',fontSize:17}}>Recorded payments</h3>
+      {group.payments.length>0 && <div style={balCard}>{group.payments.map((p:any,pi:number)=>{
         const from = personDisplay(group, p.from_member_id, p.fromName);
         const to = personDisplay(group, p.to_member_id, p.toName);
-        return (<div key={p.id} style={{...rowCard,display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
+        return (<div key={p.id} style={{...balRow,justifyContent:'space-between',borderBottom:pi===group.payments.length-1?'none':balHairline}}>
           <div style={{flex:1,minWidth:0,lineHeight:1.4}}>
             <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:6}}>
               <span style={{...avatar,width:28,height:28,fontSize:12}}>{initials(from.name)}</span>
@@ -691,7 +712,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
           </div>
           {(group.myMemberId === p.from_member_id || group.myMemberId === p.to_member_id) && <button style={{...btn,flexShrink:0}} onClick={()=>setConfirm({title:'Delete payment?',message:`Delete the ${p.display} payment from ${from.label} to ${to.label} on ${fmtDate(p.date)}? This cannot be undone.`,onError:(msg:string)=>setPaymentErrors(prev=>({...prev,[p.id]:msg})),action:async()=>{const d = await api(`/api/groups/${group.id}/payments/${p.id}`,'DELETE'); reload(d);}})}>Delete</button>}
         </div>);
-      })}
+      })}</div>}
     </>}
     {tab==='members' && <>
       {group.members.map((m:any)=>{
