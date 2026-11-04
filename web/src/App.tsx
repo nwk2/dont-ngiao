@@ -43,8 +43,9 @@ function AsyncButton({ onClick, children, style, disabled, ...rest }: AsyncButto
 // dismissed via Cancel only — no new dismissal mechanism is invented here.
 // The confirm button is red and uses AsyncButton with a loader, like
 // other async buttons. Callers pass an action that throws on failure;
-// the GroupView wrapper shows that error (global setError, as today —
-// error placement is a later chunk) and closes the sheet either way.
+// the GroupView wrapper routes that error: to the caller's onError
+// callback when one is supplied (row/card-local error, Chunk 4), else
+// to the global setError — and closes the sheet either way.
 function ConfirmSheet({ title, message, confirmLabel, onConfirm, onCancel }: any) {
   return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
     <div style={{background:'#1c1c1e',borderRadius:'16px 16px 0 0',padding:16,width:'100%',maxWidth:640}}>
@@ -65,8 +66,8 @@ export default function App() {
   const [tab, setTab] = useState<'expenses'|'balances'|'members'|'activity'>('expenses');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  async function loadGroups() { try { setGroups(await api('/api/groups')); } catch(e:any){ setError(e.message); } }
-  async function loadGroup(id: string) { try { const d = await api(`/api/groups/${id}`); setGroup(d); setTab('expenses'); } catch(e:any){ setError(e.message); } }
+  async function loadGroups() { try { setGroups(await api('/api/groups')); setError(''); } catch(e:any){ setError(e.message); } }
+  async function loadGroup(id: string) { try { const d = await api(`/api/groups/${id}`); setGroup(d); setTab('expenses'); setError(''); } catch(e:any){ setError(e.message); } }
   useEffect(()=>{ if (getToken()) api('/api/me').then(d=>{ setUser(d.user); loadGroups(); }).catch(()=>setToken(null)); }, []);
   async function doAuth(mode: 'login'|'register', name: string, email: string, password: string) {
     setError(''); setLoading(true);
@@ -187,6 +188,16 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
   const [editingMemberId, setEditingMemberId] = useState<string|null>(null);
   const [emailDraft, setEmailDraft] = useState('');
   const [catView, setCatView] = useState<'group'|'mine'>('group');
+  // Chunk 4: row-local errors. Kept in GroupView (not the App-level global)
+  // so they render inside the row that caused them. A successful reload
+  // replaces the group object, which clears them; a tab change clears
+  // them explicitly (see changeTab), so they can never stick across tabs
+  // or reappear on return to a tab unless the action is retried and fails
+  // again. A failed action does not reload, so its row error stays put.
+  const [memberErrors, setMemberErrors] = useState<Record<string,string>>({});
+  const [paymentErrors, setPaymentErrors] = useState<Record<string,string>>({});
+  useEffect(()=>{ setMemberErrors({}); setPaymentErrors({}); }, [group]);
+  function changeTab(t: 'expenses'|'balances'|'members'|'activity') { setTab(t); setError(''); setMemberErrors({}); setPaymentErrors({}); }
   const [catCur, setCatCur] = useState<string>('');
   const currencies = Object.keys(group.categoryGroup || {});
   const cur = catCur || currencies[0] || group.defaultCurrency;
@@ -201,7 +212,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
     <p style={{color:'#a3a3a3',marginTop:0,lineHeight:1.4}}>Default currency: {group.defaultCurrency} · {group.members.length} members</p>
     {error && <p style={{color:'#f87171'}}>{error}</p>}
     <div style={{display:'flex',gap:0,borderBottom:'1px solid #333',marginBottom:12,background:'#1c1c1e'}}>
-      {(['expenses','balances','members','activity'] as const).map(t=>(<button key={t} onClick={()=>setTab(t)} style={{flex:1,padding:'10px 4px',fontSize:14,color:tab===t?'#fff':'#a3a3a3',background:'transparent',border:'none',borderBottom:tab===t?'3px solid #2dd4bf':'none',textTransform:'capitalize'}}>{t}</button>))}
+      {(['expenses','balances','members','activity'] as const).map(t=>(<button key={t} onClick={()=>changeTab(t)} style={{flex:1,padding:'10px 4px',fontSize:14,color:tab===t?'#fff':'#a3a3a3',background:'transparent',border:'none',borderBottom:tab===t?'3px solid #2dd4bf':'none',textTransform:'capitalize'}}>{t}</button>))}
     </div>
     {tab==='expenses' && <>
       <div style={card}><h3 style={{marginTop:0}}>Spend by category</h3>
@@ -278,15 +289,17 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
               <strong>{to.label}</strong>
             </div>
             <div style={{fontSize:13,lineHeight:1.4,marginTop:4,marginLeft:34}}><strong>{p.display}</strong> <span style={{color:'#a3a3a3'}}>· {fmtDate(p.date)}</span></div>
+            {paymentErrors[p.id] && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:4,marginBottom:0}}>{paymentErrors[p.id]}</p>}
           </div>
-          <button style={{...btn,flexShrink:0}} onClick={()=>setConfirm({title:'Delete payment?',message:`Delete the ${p.display} payment from ${from.label} to ${to.label} on ${fmtDate(p.date)}? This cannot be undone.`,action:async()=>{await api(`/api/groups/${group.id}/payments/${p.id}`,'DELETE'); reload();}})}>Delete</button>
+          <button style={{...btn,flexShrink:0}} onClick={()=>setConfirm({title:'Delete payment?',message:`Delete the ${p.display} payment from ${from.label} to ${to.label} on ${fmtDate(p.date)}? This cannot be undone.`,onError:(msg:string)=>setPaymentErrors(prev=>({...prev,[p.id]:msg})),action:async()=>{await api(`/api/groups/${group.id}/payments/${p.id}`,'DELETE'); reload();}})}>Delete</button>
         </div>);
       })}
     </>}
     {tab==='members' && <>
       {group.members.map((m:any)=>{
         const isEditing = editingMemberId===m.id;
-        return (<div key={m.id} style={{...rowCard,display:'flex',alignItems:'center',gap:12}}>
+        return (<div key={m.id} style={rowCard}>
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
         <div style={avatar}>{initials(m.name)}</div>
         <div style={{flex:1,minWidth:0}}>
           {isEditing ? (<input style={{...input,margin:0}} placeholder="Email" value={emailDraft} onChange={e=>setEmailDraft(e.target.value)} aria-label="Member email" />) : (<>
@@ -300,37 +313,44 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
           <button style={btn} onClick={()=>setEditingMemberId(null)}>Cancel</button>
         </span>) : (<span style={{display:'flex',gap:8,flexShrink:0}}>
           {!m.user_id ? (<button style={btn} onClick={()=>{setEditingMemberId(m.id); setEmailDraft(m.email || '');}}>Edit email</button>) : null}
-          <button style={{...btn,flexShrink:0}} onClick={()=>setConfirm({title:'Remove member?',message:`Remove ${m.name} from this group? This cannot be undone.`,action:async()=>{await api(`/api/groups/${group.id}/members/${m.id}`,'DELETE'); reload();}})}>Remove</button>
+          <button style={{...btn,flexShrink:0}} onClick={()=>setConfirm({title:'Remove member?',message:`Remove ${m.name} from this group? This cannot be undone.`,onError:(msg:string)=>setMemberErrors(prev=>({...prev,[m.id]:msg})),action:async()=>{await api(`/api/groups/${group.id}/members/${m.id}`,'DELETE'); reload();}})}>Remove</button>
         </span>)}
+        </div>
+        {memberErrors[m.id] && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{memberErrors[m.id]}</p>}
       </div>);})}
-      <AddMember groupId={group.id} reload={reload} setError={setError} />
+      <AddMember groupId={group.id} reload={reload} />
     </>}
     {tab==='activity' && <>
       {group.activity.length===0 && <p>No activity yet.</p>}
       {group.activity.map((a:any)=>(<div key={a.id} style={card}><strong>{activityTitle(a)}</strong><div style={{fontSize:13,color:'#a3a3a3'}}>{a.actor_name} · {new Date(a.created_at).toLocaleString()} {a.amount_minor!=null ? `· ${fmt(a.amount_minor,a.currency)}` : ''} {a.detail?`· ${a.detail}`:''}</div></div>))}
     </>}
     {detailExpense && <ExpenseDetailSheet group={group} expense={detailExpense} onClose={()=>setDetailExpense(null)} setConfirm={setConfirm} reload={reload} />}
-    {showExpense && <ExpenseModal group={group} onClose={()=>setShowExpense(false)} reload={()=>{setShowExpense(false); reload();}} setError={setError} />}
+    {showExpense && <ExpenseModal group={group} onClose={()=>setShowExpense(false)} reload={()=>{setShowExpense(false); reload();}} />}
     {settle && <SettleModal group={group} suggestion={settle} onClose={()=>setSettle(null)} reload={()=>{setSettle(null); reload();}} setError={setError} />}
     {showSettings && <SettingsModal group={group} onClose={()=>setShowSettings(false)} reload={()=>{setShowSettings(false); reload();}} back={back} setError={setError} />}
-    {confirm && <ConfirmSheet title={confirm.title} message={confirm.message} confirmLabel={confirm.confirmLabel} onCancel={()=>setConfirm(null)} onConfirm={async()=>{try{await confirm.action();}catch(er:any){setError(er.message);}finally{setConfirm(null);}}} />}
+    {confirm && <ConfirmSheet title={confirm.title} message={confirm.message} confirmLabel={confirm.confirmLabel} onCancel={()=>setConfirm(null)} onConfirm={async()=>{try{await confirm.action();}catch(er:any){if (confirm.onError) confirm.onError(er.message); else setError(er.message);}finally{setConfirm(null);}}} />}
   </div>);
 }
 function activityTitle(a:any) {
   const map: Record<string,string> = { group_created:'Group created', group_renamed:'Group renamed', group_currency_changed:'Default currency changed', expense_added:'Expense added', expense_deleted:'Expense deleted', payment_recorded:'Payment recorded', payment_deleted:'Payment deleted', member_added:'Member added', member_removed:'Member removed', member_email_updated:'Member email updated', member_left:'Member left', group_archived:'Group archived', group_restored:'Group restored' };
   return map[a.type] || a.type;
 }
-function AddMember({ groupId, reload, setError }: any) {
-  const [name, setName] = useState(''); const [email, setEmail] = useState('');
+function AddMember({ groupId, reload }: any) {
+  const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [addError, setAddError] = useState('');
   return (<div style={card}><h3 style={{marginTop:0}}>Add member</h3>
     <input style={input} placeholder="Name" value={name} onChange={e=>setName(e.target.value)} />
     <input style={input} placeholder="Email (optional)" value={email} onChange={e=>setEmail(e.target.value)} />
     <p style={{fontSize:13,color:'#a3a3a3',marginTop:-6,marginBottom:10,lineHeight:1.4}}>Links an existing account, or a placeholder they can claim.</p>
-    <AsyncButton style={primary} onClick={async()=>{try{await api(`/api/groups/${groupId}/members`,'POST',{name,email:email||null}); setName(''); setEmail(''); reload();}catch(e:any){setError(e.message);}}}>Add member</AsyncButton>
+    <AsyncButton style={primary} onClick={async()=>{try{await api(`/api/groups/${groupId}/members`,'POST',{name,email:email||null}); setName(''); setEmail(''); setAddError(''); reload();}catch(e:any){setAddError(e.message);}}}>Add member</AsyncButton>
+    {addError && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{addError}</p>}
   </div>);
 }
 
-function ExpenseModal({ group, onClose, reload, setError }: any) {
+function ExpenseModal({ group, onClose, reload }: any) {
+  // Chunk 4 amendment: modal-local error. The modal is full-screen, so the
+  // global GroupView error rendered behind it and was invisible until the
+  // modal closed. Validation/API failures now render inside the modal.
+  const [modalError, setModalError] = useState('');
   const [description, setDescription] = useState(''); const [amount, setAmount] = useState(''); const [currency, setCurrency] = useState(group.defaultCurrency);
   const [date, setDate] = useState(todayIso()); const [payer, setPayer] = useState(group.members[0]?.id || ''); const [category, setCategory] = useState('Uncategorized');
   const [splitType, setSplitType] = useState<'equal'|'exact'|'percent'>('equal');
@@ -351,12 +371,14 @@ function ExpenseModal({ group, onClose, reload, setError }: any) {
         {selected.includes(m.id) && splitType==='percent' && <input style={{...input,width:120,marginLeft:8}} placeholder="%" value={percents[m.id]||''} onChange={e=>setPercents({...percents,[m.id]:e.target.value})} />}
         {selected.includes(m.id) && splitType==='exact' && <input style={{...input,width:140,marginLeft:8}} placeholder={currency} value={exact[m.id]||''} onChange={e=>setExact({...exact,[m.id]:e.target.value})} />}
       </label>))}
+      {modalError && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:12,marginBottom:0}}>{modalError}</p>}
       <AsyncButton style={primary} onClick={async()=>{
-        const amountMinor = toMinor(amount, currency); if (amountMinor===null) { setError('Enter a valid positive amount'); return; }
+        setModalError('');
+        const amountMinor = toMinor(amount, currency); if (amountMinor===null) { setModalError('Enter a valid positive amount'); return; }
         const body: any = { description, amountMinor, currency, date, paidByMemberId: payer, category, splitType, participants: selected };
         if (splitType==='percent') body.percents = selected.map(id=>Number(percents[id]||0));
-        if (splitType==='exact') { const arr = selected.map(id=>toMinor(exact[id]||'', currency)); if (arr.some(v=>v===null)) { setError('Enter valid exact amounts'); return; } body.exactAmounts = arr; }
-        try { await api(`/api/groups/${group.id}/expenses`,'POST',body); reload(); } catch(e:any){ setError(e.message); }
+        if (splitType==='exact') { const arr = selected.map(id=>toMinor(exact[id]||'', currency)); if (arr.some(v=>v===null)) { setModalError('Enter valid exact amounts'); return; } body.exactAmounts = arr; }
+        try { await api(`/api/groups/${group.id}/expenses`,'POST',body); reload(); } catch(e:any){ setModalError(e.message); }
       }}>Add expense</AsyncButton>
     </div>
   </div>);
@@ -370,6 +392,10 @@ function ExpenseModal({ group, onClose, reload, setError }: any) {
 // leaves this sheet open (the GroupView confirm wrapper only clears the
 // confirm state). The sheet scrolls internally so a 10-person split fits.
 function ExpenseDetailSheet({ group, expense: e, onClose, setConfirm, reload }: any) {
+  // Chunk 4: a failed confirmed delete shows here, inside the sheet, and
+  // the sheet stays open (the action throws before onClose(), so the
+  // confirm wrapper's onError is what displays it — not the global error).
+  const [sheetError, setSheetError] = useState('');
   return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
     <div style={{background:'#1c1c1e',borderRadius:'16px 16px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'80vh',overflowY:'auto'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}><div><h2 style={{marginTop:0,marginBottom:4}}>{e.description}</h2><div><span style={{fontSize:12,background:'#2a2a2a',padding:'2px 6px',borderRadius:99}}>{e.category}</span>{' '}<span style={{fontSize:12,background:'#134e4a',padding:'2px 6px',borderRadius:99}}>{e.currency}</span></div><div style={{fontSize:13,color:'#a3a3a3',marginTop:6}}>Paid by {e.payerName} · {fmtDate(e.date)}</div></div><div style={{textAlign:'right',flexShrink:0}}><div><strong>{e.display}</strong></div><div style={{fontSize:12,color:'#a3a3a3'}}>{e.currency}</div></div></div>
@@ -378,8 +404,9 @@ function ExpenseDetailSheet({ group, expense: e, onClose, setConfirm, reload }: 
         <div style={{flex:1,minWidth:0,fontWeight:600,lineHeight:1.4}}>{pd.label}{member && !member.user_id ? <span style={noAccountChip}>No account yet</span> : null}</div>
         <strong style={{color:isMine?'#5eead4':'#f5f5f5',whiteSpace:'nowrap',flexShrink:0}}>{fmt(s.amount_minor,e.currency)}</strong>
       </div>);})}</div>
+      {sheetError && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:12,marginBottom:0}}>{sheetError}</p>}
       <div style={{display:'flex',gap:8,marginTop:12}}>
-        <button style={btn} onClick={()=>setConfirm({title:'Delete expense?',message:`Delete '${e.description}' (${e.display})? This will also remove its splits. This cannot be undone.`,action:async()=>{await api(`/api/groups/${group.id}/expenses/${e.id}`,'DELETE'); onClose(); reload();}})}>Delete expense</button>
+        <button style={btn} onClick={()=>setConfirm({title:'Delete expense?',message:`Delete '${e.description}' (${e.display})? This will also remove its splits. This cannot be undone.`,onError:(msg:string)=>setSheetError(msg),action:async()=>{await api(`/api/groups/${group.id}/expenses/${e.id}`,'DELETE'); onClose(); reload();}})}>Delete expense</button>
         <button style={btn} onClick={onClose}>Close</button>
       </div>
     </div>
