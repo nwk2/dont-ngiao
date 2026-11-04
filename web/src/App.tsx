@@ -797,32 +797,51 @@ function AddMember({ groupId, reload }: any) {
 }
 
 function ExpenseModal({ group, onClose, reload }: any) {
-  // Chunk 4 amendment: modal-local error. The modal is full-screen, so the
-  // global GroupView error rendered behind it and was invisible until the
-  // modal closed. Validation/API failures now render inside the modal.
+  // Add expense as a BOTTOM SHEET (revamp, dark only), not the old
+  // full-screen modal. All logic/state unchanged: description, amount,
+  // currency (19, group default pre-select), date, payer, category,
+  // split equal/exact/percent + member ticking, modal-local error.
+  // Prototype sheet features, restored to full real detail:
+  // - amount header: fixed currency symbol prefix (not editable, symbol
+  //   changes with currency) + numeric input only, select-all on focus,
+  //   so typing replaces the amount and never clears the symbol.
+  // - tap the amount header to pick currency (19, not prototype's 4).
+  // - Split and Date are tappable summary cards opening their editors
+  //   inside the sheet (split editor + calendar), not display-only.
+  // - Category as pills (full names, incl. Uncategorized), not a select.
   const [modalError, setModalError] = useState('');
   const [description, setDescription] = useState(''); const [amount, setAmount] = useState(''); const [currency, setCurrency] = useState(group.defaultCurrency);
   const [date, setDate] = useState(todayIso()); const [payer, setPayer] = useState(group.members[0]?.id || ''); const [category, setCategory] = useState('Uncategorized');
   const [splitType, setSplitType] = useState<'equal'|'exact'|'percent'>('equal');
   const [selected, setSelected] = useState<string[]>(group.members.map((m:any)=>m.id));
   const [percents, setPercents] = useState<Record<string,string>>({}); const [exact, setExact] = useState<Record<string,string>>({});
+  const [showCurrency, setShowCurrency] = useState(false); const [showSplit, setShowSplit] = useState(false); const [showDate, setShowDate] = useState(false);
   const toggle = (id:string)=> setSelected(s=> s.includes(id) ? s.filter(x=>x!==id) : [...s, id]);
-  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'#111111',zIndex:50,overflowY:'auto'}}>
-    <div style={{maxWidth:640,margin:'0 auto',padding:16}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,background:'#111111',padding:'8px 0'}}><h2 style={{margin:0}}>Add expense</h2><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
-      <label>Description</label><input style={input} value={description} onChange={e=>setDescription(e.target.value)} />
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}><div><label>Amount</label><input style={input} inputMode="decimal" value={amount} onChange={e=>setAmount(e.target.value)} /></div>
-      <div><label>Currency</label><select style={input} value={currency} onChange={e=>setCurrency(e.target.value)}>{CURRENCIES.map(c=><option key={c}>{c}</option>)}</select></div></div>
-      <label>Date</label><div style={{marginBottom:10}}><DateField id="exp-date" value={date} onChange={setDate} /></div>
-      <label>Paid by</label><select style={input} value={payer} onChange={e=>setPayer(e.target.value)}>{group.members.map((m:any)=><option key={m.id} value={m.id}>{m.name}</option>)}</select>
-      <label>Category</label><select style={input} value={category} onChange={e=>setCategory(e.target.value)}>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select>
-      <label>Split</label><select style={input} value={splitType} onChange={e=>setSplitType(e.target.value as any)}><option value="equal">Equal</option><option value="exact">Exact amounts</option><option value="percent">Percentages</option></select>
+  const payerName = group.members.find((m:any)=>m.id===payer)?.name || '';
+  const splitLabel = splitType==='equal' ? 'Equally' : splitType==='exact' ? 'Exact amounts' : 'Percentages';
+  const sym = (cur:string) => { const m:any = {SGD:'S$',USD:'$',EUR:'€',GBP:'£',AUD:'A$',CAD:'C$',JPY:'¥',KRW:'₩',VND:'₫',HKD:'HK$',TWD:'NT$',CNY:'¥',INR:'₹',MYR:'RM',THB:'฿',IDR:'Rp',PHP:'₱',NZD:'NZ$',CHF:'CHF'}; return m[cur] || cur; };
+  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+    <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto'}}>
+      <div style={{width:36,height:4,borderRadius:99,background:'#333',margin:'0 auto 12px'}} />
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h2 style={{margin:0}}>Add expense</h2><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
+      <button type="button" onClick={()=>setShowCurrency(v=>!v)} style={{display:'block',width:'100%',background:'transparent',border:'none',padding:'12px 0 4px',cursor:'pointer'}}>
+        <div style={{display:'flex',alignItems:'baseline',justifyContent:'center',gap:4}}><span style={{fontSize:36,fontWeight:700}}>{sym(currency)}</span><input style={{width:170,background:'transparent',border:'none',color:'#fff',fontSize:36,fontWeight:700,textAlign:'left',outline:'none'}} inputMode="decimal" placeholder="0.00" value={amount} onChange={e=>setAmount(e.target.value)} onFocus={e=>e.target.select()} onClick={e=>e.stopPropagation()} aria-label="Amount" /></div>
+        <div style={{fontSize:13,color:'#a3a3a3',marginTop:4}}>{group.name} · {currency} · paid by {payerName || 'you'}</div>
+      </button>
+      {showCurrency && <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:8}}>{CURRENCIES.map(c=><button key={c} type="button" style={c===currency?catControlActive:catControl} onClick={()=>{setCurrency(c); setShowCurrency(false);}}>{c}</button>)}</div>}
+      <label>Description</label><input style={input} placeholder="What was it for?" value={description} onChange={e=>setDescription(e.target.value)} />
+      <div style={{marginBottom:10}}><div style={{fontSize:13,color:'#a3a3a3',marginBottom:6}}>Category</div><div style={{display:'flex',flexWrap:'wrap',gap:8}}>{CATEGORIES.map(c=><button key={c} type="button" style={c===category?catControlActive:catControl} onClick={()=>setCategory(c)}>{c}</button>)}</div></div>
+      <button type="button" onClick={()=>setShowSplit(v=>!v)} style={{width:'100%',textAlign:'left',background:'#242424',border:'1px solid #333',borderRadius:16,padding:14,marginBottom:12,color:'#fff',cursor:'pointer'}}><div style={{fontSize:12,color:'#a3a3a3'}}>Split</div><div style={{marginTop:2}}>{splitLabel} · {selected.length} people</div></button>
+      {showSplit && <div style={{marginBottom:12}}><label>Split</label><select style={input} value={splitType} onChange={e=>setSplitType(e.target.value as any)}><option value="equal">Equal</option><option value="exact">Exact amounts</option><option value="percent">Percentages</option></select>
       {group.members.map((m:any)=>(<label key={m.id} style={{display:'block',marginBottom:6}}><input type="checkbox" checked={selected.includes(m.id)} onChange={()=>toggle(m.id)} /> {m.name}
         {selected.includes(m.id) && splitType==='percent' && <input style={{...input,width:120,marginLeft:8}} placeholder="%" value={percents[m.id]||''} onChange={e=>setPercents({...percents,[m.id]:e.target.value})} />}
         {selected.includes(m.id) && splitType==='exact' && <input style={{...input,width:140,marginLeft:8}} placeholder={currency} value={exact[m.id]||''} onChange={e=>setExact({...exact,[m.id]:e.target.value})} />}
-      </label>))}
+      </label>))}</div>}
+      <button type="button" onClick={()=>setShowDate(v=>!v)} style={{width:'100%',textAlign:'left',background:'#242424',border:'1px solid #333',borderRadius:16,padding:14,marginBottom:12,color:'#fff',cursor:'pointer'}}><div style={{fontSize:12,color:'#a3a3a3'}}>Date</div><div style={{marginTop:2}}>{date===todayIso() ? `Today · ${fmtDate(date)}` : fmtDate(date)}</div></button>
+      {showDate && <div style={{marginBottom:12}}><DateField id="exp-date" value={date} onChange={setDate} /></div>}
+      <label>Paid by</label><select style={input} value={payer} onChange={e=>setPayer(e.target.value)}>{group.members.map((m:any)=><option key={m.id} value={m.id}>{m.name}</option>)}</select>
       {modalError && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:12,marginBottom:0}}>{modalError}</p>}
-      <AsyncButton style={primary} onClick={async()=>{
+      <AsyncButton style={{...primary, width:'100%', padding:'14px', fontSize:16, marginTop:8}} onClick={async()=>{
         setModalError('');
         const amountMinor = toMinor(amount, currency); if (amountMinor===null) { setModalError('Enter a valid positive amount'); return; }
         const body: any = { description, amountMinor, currency, date, paidByMemberId: payer, category, splitType, participants: selected };
