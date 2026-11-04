@@ -21,19 +21,16 @@ function corsHeaders(origin: string | null): Record<string, string> {
 }
 const json = (data: any, status = 200, origin: string | null = null) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) } });
 const err = (message: string, status = 400, origin: string | null = null) => json({ error: message }, status, origin);
-// Group icon: a single emoji, optional (null = none). The frontend picker
-// only ever sends one emoji from its curated list or '' to clear; the API
-// validates defensively instead of trying to prove "is emoji" with a regex
-// (emoji code-point rules, flags, and ZWJ sequences make that brittle):
-// trimmed, no whitespace, at most 20 UTF-16 units (a flag is 4, a ZWJ
-// family is ~11). Anything else is a 400. Returns null for ''/null.
-function normalizeIcon(raw: any): string | null {
-  if (raw === undefined || raw === null) return null;
-  const icon = String(raw).trim();
-  if (icon === '') return null;
-  if (icon.length > 20 || /\s/.test(icon)) throw new Error('Invalid group icon');
-  return icon;
-}
+// Group icon REMOVED 2026-11-04, per Wai: "i rather user inputs the emoji
+// into the group name itself". The frontend icon picker was reverted first
+// (commit 69ed0f47); this removes the server side too, so group writes no
+// longer require a groups.icon column — a database without migration 0003
+// applied works fine (that migration is now optional/legacy, not required).
+// Reads still return icon: g.icon || null from SELECT * (undefined -> null
+// when the column is absent, the stored value when it is present), so old
+// data is never deleted and old group_icon_changed activity entries still
+// render; the frontend simply ignores the field. Any body.icon sent by an
+// old client is ignored, not validated and not stored.
 // Session expiry: 14-day sliding (idle) window. A session is expired when
 // it has been idle longer than this since its last activity (last_seen_at,
 // falling back to created_at). The last_seen_at update below is throttled
@@ -237,13 +234,11 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       const name = String(body.name || '').trim(); const currency = String(body.defaultCurrency || 'SGD');
       if (!name) return err('Group name is required', 400, origin);
       if (!(CURRENCIES as readonly string[]).includes(currency)) return err('Invalid currency', 400, origin);
-      let icon: string | null = null;
-      try { icon = body.icon !== undefined ? normalizeIcon(body.icon) : null; } catch { return err('Invalid group icon', 400, origin); }
       const gid = uid();
-      await env.DB.prepare('INSERT INTO groups (id,name,icon,default_currency,is_archived,created_at,created_by_user_id) VALUES (?,?,?,?,?,?,?)').bind(gid, name, icon, currency, 0, nowIso(), user.id).run();
+      await env.DB.prepare('INSERT INTO groups (id,name,default_currency,is_archived,created_at,created_by_user_id) VALUES (?,?,?,?,?,?)').bind(gid, name, currency, 0, nowIso(), user.id).run();
       await env.DB.prepare('INSERT INTO group_members (id,group_id,user_id,name,email,created_at) VALUES (?,?,?,?,?,?)').bind(uid(), gid, user.id, user.name, user.email, nowIso()).run();
       await logActivity(env, gid, user.name, 'group_created', null, null, name);
-      return json({ id: gid, name, icon, defaultCurrency: currency, isArchived: false }, 201, origin);
+      return json({ id: gid, name, icon: null, defaultCurrency: currency, isArchived: false }, 201, origin);
     }
 
     // ---- Group-scoped routes ----
@@ -262,13 +257,10 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         const currency = body.defaultCurrency !== undefined ? String(body.defaultCurrency) : g.default_currency;
         if (!name) return err('Group name is required', 400, origin);
         if (!(CURRENCIES as readonly string[]).includes(currency)) return err('Invalid currency', 400, origin);
-        let icon: string | null = g.icon || null;
-        if (body.icon !== undefined) { try { icon = normalizeIcon(body.icon); } catch { return err('Invalid group icon', 400, origin); } }
-        await env.DB.prepare('UPDATE groups SET name=?, default_currency=?, icon=? WHERE id=?').bind(name, currency, icon, groupId).run();
+        await env.DB.prepare('UPDATE groups SET name=?, default_currency=? WHERE id=?').bind(name, currency, groupId).run();
         if (name !== g.name) await logActivity(env, groupId, user.name, 'group_renamed', null, null, `${g.name} -> ${name}`);
         if (currency !== g.default_currency) await logActivity(env, groupId, user.name, 'group_currency_changed', null, currency, `Default currency ${g.default_currency} -> ${currency} (new expenses only)`);
-        if (icon !== (g.icon || null)) await logActivity(env, groupId, user.name, 'group_icon_changed', null, null, `Icon ${g.icon || 'none'} -> ${icon || 'none'}`);
-        return json(await groupDetail(env, { ...g, name, default_currency: currency, icon }, user.id), 200, origin);
+        return json(await groupDetail(env, { ...g, name, default_currency: currency }, user.id), 200, origin);
       }
       if (sub === 'archive' && req.method === 'POST') {
         await env.DB.prepare('UPDATE groups SET is_archived=1 WHERE id=?').bind(groupId).run();
