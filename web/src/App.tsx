@@ -114,6 +114,14 @@ export default function App() {
   const [groupLoading, setGroupLoading] = useState(false);
   const loadSeq = useRef(0);
   const restoredRef = useRef(false);
+  // Back during the auth-checking skeleton: if the checking skeleton is a
+  // GroupSkeleton (because a group was saved), tapping its ← Groups must
+  // cancel the pending restore, otherwise restoreSaved (created in the
+  // mount-time /api/me closure) would still load the group after auth.
+  // The ref is what restoreSaved checks (state alone would be stale in
+  // that closure); the state is what flips the render to HomeSkeleton.
+  const skipRestoreRef = useRef(false);
+  const [skipRestore, setSkipRestore] = useState(false);
   const [tab, setTab] = useState<'expenses'|'balances'|'members'|'activity'>('expenses');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -140,7 +148,7 @@ export default function App() {
   // loadGroup set, so refresh lands cleanly on Home with no banner: the
   // group is simply gone, and an error on a fresh load would be noise.
   async function restoreSaved() {
-    if (restoredRef.current) return;
+    if (restoredRef.current || skipRestoreRef.current) return;
     restoredRef.current = true;
     const saved = readSavedGroup();
     if (!saved) return;
@@ -166,7 +174,18 @@ export default function App() {
     catch(e:any){ setError(e.message); } finally { setLoading(false); }
   }
   function doLogout() { try { localStorage.removeItem(LAST_GROUP_KEY); } catch { /* ignore */ } setToken(null); setUser(null); setGroup(null); setGroups(null); setAuthState('guest'); }
-  if (authState === 'checking') return <HomeSkeleton user={null} />;
+  // Destination-aware checking skeleton: during auth checking we do not
+  // yet know the user, but we DO know the saved destination synchronously
+  // from localStorage. If a group was saved, show a GroupSkeleton from the
+  // very first paint — NOT HomeSkeleton, whose real "Don't Ngiao" title
+  // would flash momentarily on a refresh from inside a group, before
+  // restore switches to the group skeleton. If no group was saved, the
+  // destination is Home, so HomeSkeleton (with its real title, which is
+  // also the Home page title) is correct and causes no flash.
+  if (authState === 'checking') {
+    if (!skipRestore && readSavedGroup()) return <GroupSkeleton onBack={()=>{ skipRestoreRef.current = true; setSkipRestore(true); }} />;
+    return <HomeSkeleton user={null} />;
+  }
   if (authState === 'guest' || !user) return <Auth onAuth={doAuth} error={error} loading={loading} />;
   if (groupLoading) return <GroupSkeleton onBack={()=>{ loadSeq.current++; setGroupLoading(false); }} />;
   if (group) return <GroupView group={group} setGroup={setGroup} tab={tab} setTab={setTab} back={()=>{setGroup(null); loadGroups();}} reload={()=>loadGroup(group.id)} error={error} setError={setError} />;
