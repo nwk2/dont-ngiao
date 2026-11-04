@@ -51,7 +51,7 @@ export default function App() {
   if (!user) return <Auth onAuth={doAuth} error={error} loading={loading} />;
   if (group) return <GroupView group={group} setGroup={setGroup} tab={tab} setTab={setTab} back={()=>{setGroup(null); loadGroups();}} reload={()=>loadGroup(group.id)} error={error} setError={setError} />;
   return (<div style={S}>
-    <h1>Don't Ngiao</h1><p style={{color:'#666'}}>Split expenses fairly. Don't be ngiao.</p>
+    <h1>Don't Ngiao</h1><p style={{color:'#666'}}>Mai ngiao, mai drama.</p>
     {error && <p style={{color:'red'}}>{error}</p>}
     <CreateGroup onDone={loadGroups} setError={setError} />
     <h2>Your groups</h2>
@@ -68,7 +68,7 @@ export default function App() {
 function Auth({ onAuth, error, loading }: any) {
   const [mode, setMode] = useState<'login'|'register'>('login');
   const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [password, setPassword] = useState('');
-  return (<div style={S}><h1>Don't Ngiao</h1><p>Split expenses fairly. Don't be ngiao.</p>
+  return (<div style={S}><h1>Don't Ngiao</h1><p>Mai ngiao, mai drama.</p>
     {error && <p style={{color:'red'}}>{error}</p>}
     {mode==='register' && <><label>Name</label><input style={input} value={name} onChange={e=>setName(e.target.value)} /></>}
     <label>Email</label><input style={input} value={email} onChange={e=>setEmail(e.target.value)} />
