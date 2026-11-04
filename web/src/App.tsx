@@ -18,16 +18,75 @@ const primary: React.CSSProperties = { ...btn, background:'#2dd4bf', color:'#0f1
 const catControl: React.CSSProperties = { padding:'8px 14px', fontSize:14, lineHeight:1.4, height:36, boxSizing:'border-box', borderRadius:10, border:'1px solid #333', background:'#242424', color:'#fff' };
 const catControlActive: React.CSSProperties = { ...catControl, background:'#2dd4bf', color:'#0f172a', borderColor:'#2dd4bf', fontWeight:600 };
 const input: React.CSSProperties = { width:'100%', boxSizing:'border-box', padding:'10px', border:'1px solid #333', borderRadius:10, margin:'4px 0 10px', background:'#242424', color:'#fff' };
-// Group icon picker: a curated emoji list (general icons + common travel
-// flags), not a free-text field and not a 190-country search — one tap
-// picks, "None" clears. The icon is optional everywhere it appears
-// (create modal and Settings); a group with no icon renders exactly as
-// before, with no placeholder. The value stored is the emoji string itself.
-const GROUP_ICONS = ['✈️','🏠','🍜','🍕','☕','🛒','🎉','🏖️','🏨','🚗','🚌','🚀','🎬','🎵','🏋️','💼','🎓','🐾','👨‍👩‍👧‍👦','🇸🇬','🇲🇾','🇯🇵','🇹🇭','🇰🇷','🇹🇼','🇻🇳','🇮🇩','🇦🇺'];
+// Group icon picker, Slack-style: NOT an inline grid and NOT a free-text
+// field. The Settings/Create page shows only the current icon as one
+// button; tapping it opens a bottom sheet (like Slack's emoji picker)
+// with a search input, a bare-emoji grid (no boxes around each emoji),
+// and category tabs along the bottom. Picking closes the sheet and sets
+// the icon; saving still happens via the surrounding form's Save/Create
+// button, so a pick alone never writes to the server.
+// Why a picker, not the system keyboard: a picker guarantees emoji by
+// construction (only emojis are clickable), so non-emoji input is
+// impossible — a keyboard text field would need validation to reject
+// typed text, and could never force the emoji keyboard to appear.
+// Curated, not full-set: group-relevant emojis only, each with a search
+// name, grouped into Common / Travel / Country / Transport / Activity /
+// Food / Animal — the kinds of groups people actually make (a trip, a
+// country, a commute, a meal, a pet, a household), not smileys or
+// symbols. Each emoji lives in exactly one category, so search never
+// shows duplicates. The full Slack set (thousands) would need an emoji
+// library + data file; for a single group icon, a curated set keeps the
+// bundle at zero new dependencies. The stored value is still just the
+// emoji string itself, and the server still accepts any single emoji —
+// the picker is only a UI constraint, not a data constraint.
+// Recent: last-picked icons, most recent first, max 14, in localStorage
+// only (key dont-ngiao-recent-icons) — per-browser, not synced, not
+// server data, exactly like Slack's Frequently Used being client-side.
+const RECENT_ICONS_KEY = 'dont-ngiao-recent-icons';
+function readRecentIcons(): string[] { try { const v = JSON.parse(localStorage.getItem(RECENT_ICONS_KEY) || '[]'); return Array.isArray(v) ? v.filter((x:any)=>typeof x === 'string') : []; } catch { return []; } }
+function saveRecentIcon(e: string) { try { localStorage.setItem(RECENT_ICONS_KEY, JSON.stringify([e, ...readRecentIcons().filter(x=>x!==e)].slice(0, 14))); } catch { /* ignore */ } }
+const ICON_CATEGORIES: { id: string; label: string; tab: string; emojis: { e: string; name: string }[] }[] = [
+  { id:'common', label:'Common', tab:'⭐', emojis:[{e:'🏠',name:'house home household'},{e:'👨‍👩‍👧‍👦',name:'family'},{e:'🎉',name:'party celebration'},{e:'🛒',name:'shopping cart groceries'},{e:'💼',name:'work briefcase office'},{e:'🎓',name:'graduation school class'},{e:'🛏️',name:'bed stay roommates'},{e:'🧺',name:'laundry basket'},{e:'🎁',name:'gift'},{e:'📚',name:'books reading study'}] },
+  { id:'travel', label:'Travel', tab:'✈️', emojis:[{e:'✈️',name:'airplane travel flight trip'},{e:'🗺️',name:'map trip'},{e:'🧳',name:'luggage suitcase packing'},{e:'🏨',name:'hotel stay'},{e:'🏖️',name:'beach holiday island'},{e:'🚀',name:'rocket'},{e:'🏕️',name:'camping tent'},{e:'🗽',name:'new york statue sightseeing'},{e:'🏯',name:'castle japan sightseeing'},{e:'🌉',name:'bridge sightseeing'}] },
+  { id:'country', label:'Country', tab:'🌏', emojis:[{e:'🇸🇬',name:'singapore flag'},{e:'🇲🇾',name:'malaysia flag'},{e:'🇯🇵',name:'japan flag'},{e:'🇹🇭',name:'thailand flag'},{e:'🇰🇷',name:'korea flag'},{e:'🇹🇼',name:'taiwan flag'},{e:'🇻🇳',name:'vietnam flag'},{e:'🇮🇩',name:'indonesia flag'},{e:'🇦🇺',name:'australia flag'},{e:'🇬🇧',name:'uk britain flag'},{e:'🇺🇸',name:'usa america flag'},{e:'🇫🇷',name:'france flag'},{e:'🇨🇳',name:'china flag'},{e:'🇭🇰',name:'hong kong flag'},{e:'🇲🇴',name:'macau flag'},{e:'🇮🇳',name:'india flag'},{e:'🇵🇭',name:'philippines flag'},{e:'🇰🇭',name:'cambodia flag'},{e:'🇱🇦',name:'laos flag'},{e:'🇲🇲',name:'myanmar flag'},{e:'🇧🇳',name:'brunei flag'},{e:'🇮🇹',name:'italy flag'},{e:'🇪🇸',name:'spain flag'},{e:'🇩🇪',name:'germany flag'},{e:'🇳🇱',name:'netherlands holland flag'},{e:'🇨🇭',name:'switzerland flag'},{e:'🇦🇹',name:'austria flag'},{e:'🇧🇪',name:'belgium flag'},{e:'🇬🇷',name:'greece flag'},{e:'🇹🇷',name:'turkey flag'},{e:'🇦🇪',name:'uae emirates dubai flag'},{e:'🇪🇬',name:'egypt flag'},{e:'🇿🇦',name:'south africa flag'},{e:'🇧🇷',name:'brazil flag'},{e:'🇨🇦',name:'canada flag'},{e:'🇲🇽',name:'mexico flag'},{e:'🇳🇿',name:'new zealand flag'},{e:'🇵🇹',name:'portugal flag'},{e:'🇮🇪',name:'ireland flag'},{e:'🇸🇪',name:'sweden flag'},{e:'🇳🇴',name:'norway flag'},{e:'🇩🇰',name:'denmark flag'},{e:'🇫🇮',name:'finland flag'},{e:'🇵🇱',name:'poland flag'},{e:'🇦🇷',name:'argentina flag'},{e:'🇨🇱',name:'chile flag'}] },
+  { id:'transport', label:'Transport', tab:'🚗', emojis:[{e:'🚗',name:'car driving'},{e:'🚌',name:'bus'},{e:'🚆',name:'train'},{e:'🚢',name:'ship cruise boat ferry'},{e:'🚕',name:'taxi'},{e:'🚲',name:'bicycle cycling'},{e:'🛵',name:'scooter motorbike'},{e:'⛽',name:'petrol fuel road trip'}] },
+  { id:'activity', label:'Activity', tab:'🎬', emojis:[{e:'🎬',name:'movie cinema film'},{e:'🎵',name:'music concert'},{e:'🏋️',name:'gym workout fitness'},{e:'⚽',name:'football soccer sport'},{e:'🏊',name:'swimming pool'},{e:'🎮',name:'games gaming'},{e:'🎨',name:'art painting'},{e:'🏄',name:'surfing'},{e:'⛷️',name:'skiing snow'},{e:'🎳',name:'bowling'}] },
+  { id:'food', label:'Food', tab:'🍜', emojis:[{e:'🍜',name:'noodles ramen'},{e:'🍕',name:'pizza'},{e:'☕',name:'coffee cafe'},{e:'🍔',name:'burger'},{e:'🍩',name:'donut'},{e:'🍺',name:'beer drinking'},{e:'🍷',name:'wine'},{e:'🥘',name:'hotpot stew'},{e:'🍣',name:'sushi'},{e:'🥤',name:'drink soda bubble tea'},{e:'🍰',name:'cake dessert'},{e:'🥐',name:'croissant breakfast brunch'}] },
+  { id:'animal', label:'Animal', tab:'🐾', emojis:[{e:'🐶',name:'dog puppy'},{e:'🐱',name:'cat kitten'},{e:'🐰',name:'rabbit bunny'},{e:'🦁',name:'lion'},{e:'🐼',name:'panda'},{e:'🦊',name:'fox'},{e:'🐳',name:'whale'},{e:'🐴',name:'horse'},{e:'🐘',name:'elephant'},{e:'🦜',name:'parrot bird'}] },
+];
+const ALL_ICONS = ICON_CATEGORIES.flatMap(c=>c.emojis);
 function IconPicker({ value, onChange }: { value: string | null; onChange: (v: string | null) => void }) {
-  return (<div style={{display:'flex',gap:8,flexWrap:'wrap',margin:'4px 0 10px'}}>
-    <button type="button" style={{...btn, borderColor: !value ? '#2dd4bf' : '#333', background: !value ? '#134e4a' : '#242424'}} onClick={()=>onChange(null)}>None</button>
-    {GROUP_ICONS.map(e => (<button key={e} type="button" aria-label={`Group icon ${e}`} style={{padding:'8px 10px',fontSize:20,borderRadius:10,border:`1px solid ${value===e ? '#2dd4bf' : '#333'}`,background: value===e ? '#134e4a' : '#242424',color:'#fff'}} onClick={()=>onChange(e)}>{e}</button>))}
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [recent, setRecent] = useState<string[]>(()=>readRecentIcons());
+  const [cat, setCat] = useState('common');
+  const q = query.trim().toLowerCase();
+  const pick = (e: string | null) => { if (e) { saveRecentIcon(e); setRecent(readRecentIcons()); } onChange(e); setOpen(false); setQuery(''); };
+  // Recent tab is only offered when there is a recent pick; otherwise the
+  // sheet opens on Common. If the active tab is Recent but recents were
+  // cleared, fall back to Common rather than showing an empty grid —
+  // shown is computed from activeCat, not the raw cat state, for that
+  // reason.
+  const tabs = [...(recent.length ? [{id:'recent', label:'Recent', tab:'🕒'}] : []), ...ICON_CATEGORIES];
+  const activeCat = tabs.some(t=>t.id===cat) ? cat : 'common';
+  const shown = q ? ALL_ICONS.filter(x=>x.name.includes(q) || x.e.includes(q)) : (activeCat==='recent' ? recent.map(e=>({e, name:'recent'})) : (ICON_CATEGORIES.find(c=>c.id===activeCat)?.emojis || []));
+  return (<div style={{margin:'4px 0 10px'}}>
+    <button type="button" style={{...btn, display:'flex',alignItems:'center',gap:8}} onClick={()=>{setRecent(readRecentIcons()); setQuery(''); setOpen(true);}}>
+      <span style={{fontSize:20}}>{value || '—'}</span><span>{value ? 'Change icon' : 'Add icon'}</span>
+    </button>
+    {open && (<div role="dialog" aria-modal="true" aria-label="Choose group icon" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:60,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={()=>setOpen(false)}>
+      <div style={{background:'#1c1c1e',borderRadius:'16px 16px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'80vh',display:'flex',flexDirection:'column'}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}><strong>Group icon</strong><span style={{display:'flex',gap:8}}><button type="button" style={btn} onClick={()=>pick(null)}>None</button><button type="button" style={btn} onClick={()=>setOpen(false)}>Close</button></span></div>
+        <input style={input} placeholder="Search emoji" value={query} onChange={e=>setQuery(e.target.value)} autoComplete="off" autoCapitalize="off" spellCheck={false} />
+        <div style={{overflowY:'auto',flex:1}}>
+          {q ? <p style={{fontSize:13,color:'#a3a3a3',margin:'0 0 8px'}}>{shown.length ? `${shown.length} result${shown.length===1?'':'s'}` : `No emoji match "${query.trim()}"`}</p> : null}
+          <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2}}>
+            {shown.map(x=>(<button key={x.e} type="button" aria-label={`Group icon ${x.name}`} style={{padding:8,fontSize:24,borderRadius:10,border:'none',background: value===x.e ? '#134e4a' : 'transparent',color:'#fff',cursor:'pointer'}} onClick={()=>pick(x.e)}>{x.e}</button>))}
+          </div>
+        </div>
+        {!q && <div style={{display:'flex',gap:4,marginTop:12,borderTop:'1px solid #333',paddingTop:12}}>{tabs.map(t=>(<button key={t.id} type="button" aria-label={t.label} style={{flex:1,padding:'8px 4px',fontSize:18,borderRadius:10,border:'none',background: activeCat===t.id ? '#242424' : 'transparent',color:'#fff',cursor:'pointer'}} onClick={()=>setCat(t.id)}>{t.tab}</button>))}</div>}
+      </div>
+    </div>)}
   </div>);
 }
 
@@ -538,7 +597,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
     {detailExpense && <ExpenseDetailSheet group={group} expense={detailExpense} onClose={()=>setDetailExpense(null)} setConfirm={setConfirm} reload={reload} />}
     {showExpense && <ExpenseModal group={group} onClose={()=>setShowExpense(false)} reload={()=>{setShowExpense(false); reload();}} />}
     {settle && <SettleModal group={group} suggestion={settle} onClose={()=>setSettle(null)} reload={()=>{setSettle(null); reload();}} setError={setError} />}
-    {showSettings && <SettingsModal group={group} onClose={()=>setShowSettings(false)} reload={()=>{setShowSettings(false); reload();}} back={back} setError={setError} />}
+    {showSettings && <SettingsModal group={group} onClose={()=>setShowSettings(false)} reload={()=>{setShowSettings(false); reload();}} back={back} />}
     {confirm && <ConfirmSheet title={confirm.title} message={confirm.message} confirmLabel={confirm.confirmLabel} onCancel={()=>setConfirm(null)} onConfirm={async()=>{try{await confirm.action();}catch(er:any){if (confirm.onError) confirm.onError(er.message); else setError(er.message);}finally{setConfirm(null);}}} />}
   </div>);
 }
@@ -640,23 +699,37 @@ function SettleModal({ group, suggestion, onClose, reload, setError }: any) {
     </div>
   </div>);
 }
-function SettingsModal({ group, onClose, reload, back, setError }: any) {
+function SettingsModal({ group, onClose, reload, back }: any) {
   const [name, setName] = useState(group.name); const [cur, setCur] = useState(group.defaultCurrency); const [icon, setIcon] = useState<string | null>(group.icon || null);
   const hasExpense = !!group.myHasExpense;
+  // Save feedback, three parts (see the Save discussion): (1) dirty
+  // check — Save is disabled + dimmed when nothing changed, so a
+  // no-change click can never look like a silent no-op; name is compared
+  // trimmed, because the server trims it anyway. (2) close on success —
+  // already the behaviour via the reload wrapper (close modal + reload
+  // group), kept, not changed. (3) local error — Settings previously
+  // sent errors to the parent's setError, which renders in the group
+  // view BEHIND this full-screen modal, so a failed save was silent;
+  // errors now render inside the modal, same fix as the expense modal's
+  // modalError. All Settings actions (Save/Archive/Restore/Leave) share
+  // this local error, since they shared the hidden-error problem.
+  const dirty = name.trim() !== group.name || cur !== group.defaultCurrency || icon !== (group.icon || null);
+  const [settingsError, setSettingsError] = useState('');
   return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'#111111',zIndex:50,overflowY:'auto'}}>
     <div style={{maxWidth:640,margin:'0 auto',padding:16}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h2>Group settings</h2><button style={btn} onClick={onClose}>Close</button></div>
       <label>Group name</label><input style={input} value={name} onChange={e=>setName(e.target.value)} />
       <label>Group icon (optional)</label><IconPicker value={icon} onChange={setIcon} />
       <label>Default currency (new expenses only — existing expenses keep their currency)</label><select style={input} value={cur} onChange={e=>setCur(e.target.value)}>{CURRENCIES.map(c=><option key={c}>{c}</option>)}</select>
-      <AsyncButton style={primary} onClick={async()=>{try{await api(`/api/groups/${group.id}`,'PATCH',{name,defaultCurrency:cur,icon}); reload();}catch(e:any){setError(e.message);}}}>Save settings</AsyncButton>
+      <AsyncButton style={{...primary, opacity: dirty?1:0.5, cursor: dirty?'pointer':'not-allowed'}} disabled={!dirty} onClick={async()=>{setSettingsError(''); try{await api(`/api/groups/${group.id}`,'PATCH',{name,defaultCurrency:cur,icon}); reload();}catch(e:any){setSettingsError(e.message);}}}>Save settings</AsyncButton>
+      {settingsError && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:12,marginBottom:0}}>{settingsError}</p>}
       <hr style={{margin:'20px 0'}} />
       {group.isArchived
-        ? <AsyncButton style={btn} onClick={async()=>{try{await api(`/api/groups/${group.id}/restore`,'POST'); reload();}catch(e:any){setError(e.message);}}}>Restore group</AsyncButton>
-        : <AsyncButton style={btn} onClick={async()=>{try{await api(`/api/groups/${group.id}/archive`,'POST'); reload();}catch(e:any){setError(e.message);}}}>Archive group</AsyncButton>}
+        ? <AsyncButton style={btn} onClick={async()=>{setSettingsError(''); try{await api(`/api/groups/${group.id}/restore`,'POST'); reload();}catch(e:any){setSettingsError(e.message);}}}>Restore group</AsyncButton>
+        : <AsyncButton style={btn} onClick={async()=>{setSettingsError(''); try{await api(`/api/groups/${group.id}/archive`,'POST'); reload();}catch(e:any){setSettingsError(e.message);}}}>Archive group</AsyncButton>}
       <p style={{fontSize:13,color:'#a3a3a3'}}>Archiving hides the group from the active list and preserves all expenses, payments, members and activity. It can be restored.</p>
       <div style={{marginTop:16}}>
-        <AsyncButton style={{...btn, opacity: hasExpense?0.5:1, cursor: hasExpense?'not-allowed':'pointer'}} disabled={hasExpense} aria-disabled={hasExpense} onClick={async()=>{try{const r = await api(`/api/groups/${group.id}/leave`,'POST'); if (r.groupDeleted || r.groupArchived) back(); else reload();}catch(e:any){setError(e.message);}}}>Leave group</AsyncButton>
+        <AsyncButton style={{...btn, opacity: hasExpense?0.5:1, cursor: hasExpense?'not-allowed':'pointer'}} disabled={hasExpense} aria-disabled={hasExpense} onClick={async()=>{setSettingsError(''); try{const r = await api(`/api/groups/${group.id}/leave`,'POST'); if (r.groupDeleted || r.groupArchived) back(); else reload();}catch(e:any){setSettingsError(e.message);}}}>Leave group</AsyncButton>
         {hasExpense && <p style={{fontSize:13,color:'#a3a3a3'}}>Leave is greyed out because you have an expense in this group, as payer or as a split participant — even if balances are settled. The server enforces the same rule.</p>}
         {!hasExpense && <p style={{fontSize:13,color:'#a3a3a3'}}>You have no expenses in this group, so you can leave. If you are the last member, the group is deleted (it has no expenses to preserve).</p>}
       </div>
