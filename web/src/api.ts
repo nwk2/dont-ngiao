@@ -13,10 +13,16 @@ export async function api(path: string, method = 'GET', body?: any) {
   try {
     res = await fetch(BASE + path, { method, headers: { 'Content-Type': 'application/json', ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) }, body: body ? JSON.stringify(body) : undefined });
   } catch (e: any) {
-    throw new Error(`${e?.message || 'Network error'} (${method} ${path})`);
+    // /api/me fix, Nov 2026: a network failure has no HTTP status.
+    // Attach status 0 so callers can tell it apart from a real 401
+    // (expired/deleted session) — previously every thrown error was
+    // just a message string, so the auth check could not distinguish
+    // "session gone" from "network hiccup" and cleared the token for
+    // both.
+    const err: any = new Error(`${e?.message || 'Network error'} (${method} ${path})`); err.status = 0; throw err;
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  if (!res.ok) { const err: any = new Error(data.error || `Request failed (${res.status})`); err.status = res.status; throw err; }
   return data;
 }
 export const CURRENCIES = ['SGD','USD','EUR','GBP','AUD','CAD','JPY','KRW','VND','HKD','TWD','CNY','INR','MYR','THB','IDR','PHP','NZD','CHF'];

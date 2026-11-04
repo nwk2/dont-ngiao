@@ -156,7 +156,25 @@ export default function App() {
     if (group) { try { localStorage.setItem(LAST_GROUP_KEY, JSON.stringify({ groupId: group.id, tab })); } catch { /* ignore */ } }
     else if (!groupLoading && groups) { try { localStorage.removeItem(LAST_GROUP_KEY); } catch { /* ignore */ } }
   }, [group, tab, authState, groupLoading, groups]);
-  useEffect(()=>{ if (getToken()) api('/api/me').then(async d=>{ setUser(d.user); setAuthState('authed'); loadGroups(); await restoreSaved(); }).catch(()=>{ setToken(null); setUser(null); setAuthState('guest'); }); }, []);
+  // /api/me fix, Nov 2026: only a 401 clears the token. Previously
+  // this catch-all cleared it on ANY failure — including a transient
+  // network failure or a 500 on the first load — permanently wiping a
+  // still-valid session and forcing a re-login. Now: 401 -> clear token
+  // and go to login (session really is gone); anything else -> keep
+  // the token, show a retry screen (authError), and let the user retry
+  // the same check instead of losing the session. Log out and
+  // post-reset 401s still clear the token, as before.
+  const [authError, setAuthError] = useState('');
+  async function checkAuth() {
+    if (!getToken()) return;
+    setAuthError('');
+    try { const d = await api('/api/me'); setUser(d.user); setAuthState('authed'); loadGroups(); await restoreSaved(); }
+    catch (e: any) {
+      if (e?.status === 401) { setToken(null); setUser(null); setAuthState('guest'); }
+      else { setAuthError(e.message || 'Could not reach the server'); }
+    }
+  }
+  useEffect(()=>{ checkAuth(); }, []);
   async function doAuth(mode: 'login'|'register', name: string, email: string, password: string) {
     setError(''); setLoading(true);
     try { const d = await api(`/api/auth/${mode}`, 'POST', mode==='register' ? {name,email,password} : {email,password}); setToken(d.token); setUser(d.user); setAuthState('authed'); await loadGroups(); await restoreSaved(); }
@@ -186,6 +204,7 @@ export default function App() {
   const isAdminPage = urlParams.has('admin');
   if (resetToken) return <ResetPasswordView token={resetToken} />;
   if (isAdminPage) return <AdminView />;
+  if (authError) return (<div style={S}><h1>Don't Ngiao</h1><p style={{color:'#a3a3a3'}}>Couldn't check your session — your login is kept, this may just be a network hiccup.</p><p style={{color:'#f87171'}}>{authError}</p><button style={{...primary, width:'100%'}} onClick={()=>checkAuth()}>Retry</button><p><button style={btn} onClick={()=>{ setToken(null); setUser(null); setAuthError(''); setAuthState('guest'); }}>Use a different account</button></p></div>);
   if (authState === 'checking') {
     if (readSavedGroup()) return <GroupSkeleton />;
     return <HomeSkeleton user={null} />;
