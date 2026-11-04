@@ -556,7 +556,19 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
     <div style={{display:'flex',gap:8,alignItems:'center',justifyContent:'space-between'}}>
       <button style={btn} onClick={back}>← Groups</button>
       <span style={{display:'flex',gap:8,alignItems:'center'}}>
-        <button type="button" aria-label="Dark / light mode (coming soon)" title="Dark / light mode — coming soon" disabled style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,padding:0,opacity:0.5,cursor:'not-allowed',flexShrink:0}}>☀️</button>
+        {/* Theme toggle PLACEHOLDER, Nov 2026: segmented pill like the
+        reference image — sun left, moon right, current mode highlighted.
+        The app is dark-only, so this shows the dark state (moon side
+        highlighted, sun dim), exactly like the bottom half of the
+        reference. Icons are line SVGs (feather sun/moon), not emoji, so
+        they match the reference's outline style. Still disabled: no
+        light mode exists yet, so tapping it must not promise a switch
+        that does nothing — when light mode is built, this same pill
+        becomes the working toggle and the highlighted side flips. */}
+        <button type="button" aria-label="Dark / light mode (coming soon)" title="Dark / light mode — coming soon" disabled style={{width:88,height:40,borderRadius:999,border:'1px solid #333',background:'#242424',padding:3,boxSizing:'border-box',display:'flex',alignItems:'stretch',cursor:'not-allowed',flexShrink:0}}>
+          <span aria-hidden="true" style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:999,color:'#a3a3a3'}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg></span>
+          <span aria-hidden="true" style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:999,background:'#3f4756',color:'#ffffff'}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z" /></svg></span>
+        </button>
         <button type="button" aria-label="Group settings" title="Group settings" onClick={()=>setShowSettings(true)} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,padding:0,cursor:'pointer',flexShrink:0}}>⚙</button>
       </span>
     </div>
