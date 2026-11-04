@@ -37,6 +37,27 @@ function AsyncButton({ onClick, children, style, disabled, ...rest }: AsyncButto
   </button>);
 }
 
+// Reusable delete confirmation, following the SettleModal bottom-sheet
+// pattern (fixed overlay, dark backdrop, sheet anchored to the bottom).
+// The SettleModal has no Escape/backdrop dismissal, so this sheet is
+// dismissed via Cancel only — no new dismissal mechanism is invented here.
+// The confirm button is red and uses AsyncButton with a loader, like
+// other async buttons. Callers pass an action that throws on failure;
+// the GroupView wrapper shows that error (global setError, as today —
+// error placement is a later chunk) and closes the sheet either way.
+function ConfirmSheet({ title, message, confirmLabel, onConfirm, onCancel }: any) {
+  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+    <div style={{background:'#1c1c1e',borderRadius:'16px 16px 0 0',padding:16,width:'100%',maxWidth:640}}>
+      <h2 style={{marginTop:0}}>{title}</h2>
+      <p style={{color:'#a3a3a3',lineHeight:1.45}}>{message}</p>
+      <div style={{display:'flex',gap:8}}>
+        <AsyncButton style={{...btn,background:'#dc2626',color:'#fff',borderColor:'#dc2626',fontWeight:600}} onClick={onConfirm}>{confirmLabel || 'Delete'}</AsyncButton>
+        <button style={btn} onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  </div>);
+}
+
 export default function App() {
   const [user, setUser] = useState<any>(null);
   const [groups, setGroups] = useState<any>(null);
@@ -161,6 +182,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
   const [showExpense, setShowExpense] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [settle, setSettle] = useState<any>(null);
+  const [confirm, setConfirm] = useState<any>(null);
   const [editingMemberId, setEditingMemberId] = useState<string|null>(null);
   const [emailDraft, setEmailDraft] = useState('');
   const [catView, setCatView] = useState<'group'|'mine'>('group');
@@ -192,7 +214,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         <div style={{display:'flex',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}><div><strong>{e.description}</strong> <span style={{fontSize:12,background:'#2a2a2a',padding:'2px 6px',borderRadius:99}}>{e.category}</span> <span style={{fontSize:12,background:'#134e4a',padding:'2px 6px',borderRadius:99}}>{e.currency}</span><div style={{fontSize:13,color:'#a3a3a3'}}>Paid by {e.payerName} · {fmtDate(e.date)}</div></div>
         <div style={{textAlign:'right'}}><div><strong>{e.display}</strong></div><div style={{fontSize:12,color:'#a3a3a3'}}>{e.currency}</div></div></div>
         <div style={{fontSize:13,marginTop:6}}>{e.splits.map((s:any)=>{const m=group.members.find((x:any)=>x.id===s.member_id); return `${m?.name}: ${fmt(s.amount_minor,e.currency)}`;}).join(' · ')}</div>
-        <AsyncButton style={{...btn,marginTop:8}} onClick={async()=>{try{await api(`/api/groups/${group.id}/expenses/${e.id}`,'DELETE'); reload();}catch(er:any){setError(er.message);}}}>Delete expense</AsyncButton>
+        <button style={{...btn,marginTop:8}} onClick={()=>setConfirm({title:'Delete expense?',message:`Delete '${e.description}' (${e.display})? This will also remove its splits. This cannot be undone.`,action:async()=>{await api(`/api/groups/${group.id}/expenses/${e.id}`,'DELETE'); reload();}})}>Delete expense</button>
       </div>))}
       {!showExpense && <div style={{position:'fixed',left:0,right:0,bottom:0,background:'#1c1c1e',borderTop:'1px solid #333',padding:12,textAlign:'center'}}><button style={primary} onClick={()=>setShowExpense(true)}>+ Add expense</button></div>}
     </>}
@@ -255,7 +277,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
             </div>
             <div style={{fontSize:13,lineHeight:1.4,marginTop:4}}><strong>{p.display}</strong> <span style={{color:'#a3a3a3'}}>· {fmtDate(p.date)}</span></div>
           </div>
-          <AsyncButton style={{...btn,flexShrink:0}} onClick={async()=>{try{await api(`/api/groups/${group.id}/payments/${p.id}`,'DELETE'); reload();}catch(er:any){setError(er.message);}}}>Delete</AsyncButton>
+          <button style={{...btn,flexShrink:0}} onClick={()=>setConfirm({title:'Delete payment?',message:`Delete the ${p.display} payment from ${from.label} to ${to.label} on ${fmtDate(p.date)}? This cannot be undone.`,action:async()=>{await api(`/api/groups/${group.id}/payments/${p.id}`,'DELETE'); reload();}})}>Delete</button>
         </div>);
       })}
     </>}
@@ -276,7 +298,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
           <button style={btn} onClick={()=>setEditingMemberId(null)}>Cancel</button>
         </span>) : (<span style={{display:'flex',gap:8,flexShrink:0}}>
           {!m.user_id ? (<button style={btn} onClick={()=>{setEditingMemberId(m.id); setEmailDraft(m.email || '');}}>Edit email</button>) : null}
-          <AsyncButton style={{...btn,flexShrink:0}} onClick={async()=>{try{await api(`/api/groups/${group.id}/members/${m.id}`,'DELETE'); reload();}catch(er:any){setError(er.message);}}}>Remove</AsyncButton>
+          <button style={{...btn,flexShrink:0}} onClick={()=>setConfirm({title:'Remove member?',message:`Remove ${m.name} from this group? This cannot be undone.`,action:async()=>{await api(`/api/groups/${group.id}/members/${m.id}`,'DELETE'); reload();}})}>Remove</button>
         </span>)}
       </div>);})}
       <AddMember groupId={group.id} reload={reload} setError={setError} />
@@ -288,6 +310,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
     {showExpense && <ExpenseModal group={group} onClose={()=>setShowExpense(false)} reload={()=>{setShowExpense(false); reload();}} setError={setError} />}
     {settle && <SettleModal group={group} suggestion={settle} onClose={()=>setSettle(null)} reload={()=>{setSettle(null); reload();}} setError={setError} />}
     {showSettings && <SettingsModal group={group} onClose={()=>setShowSettings(false)} reload={()=>{setShowSettings(false); reload();}} back={back} setError={setError} />}
+    {confirm && <ConfirmSheet title={confirm.title} message={confirm.message} confirmLabel={confirm.confirmLabel} onCancel={()=>setConfirm(null)} onConfirm={async()=>{try{await confirm.action();}catch(er:any){setError(er.message);}finally{setConfirm(null);}}} />}
   </div>);
 }
 function activityTitle(a:any) {
