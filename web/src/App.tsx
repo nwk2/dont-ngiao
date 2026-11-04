@@ -85,6 +85,27 @@ function ConfirmSheet({ title, message, confirmLabel, onConfirm, onCancel }: any
 // token, or /api/me failed — render Auth), 'authed' (render Home/Group).
 // A failed /api/me still clears the token, exactly as before; the only
 // change is what the user sees while the check is in flight.
+// Navigation restoration, localStorage version (not hash routing): after a
+// refresh, return to the group + tab you were on, instead of always landing
+// on Home. Why localStorage and not a hash URL: it is the smallest change
+// that fixes refresh (the reported pain), with no hashchange listener, no
+// browser-back history semantics to get wrong, and no Worker SPA-fallback
+// requirement. Trade-off, stated plainly: it is private to this browser —
+// it does NOT give shareable/bookmarkable group links (a hash URL would).
+// The saved value is just {groupId, tab}; it contains no auth data, no
+// group content, and the API still enforces membership on restore, so a
+// stale or forged id simply fails to load and falls back to Home.
+const LAST_GROUP_KEY = 'dont-ngiao-last-group';
+const VALID_TABS = ['expenses','balances','members','activity'] as const;
+function readSavedGroup(): { groupId: string; tab: typeof VALID_TABS[number] } | null {
+  try {
+    const raw = localStorage.getItem(LAST_GROUP_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    if (typeof p?.groupId !== 'string' || !p.groupId) return null;
+    return { groupId: p.groupId, tab: VALID_TABS.includes(p.tab) ? p.tab : 'expenses' };
+  } catch { return null; }
+}
 export default function App() {
   const [user, setUser] = useState<any>(null);
   const [authState, setAuthState] = useState<'checking'|'guest'|'authed'>(()=> getToken() ? 'checking' : 'guest');
@@ -92,6 +113,7 @@ export default function App() {
   const [group, setGroup] = useState<any>(null);
   const [groupLoading, setGroupLoading] = useState(false);
   const loadSeq = useRef(0);
+  const restoredRef = useRef(false);
   const [tab, setTab] = useState<'expenses'|'balances'|'members'|'activity'>('expenses');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -102,20 +124,48 @@ export default function App() {
   // inside a group (after save/settle/delete) do NOT use the skeleton —
   // the old group stays on screen (stale-but-real) plus the button loader,
   // so the screen never flickers to grey on every save.
-  async function loadGroup(id: string, opts?: { skeleton?: boolean }) {
+  async function loadGroup(id: string, opts?: { skeleton?: boolean }): Promise<boolean> {
     const seq = ++loadSeq.current;
     if (opts?.skeleton) setGroupLoading(true);
-    try { const d = await api(`/api/groups/${id}`); if (seq !== loadSeq.current) return; setGroup(d); setTab('expenses'); setError(''); }
-    catch(e:any){ if (seq === loadSeq.current) setError(e.message); }
+    try { const d = await api(`/api/groups/${id}`); if (seq !== loadSeq.current) return false; setGroup(d); setTab('expenses'); setError(''); return true; }
+    catch(e:any){ if (seq === loadSeq.current) setError(e.message); return false; }
     finally { if (seq === loadSeq.current) setGroupLoading(false); }
   }
-  useEffect(()=>{ if (getToken()) api('/api/me').then(d=>{ setUser(d.user); setAuthState('authed'); loadGroups(); }).catch(()=>{ setToken(null); setUser(null); setAuthState('guest'); }); }, []);
+  // Restore once per page load, after auth succeeds: if a group+tab was
+  // saved, load that group (with the group skeleton, so refresh shows a
+  // skeleton, not Home) and then set the saved tab — loadGroup itself
+  // resets tab to 'expenses', so the saved tab must be applied after it
+  // awaits, and only on success. A restore failure (group deleted,
+  // membership lost, 403/404) clears the saved value and the error
+  // loadGroup set, so refresh lands cleanly on Home with no banner: the
+  // group is simply gone, and an error on a fresh load would be noise.
+  async function restoreSaved() {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+    const saved = readSavedGroup();
+    if (!saved) return;
+    const ok = await loadGroup(saved.groupId, { skeleton: true });
+    if (ok) setTab(saved.tab);
+    else { try { localStorage.removeItem(LAST_GROUP_KEY); } catch { /* ignore */ } setError(''); }
+  }
+  // Persist navigation: whenever an authed user is inside a group, save
+  // group+tab; whenever they are back on Home (group null, not loading,
+  // groups loaded), clear it — so refresh after going home lands on Home,
+  // not on the last group visited. Guards prevent clearing during the
+  // initial load (auth not authed yet, or groups not loaded yet) and
+  // during a group load (group null but loading).
+  useEffect(()=>{
+    if (authState !== 'authed') return;
+    if (group) { try { localStorage.setItem(LAST_GROUP_KEY, JSON.stringify({ groupId: group.id, tab })); } catch { /* ignore */ } }
+    else if (!groupLoading && groups) { try { localStorage.removeItem(LAST_GROUP_KEY); } catch { /* ignore */ } }
+  }, [group, tab, authState, groupLoading, groups]);
+  useEffect(()=>{ if (getToken()) api('/api/me').then(async d=>{ setUser(d.user); setAuthState('authed'); loadGroups(); await restoreSaved(); }).catch(()=>{ setToken(null); setUser(null); setAuthState('guest'); }); }, []);
   async function doAuth(mode: 'login'|'register', name: string, email: string, password: string) {
     setError(''); setLoading(true);
-    try { const d = await api(`/api/auth/${mode}`, 'POST', mode==='register' ? {name,email,password} : {email,password}); setToken(d.token); setUser(d.user); setAuthState('authed'); await loadGroups(); }
+    try { const d = await api(`/api/auth/${mode}`, 'POST', mode==='register' ? {name,email,password} : {email,password}); setToken(d.token); setUser(d.user); setAuthState('authed'); await loadGroups(); await restoreSaved(); }
     catch(e:any){ setError(e.message); } finally { setLoading(false); }
   }
-  function doLogout() { setToken(null); setUser(null); setGroup(null); setGroups(null); setAuthState('guest'); }
+  function doLogout() { try { localStorage.removeItem(LAST_GROUP_KEY); } catch { /* ignore */ } setToken(null); setUser(null); setGroup(null); setGroups(null); setAuthState('guest'); }
   if (authState === 'checking') return <HomeSkeleton user={null} />;
   if (authState === 'guest' || !user) return <Auth onAuth={doAuth} error={error} loading={loading} />;
   if (groupLoading) return <GroupSkeleton onBack={()=>{ loadSeq.current++; setGroupLoading(false); }} />;
