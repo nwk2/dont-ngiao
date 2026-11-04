@@ -360,6 +360,22 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
   const [emailDraft, setEmailDraft] = useState('');
   const [catView, setCatView] = useState<'group'|'mine'>('group');
   const [catChart, setCatChart] = useState<'pie'|'bar'>('pie');
+  // Carousel swipe: touch start/end only (refs, not state — no re-render
+  // while the finger moves). A horizontal swipe >50px, and more horizontal
+  // than vertical, switches charts: left = pie -> bar, right = bar -> pie.
+  // No wrap-around. Vertical swipes are untouched, so page scrolling
+  // still works. This is safe now that the bar chart fits the screen
+  // width (no inner horizontal scroll to conflict with the swipe).
+  const swipeStart = useRef<{ x: number; y: number } | null>(null);
+  function onChartTouchStart(e: React.TouchEvent) { const t = e.touches[0]; if (t) swipeStart.current = { x: t.clientX, y: t.clientY }; }
+  function onChartTouchEnd(e: React.TouchEvent) {
+    const s = swipeStart.current; swipeStart.current = null; if (!s) return;
+    const t = e.changedTouches[0]; if (!t) return;
+    const dx = t.clientX - s.x, dy = t.clientY - s.y;
+    if (Math.abs(dx) < 50 || Math.abs(dx) <= Math.abs(dy)) return;
+    if (dx < 0 && catChart === 'pie') setCatChart('bar');
+    else if (dx > 0 && catChart === 'bar') setCatChart('pie');
+  }
   // Chunk 4: row-local errors. Kept in GroupView (not the App-level global)
   // so they render inside the row that caused them. A successful reload
   // replaces the group object, which clears them; a tab change clears
@@ -391,13 +407,17 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}><button style={catView==='group'?catControlActive:catControl} onClick={()=>setCatView('group')}>Group</button><button style={catView==='mine'?catControlActive:catControl} onClick={()=>setCatView('mine')}>Mine</button>
         {currencies.length>1 && <select style={catControl} value={cur} onChange={e=>setCatCur(e.target.value)}>{currencies.map(c=><option key={c}>{c}</option>)}</select>}
         <button style={catChart==='pie'?catControlActive:catControl} onClick={()=>setCatChart('pie')}>Pie</button><button style={catChart==='bar'?catControlActive:catControl} onClick={()=>setCatChart('bar')}>Bar</button></div>
-        {/* Carousel, slide-on-tap (not swipe): both panels stay mounted in a
+        {/* Carousel, slide-on-tap AND swipe: both panels stay mounted in a
         200%-wide flex track, so tapping Pie/Bar (or a dot) slides the track
-        instead of swapping instantly. Swipe is deliberately NOT added:
-        the bar panel scrolls horizontally on its own when there are many
-        days, and a swipe gesture on the chart would conflict with scrolling
-        those days. Dots and Pie/Bar buttons control the same catChart state. */}
-        <div style={{overflow:'hidden',width:'100%'}}>
+        instead of swapping instantly, and a horizontal swipe on the chart
+        does the same (left: pie -> bar, right: bar -> pie). Swipe was
+        previously blocked because the bar panel scrolled horizontally on
+        its own when there were many days; now the bar chart fits the
+        screen width, so there is no inner scroll to conflict with the
+        swipe. Dots and Pie/Bar buttons control the same catChart state,
+        so swipe is an addition, not a replacement — desktop/keyboard
+        users still have buttons and dots. */}
+        <div style={{overflow:'hidden',width:'100%',touchAction:'pan-y'}} onTouchStart={onChartTouchStart} onTouchEnd={onChartTouchEnd}>
           <div style={{display:'flex',width:'200%',transition:'transform 0.3s ease',transform:catChart==='pie' ? 'translateX(0)' : 'translateX(-50%)'}}>
             <div style={{width:'50%',flexShrink:0,boxSizing:'border-box'}}><Pie data={catData} currency={cur} /></div>
             <div style={{width:'50%',flexShrink:0,boxSizing:'border-box'}}><DailyBar expenses={group.expenses} myMemberId={group.myMemberId} view={catView} currency={cur} /></div>
@@ -407,7 +427,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
           <button type="button" aria-label="Show pie chart" style={{width:8,height:8,borderRadius:'50%',border:'none',padding:0,cursor:'pointer',background:catChart==='pie' ? '#2dd4bf' : '#333'}} onClick={()=>setCatChart('pie')} />
           <button type="button" aria-label="Show bar chart" style={{width:8,height:8,borderRadius:'50%',border:'none',padding:0,cursor:'pointer',background:catChart==='bar' ? '#2dd4bf' : '#333'}} onClick={()=>setCatChart('bar')} />
         </div>
-        <p style={{fontSize:12,color:'#a3a3a3'}}>{catView==='mine' ? 'Mine = your split shares only. Other members\' individual breakdowns are never sent to you.' : 'Group = total spend for the whole group.'} Pie = overall breakdown. Bar = spend per day, stacked by category. Per currency only, never converted.</p>
+        <p style={{fontSize:12,color:'#a3a3a3'}}>{catView==='mine' ? 'Mine = your split shares only. Other members\' individual breakdowns are never sent to you.' : 'Group = total spend for the whole group.'} Pie = overall breakdown. Bar = spend per day, stacked by category, fitted to the screen width. Per currency only, never converted. Swipe the chart, or use Pie/Bar, to switch.</p>
       </div>
       {group.expenses.length===0 && <p>No expenses yet.</p>}
       {group.expenses.map((e:any)=>{const mySplit = group.myMemberId ? e.splits.find((s:any)=>s.member_id===group.myMemberId) : null; const n = e.splits.length; return (<div key={e.id} style={{...rowCard,cursor:'pointer'}} onClick={()=>setDetailExpense(e)}>

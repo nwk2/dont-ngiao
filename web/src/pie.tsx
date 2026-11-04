@@ -50,6 +50,23 @@ export function Pie({ data, currency }: { data: Record<string, number>; currency
   </div>);
 }
 export function DailyBar({ expenses, myMemberId, view, currency }: { expenses: any[]; myMemberId: string | null; view: 'group' | 'mine'; currency: string }) {
+  // Fit-to-width: measure the actual container width (ResizeObserver, so
+  // it follows phone rotation / window resize), then scale the x-axis to
+  // fit it — no horizontal scrolling inside the bar chart. The chart's
+  // point is the trend (total height per day, stacked by category), and
+  // that trend is only visible at a glance when every day is on screen at
+  // once; scrolling hid the shape of the trend behind a viewport.
+  // Fallback 320px before the first measurement (first paint, SSR-free).
+  const wrapRef = React.useRef<HTMLDivElement | null>(null);
+  const [wrapW, setWrapW] = React.useState(320);
+  React.useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    setWrapW(el.clientWidth || 320);
+    const ro = new ResizeObserver(() => setWrapW(el.clientWidth || 320));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   // Frontend aggregation from the already-loaded expenses (no API change):
   // Group = total expense amount per day per category; Mine = requester's
   // split share per day per category. Per currency only, never converted.
@@ -78,14 +95,26 @@ export function DailyBar({ expenses, myMemberId, view, currency }: { expenses: a
   const legendEntries = Object.entries(catTotals).sort((a,b)=>b[1]-a[1]);
   // Geometry: y-axis labels left, x-axis day labels bottom, bars stacked
   // bottom-up in fixed CATEGORIES order (not sorted rank, so a category's
-  // segment position is stable across days).
-  const left = 56, right = 8, top = 10, plotH = 180, slot = 36, barW = 22;
-  const svgW = Math.max(320, left + right + days.length * slot);
+  // segment position is stable across days). X-axis is scaled to fit:
+  // slot = plot width / number of days, bar = ~61% of the slot (the old
+  // 22/36 ratio), capped at 28px so a few-days chart does not become huge
+  // slabs, floored at 2px so a many-days chart still draws a visible
+  // trend silhouette. Day labels are thinned to ~12 max, evenly spaced.
+  // Trade-off, stated plainly: with many days, small category segments
+  // inside a thin bar become sub-pixel and unreadable individually — the
+  // total height (the trend) and the dominant categories stay readable,
+  // which is the point of this chart; per-day exact amounts are already
+  // in the expense list below, and each bar still has a <title> tooltip
+  // with its day + total.
+  const left = 56, right = 8, top = 10, plotH = 180;
+  const svgW = Math.max(200, wrapW);
+  const slot = (svgW - left - right) / days.length;
+  const barW = Math.max(2, Math.min(28, slot * 0.61));
   const svgH = top + plotH + 28;
   const ticks = [0, maxTotal / 3, (2 * maxTotal) / 3, maxTotal];
   const labelStep = Math.max(1, Math.ceil(days.length / 12));
   return (<div style={{display:'flex',flexDirection:'column',alignItems:'center'}}>
-    <div style={{overflowX:'auto',width:'100%'}}>
+    <div ref={wrapRef} style={{width:'100%'}}>
       <svg width={svgW} height={svgH} role="img" aria-label="Daily spend by category bar chart" style={{display:'block',margin:'0 auto'}}>
         {ticks.map((t, i) => { const y = top + plotH * (1 - (maxTotal ? t / maxTotal : 0)); return (<g key={i}>
           <line x1={left} x2={svgW - right} y1={y} y2={y} stroke="#2e2e2e" strokeWidth={1} />
