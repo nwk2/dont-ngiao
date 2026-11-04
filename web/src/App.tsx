@@ -1,13 +1,37 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { api, setToken, getToken, CURRENCIES, CATEGORIES, fmt, toMinor, fromMinor } from './api';
 import { DateField, fmtDate, todayIso } from './calendar';
 import { Pie } from './pie';
 
 const S = { maxW: 640, margin: '0 auto', padding: '16px', paddingBottom: 90 } as const;
 const card: React.CSSProperties = { background:'#fff', border:'1px solid #e5e5e5', borderRadius:12, padding:12, marginBottom:10 };
-const btn: React.CSSProperties = { padding:'9px 14px', borderRadius:8, border:'1px solid #ccc', background:'#fff' };
+const btn: React.CSSProperties = { padding:'9px 14px', borderRadius:8, border:'1px solid #ccc', background:'#fff', color:'#1a1a1a' };
 const primary: React.CSSProperties = { ...btn, background:'#1a1a1a', color:'#fff', borderColor:'#1a1a1a' };
 const input: React.CSSProperties = { width:'100%', boxSizing:'border-box', padding:'9px', border:'1px solid #ccc', borderRadius:8, margin:'4px 0 10px' };
+
+// Per-button async loader: each button tracks its own busy state, so one
+// in-flight action does not disable the whole screen. While busy the button
+// is disabled, dimmed, and shows a spinner in front of its original label
+// (the label is never replaced by "..." alone). A mounted ref guards the
+// final setState for buttons that unmount mid-call (e.g. Leave group
+// navigating back, Settle closing its modal).
+type AsyncButtonProps = Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'onClick' | 'disabled'> & {
+  onClick: () => Promise<unknown> | void;
+  disabled?: boolean;
+};
+function AsyncButton({ onClick, children, style, disabled, ...rest }: AsyncButtonProps) {
+  const [busy, setBusy] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
+  async function handle() {
+    if (busy || disabled) return;
+    setBusy(true);
+    try { await onClick(); } finally { if (mounted.current) setBusy(false); }
+  }
+  return (<button {...rest} style={{ ...style, opacity: busy ? 0.6 : style?.opacity, cursor: busy ? 'not-allowed' : style?.cursor }} disabled={disabled || busy} onClick={handle}>
+    {busy && <span className="btn-spinner" aria-hidden="true" />}{children}
+  </button>);
+}
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
@@ -36,8 +60,8 @@ export default function App() {
       <strong>{g.name}</strong> <span style={{color:'#666'}}>({g.defaultCurrency})</span>
       <div style={{fontSize:13,marginTop:4}}>{g.balances.map((b:any)=><span key={b.currency} style={{marginRight:10}}>{b.currency}: {fmt(b.balance,b.currency)}</span>)}</div>
     </div>))}
-    {groups?.archived?.length > 0 && <><h2>Archived groups</h2>{groups.archived.map((g:any)=>(<div key={g.id} style={card}><strong>{g.name}</strong> <button style={btn} onClick={async()=>{await api(`/api/groups/${g.id}/restore`,'POST'); loadGroups();}}>Restore</button> <button style={btn} onClick={()=>loadGroup(g.id)}>Open</button></div>))}</>}
-    <button style={btn} onClick={async()=>{await api('/api/auth/logout','POST'); setToken(null); setUser(null);}}>Log out</button>
+    {groups?.archived?.length > 0 && <><h2>Archived groups</h2>{groups.archived.map((g:any)=>(<div key={g.id} style={card}><strong>{g.name}</strong> <AsyncButton style={btn} onClick={async()=>{await api(`/api/groups/${g.id}/restore`,'POST'); loadGroups();}}>Restore</AsyncButton> <AsyncButton style={btn} onClick={()=>loadGroup(g.id)}>Open</AsyncButton></div>))}</>}
+    <AsyncButton style={btn} onClick={async()=>{await api('/api/auth/logout','POST'); setToken(null); setUser(null);}}>Log out</AsyncButton>
   </div>);
 }
 
@@ -49,7 +73,7 @@ function Auth({ onAuth, error, loading }: any) {
     {mode==='register' && <><label>Name</label><input style={input} value={name} onChange={e=>setName(e.target.value)} /></>}
     <label>Email</label><input style={input} value={email} onChange={e=>setEmail(e.target.value)} />
     <label>Password</label><input type="password" style={input} value={password} onChange={e=>setPassword(e.target.value)} />
-    <button style={primary} disabled={loading} onClick={()=>onAuth(mode,name,email,password)}>{mode==='login'?'Log in':'Create account'}</button>{' '}
+    <button style={{...primary, opacity: loading ? 0.6 : 1, cursor: loading ? 'not-allowed' : 'pointer'}} disabled={loading} onClick={()=>onAuth(mode,name,email,password)}>{loading && <span className="btn-spinner" aria-hidden="true" />}{loading ? (mode==='login' ? 'Logging in…' : 'Creating account…') : (mode==='login' ? 'Log in' : 'Create account')}</button>{' '}
     <button style={btn} onClick={()=>setMode(mode==='login'?'register':'login')}>{mode==='login'?'Need an account? Register':'Already have an account? Log in'}</button>
     <p style={{color:'#666',fontSize:13}}>Prototype port: email/password only, no email verification or password reset yet.</p>
   </div>);
@@ -59,7 +83,7 @@ function CreateGroup({ onDone, setError }: any) {
   return (<div style={card}><h3 style={{marginTop:0}}>Create group</h3>
     <input style={input} placeholder="Group name, e.g. KL Trip" value={name} onChange={e=>setName(e.target.value)} />
     <label>Default currency <select style={input} value={cur} onChange={e=>setCur(e.target.value)}>{CURRENCIES.map(c=><option key={c}>{c}</option>)}</select></label>
-    <button style={primary} onClick={async()=>{try{await api('/api/groups','POST',{name,defaultCurrency:cur}); setName(''); onDone();}catch(e:any){setError(e.message);}}}>Create group</button>
+    <AsyncButton style={primary} onClick={async()=>{try{await api('/api/groups','POST',{name,defaultCurrency:cur}); setName(''); onDone();}catch(e:any){setError(e.message);}}}>Create group</AsyncButton>
   </div>);
 }
 
@@ -79,8 +103,8 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
     {group.isArchived && <p style={{background:'#fff3cd',padding:8,borderRadius:8}}>This group is archived. Restore it from Settings or the home screen to edit it again.</p>}
     <p style={{color:'#666',marginTop:0}}>Default currency: {group.defaultCurrency} · {group.members.length} members</p>
     {error && <p style={{color:'red'}}>{error}</p>}
-    <div style={{display:'flex',gap:0,borderBottom:'1px solid #ddd',marginBottom:12}}>
-      {(['expenses','balances','members','activity'] as const).map(t=>(<button key={t} onClick={()=>setTab(t)} style={{flex:1,padding:'10px 4px',fontSize:12,background:tab===t?'#fff':'transparent',border:'none',borderBottom:tab===t?'3px solid #1a1a1a':'none',textTransform:'capitalize'}}>{t}</button>))}
+    <div style={{display:'flex',gap:0,borderBottom:'1px solid #ddd',marginBottom:12,background:'#fff'}}>
+      {(['expenses','balances','members','activity'] as const).map(t=>(<button key={t} onClick={()=>setTab(t)} style={{flex:1,padding:'10px 4px',fontSize:14,color:tab===t?'#1a1a1a':'#666',background:'transparent',border:'none',borderBottom:tab===t?'3px solid #1a1a1a':'none',textTransform:'capitalize'}}>{t}</button>))}
     </div>
     {tab==='expenses' && <>
       <div style={card}><h3 style={{marginTop:0}}>Spend by category</h3>
@@ -94,7 +118,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         <div style={{display:'flex',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}><div><strong>{e.description}</strong> <span style={{fontSize:12,background:'#eee',padding:'2px 6px',borderRadius:99}}>{e.category}</span> <span style={{fontSize:12,background:'#e8f0fe',padding:'2px 6px',borderRadius:99}}>{e.currency}</span><div style={{fontSize:13,color:'#666'}}>Paid by {e.payerName} · {fmtDate(e.date)}</div></div>
         <div style={{textAlign:'right'}}><div><strong>{e.display}</strong></div><div style={{fontSize:12,color:'#666'}}>{e.currency}</div></div></div>
         <div style={{fontSize:13,marginTop:6}}>{e.splits.map((s:any)=>{const m=group.members.find((x:any)=>x.id===s.member_id); return `${m?.name}: ${fmt(s.amount_minor,e.currency)}`;}).join(' · ')}</div>
-        <button style={{...btn,marginTop:8}} onClick={async()=>{try{await api(`/api/groups/${group.id}/expenses/${e.id}`,'DELETE'); reload();}catch(er:any){setError(er.message);}}}>Delete expense</button>
+        <AsyncButton style={{...btn,marginTop:8}} onClick={async()=>{try{await api(`/api/groups/${group.id}/expenses/${e.id}`,'DELETE'); reload();}catch(er:any){setError(er.message);}}}>Delete expense</AsyncButton>
       </div>))}
       {!showExpense && <div style={{position:'fixed',left:0,right:0,bottom:0,background:'#fff',borderTop:'1px solid #ddd',padding:12,textAlign:'center'}}><button style={primary} onClick={()=>setShowExpense(true)}>+ Add expense</button></div>}
     </>}
@@ -105,10 +129,10 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
       {group.suggestions.length===0 && <p>All settled.</p>}
       {group.suggestions.map((s:any,i:number)=>(<div key={i} style={card}>{s.fromName} owes {s.toName}: <strong>{s.display}</strong>{' '}<button style={primary} onClick={()=>setSettle(s)}>Settle</button></div>))}
       <h3>Recorded payments</h3>
-      {group.payments.map((p:any)=>(<div key={p.id} style={card}>{p.fromName} → {p.toName}: {p.display} · {fmtDate(p.date)} <button style={btn} onClick={async()=>{try{await api(`/api/groups/${group.id}/payments/${p.id}`,'DELETE'); reload();}catch(er:any){setError(er.message);}}}>Delete</button></div>))}
+      {group.payments.map((p:any)=>(<div key={p.id} style={card}>{p.fromName} → {p.toName}: {p.display} · {fmtDate(p.date)} <AsyncButton style={btn} onClick={async()=>{try{await api(`/api/groups/${group.id}/payments/${p.id}`,'DELETE'); reload();}catch(er:any){setError(er.message);}}}>Delete</AsyncButton></div>))}
     </>}
     {tab==='members' && <>
-      {group.members.map((m:any)=>(<div key={m.id} style={card}>{m.name}{m.email?` (${m.email})`:''}{m.user_id?'':' · placeholder — they can claim this by signing up with the same email'} <button style={btn} onClick={async()=>{try{await api(`/api/groups/${group.id}/members/${m.id}`,'DELETE'); reload();}catch(er:any){setError(er.message);}}}>Remove</button></div>))}
+      {group.members.map((m:any)=>(<div key={m.id} style={card}>{m.name}{m.email?` (${m.email})`:''}{m.user_id?'':' · placeholder — they can claim this by signing up with the same email'} <AsyncButton style={btn} onClick={async()=>{try{await api(`/api/groups/${group.id}/members/${m.id}`,'DELETE'); reload();}catch(er:any){setError(er.message);}}}>Remove</AsyncButton></div>))}
       <AddMember groupId={group.id} reload={reload} setError={setError} />
     </>}
     {tab==='activity' && <>
@@ -129,7 +153,7 @@ function AddMember({ groupId, reload, setError }: any) {
   return (<div style={card}><h3 style={{marginTop:0}}>Add member</h3>
     <input style={input} placeholder="Name" value={name} onChange={e=>setName(e.target.value)} />
     <input style={input} placeholder="Email (optional — links an existing account, or a placeholder they can claim)" value={email} onChange={e=>setEmail(e.target.value)} />
-    <button style={primary} onClick={async()=>{try{await api(`/api/groups/${groupId}/members`,'POST',{name,email:email||null}); setName(''); setEmail(''); reload();}catch(e:any){setError(e.message);}}}>Add member</button>
+    <AsyncButton style={primary} onClick={async()=>{try{await api(`/api/groups/${groupId}/members`,'POST',{name,email:email||null}); setName(''); setEmail(''); reload();}catch(e:any){setError(e.message);}}}>Add member</AsyncButton>
   </div>);
 }
 
@@ -154,13 +178,13 @@ function ExpenseModal({ group, onClose, reload, setError }: any) {
         {selected.includes(m.id) && splitType==='percent' && <input style={{...input,width:120,marginLeft:8}} placeholder="%" value={percents[m.id]||''} onChange={e=>setPercents({...percents,[m.id]:e.target.value})} />}
         {selected.includes(m.id) && splitType==='exact' && <input style={{...input,width:140,marginLeft:8}} placeholder={currency} value={exact[m.id]||''} onChange={e=>setExact({...exact,[m.id]:e.target.value})} />}
       </label>))}
-      <button style={primary} onClick={async()=>{
+      <AsyncButton style={primary} onClick={async()=>{
         const amountMinor = toMinor(amount, currency); if (amountMinor===null) { setError('Enter a valid positive amount'); return; }
         const body: any = { description, amountMinor, currency, date, paidByMemberId: payer, category, splitType, participants: selected };
         if (splitType==='percent') body.percents = selected.map(id=>Number(percents[id]||0));
         if (splitType==='exact') { const arr = selected.map(id=>toMinor(exact[id]||'', currency)); if (arr.some(v=>v===null)) { setError('Enter valid exact amounts'); return; } body.exactAmounts = arr; }
         try { await api(`/api/groups/${group.id}/expenses`,'POST',body); reload(); } catch(e:any){ setError(e.message); }
-      }}>Add expense</button>
+      }}>Add expense</AsyncButton>
     </div>
   </div>);
 }
@@ -177,7 +201,7 @@ function SettleModal({ group, suggestion, onClose, reload, setError }: any) {
       {remaining!==null && remaining>0 && <p style={{color:'#b45309'}}>Partial payment: {fmt(remaining, suggestion.currency)} will remain outstanding.</p>}
       {remaining!==null && remaining<0 && <p style={{color:'red'}}>Amount exceeds the outstanding {fmt(suggestion.amountMinor, suggestion.currency)}.</p>}
       <label>Date</label><div style={{marginBottom:10}}><DateField id="pay-date" value={date} onChange={setDate} /></div>
-      <button style={primary} disabled={minor===null || minor<=0 || minor>suggestion.amountMinor} onClick={async()=>{try{await api(`/api/groups/${group.id}/payments`,'POST',{fromMemberId:suggestion.fromMemberId,toMemberId:suggestion.toMemberId,amountMinor:minor,currency:suggestion.currency,date}); reload();}catch(e:any){setError(e.message);}}}>Settle</button>{' '}<button style={btn} onClick={onClose}>Cancel</button>
+      <AsyncButton style={primary} disabled={minor===null || minor<=0 || minor>suggestion.amountMinor} onClick={async()=>{try{await api(`/api/groups/${group.id}/payments`,'POST',{fromMemberId:suggestion.fromMemberId,toMemberId:suggestion.toMemberId,amountMinor:minor,currency:suggestion.currency,date}); reload();}catch(e:any){setError(e.message);}}}>Settle</AsyncButton>{' '}<button style={btn} onClick={onClose}>Cancel</button>
     </div>
   </div>);
 }
@@ -189,14 +213,14 @@ function SettingsModal({ group, onClose, reload, back, setError }: any) {
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h2>Group settings</h2><button style={btn} onClick={onClose}>Close</button></div>
       <label>Group name</label><input style={input} value={name} onChange={e=>setName(e.target.value)} />
       <label>Default currency (new expenses only — existing expenses keep their currency)</label><select style={input} value={cur} onChange={e=>setCur(e.target.value)}>{CURRENCIES.map(c=><option key={c}>{c}</option>)}</select>
-      <button style={primary} onClick={async()=>{try{await api(`/api/groups/${group.id}`,'PATCH',{name,defaultCurrency:cur}); reload();}catch(e:any){setError(e.message);}}}>Save settings</button>
+      <AsyncButton style={primary} onClick={async()=>{try{await api(`/api/groups/${group.id}`,'PATCH',{name,defaultCurrency:cur}); reload();}catch(e:any){setError(e.message);}}}>Save settings</AsyncButton>
       <hr style={{margin:'20px 0'}} />
       {group.isArchived
-        ? <button style={btn} onClick={async()=>{try{await api(`/api/groups/${group.id}/restore`,'POST'); reload();}catch(e:any){setError(e.message);}}}>Restore group</button>
-        : <button style={btn} onClick={async()=>{try{await api(`/api/groups/${group.id}/archive`,'POST'); reload();}catch(e:any){setError(e.message);}}}>Archive group</button>}
+        ? <AsyncButton style={btn} onClick={async()=>{try{await api(`/api/groups/${group.id}/restore`,'POST'); reload();}catch(e:any){setError(e.message);}}}>Restore group</AsyncButton>
+        : <AsyncButton style={btn} onClick={async()=>{try{await api(`/api/groups/${group.id}/archive`,'POST'); reload();}catch(e:any){setError(e.message);}}}>Archive group</AsyncButton>}
       <p style={{fontSize:13,color:'#666'}}>Archiving hides the group from the active list and preserves all expenses, payments, members and activity. It can be restored.</p>
       <div style={{marginTop:16}}>
-        <button style={{...btn, opacity: hasExpense?0.5:1, cursor: hasExpense?'not-allowed':'pointer'}} disabled={hasExpense} aria-disabled={hasExpense} onClick={async()=>{try{const r = await api(`/api/groups/${group.id}/leave`,'POST'); if (r.groupDeleted || r.groupArchived) back(); else reload();}catch(e:any){setError(e.message);}}}>Leave group</button>
+        <AsyncButton style={{...btn, opacity: hasExpense?0.5:1, cursor: hasExpense?'not-allowed':'pointer'}} disabled={hasExpense} aria-disabled={hasExpense} onClick={async()=>{try{const r = await api(`/api/groups/${group.id}/leave`,'POST'); if (r.groupDeleted || r.groupArchived) back(); else reload();}catch(e:any){setError(e.message);}}}>Leave group</AsyncButton>
         {hasExpense && <p style={{fontSize:13,color:'#666'}}>Leave is greyed out because you have an expense in this group, as payer or as a split participant — even if balances are settled. The server enforces the same rule.</p>}
         {!hasExpense && <p style={{fontSize:13,color:'#666'}}>You have no expenses in this group, so you can leave. If you are the last member, the group is deleted (it has no expenses to preserve).</p>}
       </div>
