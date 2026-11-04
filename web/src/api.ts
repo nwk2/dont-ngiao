@@ -2,7 +2,19 @@ const BASE = (import.meta as any).env?.VITE_API_URL || '';
 export function getToken() { return localStorage.getItem('dont-ngiao-token') || ''; }
 export function setToken(t: string | null) { if (t) localStorage.setItem('dont-ngiao-token', t); else localStorage.removeItem('dont-ngiao-token'); }
 export async function api(path: string, method = 'GET', body?: any) {
-  const res = await fetch(BASE + path, { method, headers: { 'Content-Type': 'application/json', ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  // Network failures carry the method + path, not just the browser's
+  // bare message: Safari reports a fetch rejection as only "Load
+  // failed", which on its own does not say WHICH request failed — the
+  // Settings Save failure in Nov 2026 was diagnosed only by screenshot
+  // context, not by the error text. A server error still throws
+  // data.error unchanged; only a fetch rejection gets the suffix, so
+  // existing server-error strings are not altered.
+  let res: Response;
+  try {
+    res = await fetch(BASE + path, { method, headers: { 'Content-Type': 'application/json', ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  } catch (e: any) {
+    throw new Error(`${e?.message || 'Network error'} (${method} ${path})`);
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
   return data;

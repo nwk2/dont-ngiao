@@ -111,14 +111,6 @@ export default function App() {
   const [groupLoading, setGroupLoading] = useState(false);
   const loadSeq = useRef(0);
   const restoredRef = useRef(false);
-  // Back during the auth-checking skeleton: if the checking skeleton is a
-  // GroupSkeleton (because a group was saved), tapping its ← Groups must
-  // cancel the pending restore, otherwise restoreSaved (created in the
-  // mount-time /api/me closure) would still load the group after auth.
-  // The ref is what restoreSaved checks (state alone would be stale in
-  // that closure); the state is what flips the render to HomeSkeleton.
-  const skipRestoreRef = useRef(false);
-  const [skipRestore, setSkipRestore] = useState(false);
   const [tab, setTab] = useState<'expenses'|'balances'|'members'|'activity'>('expenses');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -145,7 +137,7 @@ export default function App() {
   // loadGroup set, so refresh lands cleanly on Home with no banner: the
   // group is simply gone, and an error on a fresh load would be noise.
   async function restoreSaved() {
-    if (restoredRef.current || skipRestoreRef.current) return;
+    if (restoredRef.current) return;
     restoredRef.current = true;
     const saved = readSavedGroup();
     if (!saved) return;
@@ -180,11 +172,11 @@ export default function App() {
   // destination is Home, so HomeSkeleton (with its real title, which is
   // also the Home page title) is correct and causes no flash.
   if (authState === 'checking') {
-    if (!skipRestore && readSavedGroup()) return <GroupSkeleton onBack={()=>{ skipRestoreRef.current = true; setSkipRestore(true); }} />;
+    if (readSavedGroup()) return <GroupSkeleton />;
     return <HomeSkeleton user={null} />;
   }
   if (authState === 'guest' || !user) return <Auth onAuth={doAuth} error={error} loading={loading} />;
-  if (groupLoading) return <GroupSkeleton onBack={()=>{ loadSeq.current++; setGroupLoading(false); }} />;
+  if (groupLoading) return <GroupSkeleton />;
   if (group) return <GroupView group={group} setGroup={setGroup} tab={tab} setTab={setTab} back={()=>{setGroup(null); loadGroups();}} reload={()=>loadGroup(group.id)} error={error} setError={setError} />;
   if (!groups) return <HomeSkeleton user={user} />;
   return <Home user={user} setUser={setUser} onLogout={doLogout} groups={groups} loadGroups={loadGroups} loadGroup={(id: string)=>loadGroup(id, { skeleton: true })} error={error} setError={setError} />;
@@ -209,9 +201,18 @@ function HomeSkeleton({ user }: { user: any }) {
     {[0,1,2].map(i => (<div key={i} style={card}><Sk w="55%" h={20} /><div style={{marginTop:8}}><Sk w="85%" h={14} /></div><div style={{marginTop:8}}><Sk w="40%" h={14} /></div></div>))}
   </div>);
 }
-function GroupSkeleton({ onBack }: { onBack: () => void }) {
+// GroupSkeleton is ALL skeleton, no real buttons: the ← Groups button
+// used to be a real, tappable button (so a user could cancel a pending
+// group load), while Settings and everything else were grey blocks —
+// which read as a half-loaded page, not a skeleton. Now the top row is
+// two grey pills, matching the real top row's sizes, and Back works
+// immediately after the group loads. Trade-off, stated plainly: you can
+// no longer cancel a group load mid-flight from the skeleton; loads are
+// normally <1s, so waiting for the real back button is the cheaper
+// consistency cost.
+function GroupSkeleton() {
   return (<div style={S} aria-label="Loading group">
-    <div style={{display:'flex',gap:8,alignItems:'center'}}><button style={btn} onClick={onBack}>← Groups</button><Sk w={90} h={38} r={999} /></div>
+    <div style={{display:'flex',gap:8,alignItems:'center'}}><Sk w={140} h={38} r={999} /><Sk w={90} h={38} r={999} /></div>
     <div style={{marginTop:16}}><Sk w="60%" h={28} /></div>
     <div style={{marginTop:8}}><Sk w="45%" h={16} /></div>
     <div style={{display:'flex',gap:0,borderBottom:'1px solid #333',margin:'16px 0 12px'}}>{[0,1,2,3].map(i => (<div key={i} style={{flex:1,padding:'10px 4px',display:'flex',justifyContent:'center'}}><Sk w={56} h={14} /></div>))}</div>
