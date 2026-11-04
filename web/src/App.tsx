@@ -318,7 +318,22 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}><button style={catView==='group'?catControlActive:catControl} onClick={()=>setCatView('group')}>Group</button><button style={catView==='mine'?catControlActive:catControl} onClick={()=>setCatView('mine')}>Mine</button>
         {currencies.length>1 && <select style={catControl} value={cur} onChange={e=>setCatCur(e.target.value)}>{currencies.map(c=><option key={c}>{c}</option>)}</select>}
         <button style={catChart==='pie'?catControlActive:catControl} onClick={()=>setCatChart('pie')}>Pie</button><button style={catChart==='bar'?catControlActive:catControl} onClick={()=>setCatChart('bar')}>Bar</button></div>
-        {catChart==='pie' ? <Pie data={catData} currency={cur} /> : <DailyBar expenses={group.expenses} myMemberId={group.myMemberId} view={catView} currency={cur} />}
+        {/* Carousel, slide-on-tap (not swipe): both panels stay mounted in a
+        200%-wide flex track, so tapping Pie/Bar (or a dot) slides the track
+        instead of swapping instantly. Swipe is deliberately NOT added:
+        the bar panel scrolls horizontally on its own when there are many
+        days, and a swipe gesture on the chart would conflict with scrolling
+        those days. Dots and Pie/Bar buttons control the same catChart state. */}
+        <div style={{overflow:'hidden',width:'100%'}}>
+          <div style={{display:'flex',width:'200%',transition:'transform 0.3s ease',transform:catChart==='pie' ? 'translateX(0)' : 'translateX(-50%)'}}>
+            <div style={{width:'50%',flexShrink:0,boxSizing:'border-box'}}><Pie data={catData} currency={cur} /></div>
+            <div style={{width:'50%',flexShrink:0,boxSizing:'border-box'}}><DailyBar expenses={group.expenses} myMemberId={group.myMemberId} view={catView} currency={cur} /></div>
+          </div>
+        </div>
+        <div style={{display:'flex',justifyContent:'center',gap:8,marginTop:8}}>
+          <button type="button" aria-label="Show pie chart" style={{width:8,height:8,borderRadius:'50%',border:'none',padding:0,cursor:'pointer',background:catChart==='pie' ? '#2dd4bf' : '#333'}} onClick={()=>setCatChart('pie')} />
+          <button type="button" aria-label="Show bar chart" style={{width:8,height:8,borderRadius:'50%',border:'none',padding:0,cursor:'pointer',background:catChart==='bar' ? '#2dd4bf' : '#333'}} onClick={()=>setCatChart('bar')} />
+        </div>
         <p style={{fontSize:12,color:'#a3a3a3'}}>{catView==='mine' ? 'Mine = your split shares only. Other members\' individual breakdowns are never sent to you.' : 'Group = total spend for the whole group.'} Pie = overall breakdown. Bar = spend per day, stacked by category. Per currency only, never converted.</p>
       </div>
       {group.expenses.length===0 && <p>No expenses yet.</p>}
