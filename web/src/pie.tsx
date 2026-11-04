@@ -13,8 +13,12 @@ export function Pie({ data, currency }: { data: Record<string, number>; currency
     const x0 = 100+80*Math.sin(a0), y0 = 100-80*Math.cos(a0), x1 = 100+80*Math.sin(a1), y1 = 100-80*Math.cos(a1);
     return { cat, v, color: COLORS[i % COLORS.length], d: `M100,100 L${x0},${y0} A80,80 0 ${large} 1 ${x1},${y1} Z` };
   });
+  // A 100% slice has identical arc start/end points, which renders as
+  // nothing in SVG — so a single-category pie would show a blank area.
+  // Render a full circle for a 100% slice instead; other slices keep arcs.
+  const isFullCircle = slices.length === 1;
   return (<div>
-    <svg viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="Spend by category pie chart">{slices.map(s=><path key={s.cat} d={s.d} fill={s.color}/>)}</svg>
+    <svg viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="Spend by category pie chart">{isFullCircle ? <circle cx={100} cy={100} r={80} fill={slices[0].color}/> : slices.map(s=><path key={s.cat} d={s.d} fill={s.color}/>)}</svg>
     <ul style={{listStyle:'none',padding:0}}>{slices.map(s=><li key={s.cat}><span style={{display:'inline-block',width:10,height:10,background:s.color,marginRight:6}}/> {s.cat}: {fmt(s.v, currency)} ({((s.v/total)*100).toFixed(1)}%)</li>)}</ul>
   </div>);
 }

@@ -4,7 +4,11 @@ import { DateField, fmtDate, todayIso } from './calendar';
 import { Pie } from './pie';
 
 const S = { maxW: 640, margin: '0 auto', padding: '16px', paddingBottom: 90 } as const;
-const card: React.CSSProperties = { background:'#1c1c1e', border:'1px solid #2e2e2e', borderRadius:16, padding:14, marginBottom:12, color:'#f5f5f5' };
+const card: React.CSSProperties = { background:'#1c1c1e', border:'1px solid #2e2e2e', borderRadius:16, padding:14, marginBottom:12, color:'#f5f5f5', lineHeight:1.45 };
+const rowCard: React.CSSProperties = { ...card, padding:'12px 14px', lineHeight:1.4 };
+const avatar: React.CSSProperties = { width:40, height:40, borderRadius:'50%', background:'#65a30d', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:15, flexShrink:0 };
+const noAccountChip: React.CSSProperties = { fontSize:11, background:'#422006', color:'#fbbf24', padding:'2px 8px', borderRadius:99, fontWeight:600, whiteSpace:'nowrap', marginLeft:8, verticalAlign:'middle' };
+const currencyChip: React.CSSProperties = { fontSize:12, background:'#134e4a', padding:'3px 10px', borderRadius:99, color:'#5eead4', fontWeight:600, whiteSpace:'nowrap' };
 const btn: React.CSSProperties = { padding:'9px 14px', borderRadius:10, border:'1px solid #333', background:'#242424', color:'#fff' };
 const primary: React.CSSProperties = { ...btn, background:'#2dd4bf', color:'#0f172a', borderColor:'#2dd4bf', fontWeight:600 };
 const input: React.CSSProperties = { width:'100%', boxSizing:'border-box', padding:'10px', border:'1px solid #333', borderRadius:10, margin:'4px 0 10px', background:'#242424', color:'#fff' };
@@ -72,7 +76,7 @@ function Home({ user, setUser, groups, loadGroups, loadGroup, error, setError }:
           <button style={btn} onClick={()=>{setEditingName(false); setNameDraft(user.name);}}>Cancel</button>
         </div>) : (<>
           <div style={{fontSize:20,fontWeight:700}}>Hi, {user.name}</div>
-          <div style={{fontSize:13,color:'#a3a3a3',overflow:'hidden',textOverflow:'ellipsis'}}>{user.email}</div>
+          <div style={{fontSize:13,color:'#a3a3a3',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',lineHeight:1.4}}>{user.email}</div>
         </>)}
       </div>
       {!editingName && <><button style={btn} onClick={()=>{setNameDraft(user.name); setEditingName(true);}}>Edit name</button>
@@ -105,7 +109,7 @@ function Home({ user, setUser, groups, loadGroups, loadGroup, error, setError }:
         {my.length>0 && <div style={{marginTop:8}}>{my.map((b:any)=>(<div key={b.currency} style={{fontSize:14,color:b.balance>0?'#5eead4':b.balance<0?'#f87171':'#a3a3a3'}}>{fmt(b.balance,b.currency)} {b.balance>0?'owed to you':b.balance<0?'you owe':'settled'}</div>))}</div>}
       </div>);
     })}
-    {groups?.archived?.length > 0 && <><h2>Archived groups</h2>{groups.archived.map((g:any)=>(<div key={g.id} style={card}><strong>{g.name}</strong>{' '}<AsyncButton style={btn} onClick={async()=>{await api(`/api/groups/${g.id}/restore`,'POST'); loadGroups();}}>Restore</AsyncButton>{' '}<AsyncButton style={btn} onClick={()=>loadGroup(g.id)}>Open</AsyncButton></div>))}</>}
+    {groups?.archived?.length > 0 && <><h2>Archived groups</h2>{groups.archived.map((g:any)=>(<div key={g.id} style={{...rowCard,display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}><strong style={{flex:1,minWidth:0}}>{g.name}</strong><span style={{display:'flex',gap:8,flexShrink:0}}><AsyncButton style={btn} onClick={async()=>{await api(`/api/groups/${g.id}/restore`,'POST'); loadGroups();}}>Restore</AsyncButton><AsyncButton style={btn} onClick={()=>loadGroup(g.id)}>Open</AsyncButton></span></div>))}</>}
     <div style={{...card,marginTop:20}}>
       <h3 style={{marginTop:0}}>How settling works here</h3>
       <p style={{fontSize:13,color:'#a3a3a3',marginBottom:0}}>Balances are per currency and never converted. Recording a payment never moves real money — it just records that money changed hands. Settle from a group's Balances tab, for one currency at a time.</p>
@@ -150,11 +154,13 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
   const cur = catCur || currencies[0] || group.defaultCurrency;
   const catData = (catView==='group' ? group.categoryGroup?.[cur] : group.categoryMine?.[cur]) || {};
   return (<div style={S}>
-    <button style={btn} onClick={back}>← Groups</button>{' '}
-    <button style={btn} onClick={()=>setShowSettings(true)} aria-label="Group settings">⚙ Settings</button>
+    <div style={{display:'flex',gap:8,alignItems:'center'}}>
+      <button style={btn} onClick={back}>← Groups</button>
+      <button style={btn} onClick={()=>setShowSettings(true)} aria-label="Group settings">⚙ Settings</button>
+    </div>
     <h1 style={{marginBottom:4}}>{group.name}</h1>
     {group.isArchived && <p style={{background:'#422006',padding:8,borderRadius:8}}>This group is archived. Restore it from Settings or the home screen to edit it again.</p>}
-    <p style={{color:'#a3a3a3',marginTop:0}}>Default currency: {group.defaultCurrency} · {group.members.length} members</p>
+    <p style={{color:'#a3a3a3',marginTop:0,lineHeight:1.4}}>Default currency: {group.defaultCurrency} · {group.members.length} members</p>
     {error && <p style={{color:'#f87171'}}>{error}</p>}
     <div style={{display:'flex',gap:0,borderBottom:'1px solid #333',marginBottom:12,background:'#1c1c1e'}}>
       {(['expenses','balances','members','activity'] as const).map(t=>(<button key={t} onClick={()=>setTab(t)} style={{flex:1,padding:'10px 4px',fontSize:14,color:tab===t?'#fff':'#a3a3a3',background:'transparent',border:'none',borderBottom:tab===t?'3px solid #2dd4bf':'none',textTransform:'capitalize'}}>{t}</button>))}
@@ -177,15 +183,46 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
     </>}
     {tab==='balances' && <>
       {group.balances.length===0 && <p>No balances yet.</p>}
-      {group.balances.map((b:any)=>(<div key={b.memberId+b.currency} style={card}>{b.memberName}: {b.display} <span style={{color:'#a3a3a3'}}>({b.currency})</span></div>))}
+      {(() => {
+        const balCurrencies: string[] = [];
+        for (const b of group.balances) if (!balCurrencies.includes(b.currency)) balCurrencies.push(b.currency);
+        return balCurrencies.map((cur, ci) => {
+          const spent = group.expenses.filter((e:any)=>e.currency===cur).reduce((sum:number,e:any)=>sum+e.amount_minor, 0);
+          return (<div key={cur}>
+            <div style={{display:'flex',alignItems:'center',gap:8,margin:`${ci===0?0:16}px 0 8px`}}>
+              <span style={currencyChip}>{cur}</span>
+              <span style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4}}>{fmt(spent, cur)} spent</span>
+            </div>
+            {group.balances.filter((b:any)=>b.currency===cur).map((b:any)=>{
+              const member = group.members.find((x:any)=>x.id===b.memberId);
+              const displayName = b.memberId===group.myMemberId ? `You (${b.memberName})` : b.memberName;
+              return (<div key={b.memberId+b.currency} style={{...rowCard,display:'flex',alignItems:'center',gap:12}}>
+                <div style={avatar}>{initials(b.memberName)}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:600,lineHeight:1.4}}>{displayName}{member && !member.user_id ? <span style={noAccountChip}>No account yet</span> : null}</div>
+                  <div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4}}>Paid {fmt(b.paid ?? 0, cur)} · share {fmt(b.share ?? 0, cur)}</div>
+                </div>
+                <strong style={{color:b.balance>0?'#5eead4':b.balance<0?'#f87171':'#a3a3a3',fontSize:16,whiteSpace:'nowrap',flexShrink:0,textAlign:'right'}}>{b.balance>0?'+':''}{b.display}</strong>
+              </div>);
+            })}
+          </div>);
+        });
+      })()}
       <h3>Settle up</h3>
       {group.suggestions.length===0 && <p>All settled.</p>}
-      {group.suggestions.map((s:any,i:number)=>(<div key={i} style={card}>{s.fromName} owes {s.toName}: <strong>{s.display}</strong>{' '}<button style={primary} onClick={()=>setSettle(s)}>Settle</button></div>))}
+      {group.suggestions.map((s:any,i:number)=>(<div key={i} style={{...rowCard,display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}><div style={{flex:1,minWidth:0,lineHeight:1.4}}>{s.fromName} owes {s.toName}: <strong>{s.display}</strong></div><button style={{...primary,flexShrink:0}} onClick={()=>setSettle(s)}>Settle</button></div>))}
       <h3>Recorded payments</h3>
-      {group.payments.map((p:any)=>(<div key={p.id} style={card}>{p.fromName} → {p.toName}: {p.display} · {fmtDate(p.date)} <AsyncButton style={btn} onClick={async()=>{try{await api(`/api/groups/${group.id}/payments/${p.id}`,'DELETE'); reload();}catch(er:any){setError(er.message);}}}>Delete</AsyncButton></div>))}
+      {group.payments.map((p:any)=>(<div key={p.id} style={{...rowCard,display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}><div style={{flex:1,minWidth:0,lineHeight:1.4}}>{p.fromName} → {p.toName}: {p.display} · {fmtDate(p.date)}</div><AsyncButton style={{...btn,flexShrink:0}} onClick={async()=>{try{await api(`/api/groups/${group.id}/payments/${p.id}`,'DELETE'); reload();}catch(er:any){setError(er.message);}}}>Delete</AsyncButton></div>))}
     </>}
     {tab==='members' && <>
-      {group.members.map((m:any)=>(<div key={m.id} style={card}>{m.name}{m.email?` (${m.email})`:''}{m.user_id?'':' · placeholder — they can claim this by signing up with the same email'} <AsyncButton style={btn} onClick={async()=>{try{await api(`/api/groups/${group.id}/members/${m.id}`,'DELETE'); reload();}catch(er:any){setError(er.message);}}}>Remove</AsyncButton></div>))}
+      {group.members.map((m:any)=>(<div key={m.id} style={{...rowCard,display:'flex',alignItems:'center',gap:12}}>
+        <div style={avatar}>{initials(m.name)}</div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:600,lineHeight:1.4}}>{m.name}{!m.user_id ? <span style={noAccountChip}>No account yet</span> : null}</div>
+          <div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4,overflow:m.email?'hidden':undefined,textOverflow:m.email?'ellipsis':undefined,whiteSpace:m.email?'nowrap':undefined}}>{m.email ? m.email : 'Placeholder — they can claim this by signing up with the same email'}</div>
+        </div>
+        <AsyncButton style={{...btn,flexShrink:0}} onClick={async()=>{try{await api(`/api/groups/${group.id}/members/${m.id}`,'DELETE'); reload();}catch(er:any){setError(er.message);}}}>Remove</AsyncButton>
+      </div>))}
       <AddMember groupId={group.id} reload={reload} setError={setError} />
     </>}
     {tab==='activity' && <>
@@ -205,7 +242,8 @@ function AddMember({ groupId, reload, setError }: any) {
   const [name, setName] = useState(''); const [email, setEmail] = useState('');
   return (<div style={card}><h3 style={{marginTop:0}}>Add member</h3>
     <input style={input} placeholder="Name" value={name} onChange={e=>setName(e.target.value)} />
-    <input style={input} placeholder="Email (optional — links an existing account, or a placeholder they can claim)" value={email} onChange={e=>setEmail(e.target.value)} />
+    <input style={input} placeholder="Email (optional)" value={email} onChange={e=>setEmail(e.target.value)} />
+    <p style={{fontSize:13,color:'#a3a3a3',marginTop:-6,marginBottom:10,lineHeight:1.4}}>Links an existing account, or a placeholder they can claim.</p>
     <AsyncButton style={primary} onClick={async()=>{try{await api(`/api/groups/${groupId}/members`,'POST',{name,email:email||null}); setName(''); setEmail(''); reload();}catch(e:any){setError(e.message);}}}>Add member</AsyncButton>
   </div>);
 }
