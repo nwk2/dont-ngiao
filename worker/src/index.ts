@@ -58,15 +58,19 @@ function newSalt(): string {
 async function authUser(req: Request, env: Env): Promise<Row | null> {
   const tok = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   if (!tok) return null;
-  // MIGRATION SAFETY: sessions.last_seen_at only exists after migration
-  // 0002 is applied. Selecting it before then throws, so fall back to a
-  // query without it — expiry then uses created_at (a fixed 14 days)
-  // instead of the sliding window, and auth keeps working.
+  // MEDIUM FIX, Nov 2026: sessions + users used to be two sequential
+  // queries on EVERY request. One JOIN does it in one round-trip.
+  // MIGRATION SAFETY (unchanged): sessions.last_seen_at only exists
+  // after migration 0002. Selecting it before then throws, so fall
+  // back to a JOIN without it — expiry then uses the session's
+  // created_at (a fixed 14 days) instead of the sliding window.
+  // Aliases matter: users.created_at and sessions.created_at are
+  // different dates; expiry uses the SESSION's dates only.
   let s: Row | null = null;
-  try { s = await env.DB.prepare('SELECT user_id, created_at, last_seen_at FROM sessions WHERE token=?').bind(tok).first<Row>(); }
-  catch { s = await env.DB.prepare('SELECT user_id, created_at FROM sessions WHERE token=?').bind(tok).first<Row>(); }
+  try { s = await env.DB.prepare('SELECT u.id, u.name, u.email, u.created_at, s.created_at AS session_created_at, s.last_seen_at AS session_last_seen_at FROM users u JOIN sessions s ON s.user_id = u.id WHERE s.token=?').bind(tok).first<Row>(); }
+  catch { s = await env.DB.prepare('SELECT u.id, u.name, u.email, u.created_at, s.created_at AS session_created_at FROM users u JOIN sessions s ON s.user_id = u.id WHERE s.token=?').bind(tok).first<Row>(); }
   if (!s) return null;
-  const lastActivity = s.last_seen_at || s.created_at;
+  const lastActivity = s.session_last_seen_at || s.session_created_at;
   const lastMs = Date.parse(String(lastActivity));
   if (Number.isFinite(lastMs) && Date.now() - lastMs > SESSION_TTL_MS) {
     // Expired: delete so the token cannot be reused, then 401 downstream.
@@ -79,7 +83,7 @@ async function authUser(req: Request, env: Env): Promise<Row | null> {
   if (Number.isFinite(lastMs) && Date.now() - lastMs > SESSION_TOUCH_INTERVAL_MS) {
     try { await env.DB.prepare('UPDATE sessions SET last_seen_at=? WHERE token=?').bind(nowIso(), tok).run(); } catch {}
   }
-  return env.DB.prepare('SELECT id, name, email, created_at FROM users WHERE id=?').bind(s.user_id).first<Row>();
+  return { id: s.id, name: s.name, email: s.email, created_at: s.created_at };
 }
 async function myMember(env: Env, groupId: string, userId: string): Promise<Row | null> {
   return env.DB.prepare('SELECT * FROM group_members WHERE group_id=? AND user_id=?').bind(groupId, userId).first<Row>();
@@ -116,6 +120,18 @@ async function rateClear(env: Env, kind: string, key: string): Promise<void> {
 async function logActivity(env: Env, groupId: string, actor: string, type: string, amountMinor: number | null, currency: string | null, detail: string) {
   await env.DB.prepare('INSERT INTO activity_log (id, group_id, actor_name, type, amount_minor, currency, detail, created_at) VALUES (?,?,?,?,?,?,?,?)')
     .bind(uid(), groupId, actor, type, amountMinor, currency, detail, nowIso()).run();
+}
+// MEDIUM FIX, Nov 2026: batched writes need the activity INSERT as a
+// prepared statement, not an executed one, so it can go into the same
+// env.DB.batch() call as the main write. D1 batch() runs its statements
+// in a single transaction: if any statement fails, all roll back —
+// that is what makes the batched writes below atomic, not just faster.
+// Kept separate from logActivity() (which is still used by the
+// sequential paths: leave, add member, edit email, where a specific
+// error mapping — e.g. 409 for a duplicate email — must stay precise).
+function activityStmt(env: Env, groupId: string, actor: string, type: string, amountMinor: number | null, currency: string | null, detail: string) {
+  return env.DB.prepare('INSERT INTO activity_log (id, group_id, actor_name, type, amount_minor, currency, detail, created_at) VALUES (?,?,?,?,?,?,?,?)')
+    .bind(uid(), groupId, actor, type, amountMinor, currency, detail, nowIso());
 }
 async function claimPlaceholders(env: Env, user: Row) {
   await env.DB.prepare('UPDATE group_members SET user_id=? WHERE email=? AND user_id IS NULL').bind(user.id, user.email).run();
@@ -244,9 +260,14 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       if (!name) return err('Group name is required', 400, origin);
       if (!(CURRENCIES as readonly string[]).includes(currency)) return err('Invalid currency', 400, origin);
       const gid = uid();
-      await env.DB.prepare('INSERT INTO groups (id,name,default_currency,is_archived,created_at,created_by_user_id) VALUES (?,?,?,?,?,?)').bind(gid, name, currency, 0, nowIso(), user.id).run();
-      await env.DB.prepare('INSERT INTO group_members (id,group_id,user_id,name,email,created_at) VALUES (?,?,?,?,?,?)').bind(uid(), gid, user.id, user.name, user.email, nowIso()).run();
-      await logActivity(env, gid, user.name, 'group_created', null, null, name);
+      // Batched + atomic: group + creator member + activity in one
+      // transaction. Previously, if the member INSERT failed, the group
+      // row stayed behind as an orphan no one belonged to.
+      await env.DB.batch([
+        env.DB.prepare('INSERT INTO groups (id,name,default_currency,is_archived,created_at,created_by_user_id) VALUES (?,?,?,?,?,?)').bind(gid, name, currency, 0, nowIso(), user.id),
+        env.DB.prepare('INSERT INTO group_members (id,group_id,user_id,name,email,created_at) VALUES (?,?,?,?,?,?)').bind(uid(), gid, user.id, user.name, user.email, nowIso()),
+        activityStmt(env, gid, user.name, 'group_created', null, null, name),
+      ]);
       return json({ id: gid, name, icon: null, defaultCurrency: currency, isArchived: false }, 201, origin);
     }
 
@@ -254,9 +275,16 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
     const gm = path.match(/^\/api\/groups\/([^/]+)(?:\/(.*))?$/);
     if (gm) {
       const groupId = decodeURIComponent(gm[1]); const sub = gm[2] || '';
-      const g = await env.DB.prepare('SELECT * FROM groups WHERE id=?').bind(groupId).first<Row>();
+      // MEDIUM FIX, Nov 2026: the group lookup is independent of auth,
+      // so run it concurrently with requireMember (auth + member lookup)
+      // instead of sequentially before it. Error precedence is preserved
+      // in code below (404 checked before the auth response), even
+      // though the queries run in parallel.
+      const [g, auth] = await Promise.all([
+        env.DB.prepare('SELECT * FROM groups WHERE id=?').bind(groupId).first<Row>(),
+        requireMember(req, env, groupId, origin),
+      ]);
       if (!g) return err('Group not found', 404, origin);
-      const auth = await requireMember(req, env, groupId, origin);
       if (auth instanceof Response) return auth;
       const { user, member } = auth;
 
@@ -266,14 +294,17 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         const currency = body.defaultCurrency !== undefined ? String(body.defaultCurrency) : g.default_currency;
         if (!name) return err('Group name is required', 400, origin);
         if (!(CURRENCIES as readonly string[]).includes(currency)) return err('Invalid currency', 400, origin);
-        await env.DB.prepare('UPDATE groups SET name=?, default_currency=? WHERE id=?').bind(name, currency, groupId).run();
-        if (name !== g.name) await logActivity(env, groupId, user.name, 'group_renamed', null, null, `${g.name} -> ${name}`);
-        if (currency !== g.default_currency) await logActivity(env, groupId, user.name, 'group_currency_changed', null, currency, `Default currency ${g.default_currency} -> ${currency} (new expenses only)`);
+        const patchStmts: any[] = [env.DB.prepare('UPDATE groups SET name=?, default_currency=? WHERE id=?').bind(name, currency, groupId)];
+        if (name !== g.name) patchStmts.push(activityStmt(env, groupId, user.name, 'group_renamed', null, null, `${g.name} -> ${name}`));
+        if (currency !== g.default_currency) patchStmts.push(activityStmt(env, groupId, user.name, 'group_currency_changed', null, currency, `Default currency ${g.default_currency} -> ${currency} (new expenses only)`));
+        await env.DB.batch(patchStmts);
         return json(await groupDetail(env, { ...g, name, default_currency: currency }, user.id), 200, origin);
       }
       if (sub === 'archive' && req.method === 'POST') {
-        await env.DB.prepare('UPDATE groups SET is_archived=1 WHERE id=?').bind(groupId).run();
-        await logActivity(env, groupId, user.name, 'group_archived', null, null, g.name);
+        await env.DB.batch([
+          env.DB.prepare('UPDATE groups SET is_archived=1 WHERE id=?').bind(groupId),
+          activityStmt(env, groupId, user.name, 'group_archived', null, null, g.name),
+        ]);
         // Return full detail (not just {ok}) so the frontend can use it
         // directly instead of refetching — same pattern as every other
         // group write. Note the is_archived flag must be passed explicitly:
@@ -282,8 +313,10 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         return json(await groupDetail(env, { ...g, is_archived: 1 }, user.id), 200, origin);
       }
       if (sub === 'restore' && req.method === 'POST') {
-        await env.DB.prepare('UPDATE groups SET is_archived=0 WHERE id=?').bind(groupId).run();
-        await logActivity(env, groupId, user.name, 'group_restored', null, null, g.name);
+        await env.DB.batch([
+          env.DB.prepare('UPDATE groups SET is_archived=0 WHERE id=?').bind(groupId),
+          activityStmt(env, groupId, user.name, 'group_restored', null, null, g.name),
+        ]);
         return json(await groupDetail(env, { ...g, is_archived: 0 }, user.id), 200, origin);
       }
       if (sub === 'leave' && req.method === 'POST') {
@@ -343,8 +376,10 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         const summary = await groupSummary(env, groupId, user.id);
         const bal = summary.balances.find(b => b.memberId === targetId);
         if (bal && bal.balance !== 0) return err('Member must have a zero balance to be removed', 403, origin);
-        await env.DB.prepare('DELETE FROM group_members WHERE id=?').bind(targetId).run();
-        await logActivity(env, groupId, user.name, 'member_removed', null, null, target.name);
+        await env.DB.batch([
+          env.DB.prepare('DELETE FROM group_members WHERE id=?').bind(targetId),
+          activityStmt(env, groupId, user.name, 'member_removed', null, null, target.name),
+        ]);
         return json(await groupDetail(env, g, user.id), 200, origin);
       }
       if (sub === 'expenses' && req.method === 'POST') return addExpense(env, g, user, body, origin);
@@ -352,8 +387,10 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       if (de && req.method === 'DELETE') {
         const e = await env.DB.prepare('SELECT * FROM expenses WHERE id=? AND group_id=?').bind(decodeURIComponent(de[1]), groupId).first<Row>();
         if (!e) return err('Expense not found', 404, origin);
-        await env.DB.prepare('DELETE FROM expenses WHERE id=?').bind(e.id).run();
-        await logActivity(env, groupId, user.name, 'expense_deleted', e.amount_minor, e.currency, e.description);
+        await env.DB.batch([
+          env.DB.prepare('DELETE FROM expenses WHERE id=?').bind(e.id),
+          activityStmt(env, groupId, user.name, 'expense_deleted', e.amount_minor, e.currency, e.description),
+        ]);
         return json(await groupDetail(env, g, user.id), 200, origin);
       }
       if (sub === 'payments' && req.method === 'POST') return recordPayment(env, g, user, body, origin);
@@ -361,8 +398,10 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       if (dp && req.method === 'DELETE') {
         const p = await env.DB.prepare('SELECT * FROM payments WHERE id=? AND group_id=?').bind(decodeURIComponent(dp[1]), groupId).first<Row>();
         if (!p) return err('Payment not found', 404, origin);
-        await env.DB.prepare('DELETE FROM payments WHERE id=?').bind(p.id).run();
-        await logActivity(env, groupId, user.name, 'payment_deleted', p.amount_minor, p.currency, `${p.from_member_id} -> ${p.to_member_id}`);
+        await env.DB.batch([
+          env.DB.prepare('DELETE FROM payments WHERE id=?').bind(p.id),
+          activityStmt(env, groupId, user.name, 'payment_deleted', p.amount_minor, p.currency, `${p.from_member_id} -> ${p.to_member_id}`),
+        ]);
         return json(await groupDetail(env, g, user.id), 200, origin);
       }
       return err('Not found', 404, origin);
@@ -433,7 +472,18 @@ async function groupDetail(env: Env, g: Row, userId: string) {
   // Reuse the splits already fetched by groupSummary — do NOT re-query
   // per expense here (that was a second N-query loop on top of the first).
   const splitsByExpense = s.splitsByExpense;
-  const activity = await env.DB.prepare('SELECT * FROM activity_log WHERE group_id=? ORDER BY created_at DESC LIMIT 200').bind(g.id).all<Row>();
+  // MEDIUM FIX, Nov 2026: activity and myHasExpense are independent
+  // (both need only the group id + my member id, both already known
+  // here), so fetch them in parallel instead of sequentially. They are
+  // NOT removed from groupDetail: the frontend needs activity on the
+  // Activity tab, myHasExpense for the Leave grey-out, and the category
+  // breakdowns on Expenses — a true lazy load would need new endpoints
+  // + frontend tab-triggered fetches, which is a bigger change for a
+  // saving of only ~2 queries; the parallel fetch gets most of it.
+  const [activity, myHas] = await Promise.all([
+    env.DB.prepare('SELECT * FROM activity_log WHERE group_id=? ORDER BY created_at DESC LIMIT 200').bind(g.id).all<Row>(),
+    myMemberRow ? hasAnyExpense(env, g.id, myMemberRow.id) : Promise.resolve(false),
+  ]);
   const suggestions: any[] = [];
   const byCur = new Map<string, {memberId:string; balance:number}[]>();
   for (const b of s.balances) { if (!byCur.has(b.currency)) byCur.set(b.currency, []); byCur.get(b.currency)!.push({memberId:b.memberId, balance:b.balance}); }
@@ -457,7 +507,7 @@ async function groupDetail(env: Env, g: Row, userId: string) {
     categoryGroup: catGroup, categoryMine: catMine,
     activity: activity.results||[],
     myMemberId: myMemberRow?.id || null,
-    myHasExpense: myMemberRow ? await hasAnyExpense(env, g.id, myMemberRow.id) : false,
+    myHasExpense: myHas,
   };
 }
 
@@ -489,10 +539,17 @@ async function addExpense(env: Env, g: Row, user: Row, body: any, origin: string
   } else return err('Split type must be equal, exact or percent (shares are not supported)', 400, origin);
   if (amounts.reduce((a,b)=>a+b,0) !== amountMinor) return err('Splits do not sum to the total', 400, origin);
   const eid = uid();
-  await env.DB.prepare('INSERT INTO expenses (id,group_id,paid_by_member_id,description,amount_minor,currency,category,date,created_at,created_by_user_id) VALUES (?,?,?,?,?,?,?,?,?,?)')
-    .bind(eid, g.id, paidBy, description, amountMinor, currency, category, date, nowIso(), user.id).run();
-  for (let i=0;i<participants.length;i++) await env.DB.prepare('INSERT INTO expense_splits (id,expense_id,member_id,amount_minor) VALUES (?,?,?,?)').bind(uid(), eid, participants[i], amounts[i]).run();
-  await logActivity(env, g.id, user.name, 'expense_added', amountMinor, currency, description);
+  // MEDIUM FIX, Nov 2026: splits were inserted one sequential D1 write
+  // per participant (5 participants = 5 write round-trips), and the
+  // expense + splits + activity were not atomic — a mid-loop failure
+  // left an expense with partial splits. One batch() call does all of
+  // them in a single transaction: one round-trip, all-or-nothing.
+  await env.DB.batch([
+    env.DB.prepare('INSERT INTO expenses (id,group_id,paid_by_member_id,description,amount_minor,currency,category,date,created_at,created_by_user_id) VALUES (?,?,?,?,?,?,?,?,?,?)')
+      .bind(eid, g.id, paidBy, description, amountMinor, currency, category, date, nowIso(), user.id),
+    ...participants.map((pid, i) => env.DB.prepare('INSERT INTO expense_splits (id,expense_id,member_id,amount_minor) VALUES (?,?,?,?)').bind(uid(), eid, pid, amounts[i])),
+    activityStmt(env, g.id, user.name, 'expense_added', amountMinor, currency, description),
+  ]);
   return json(await groupDetail(env, g, user.id), 201, origin);
 }
 
@@ -505,12 +562,24 @@ async function recordPayment(env: Env, g: Row, user: Row, body: any, origin: str
   if (!amountMinor || amountMinor <= 0) return err('Amount must be positive', 400, origin);
   const date = String(body.date||'').slice(0,10); if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return err('Date must be YYYY-MM-DD', 400, origin);
   // Guard: payment must not exceed the outstanding simplified suggestion for that pair+currency at this moment (partial allowed, overpayment rejected).
-  const detail = await groupDetail(env, g, user.id);
-  const sug = detail.suggestions.find((s:any)=>s.fromMemberId===from && s.toMemberId===to && s.currency===currency);
+  // MEDIUM FIX, Nov 2026: this used to call full groupDetail() just to
+  // check the suggestion — paying for activity, hasAnyExpense and
+  // category work that the check never uses — then call groupDetail()
+  // AGAIN to return the result. Now the check runs on groupSummary
+  // only (balances + simplify, in memory), and only the return call
+  // is a full groupDetail. The from/to names come from the members
+  // query already made above, not from a detail object.
+  const summary = await groupSummary(env, g.id, user.id);
+  const byCur = new Map<string, {memberId:string; balance:number}[]>();
+  for (const b of summary.balances) { if (!byCur.has(b.currency)) byCur.set(b.currency, []); byCur.get(b.currency)!.push({memberId:b.memberId, balance:b.balance}); }
+  let sug: any = null;
+  for (const [cur, bals] of byCur) for (const sg of simplify(bals, cur)) if (sg.fromMemberId===from && sg.toMemberId===to && sg.currency===currency) sug = sg;
   if (!sug || amountMinor > sug.amountMinor) return err('Payment exceeds the outstanding amount for this pair and currency', 400, origin);
   const pid = uid();
-  await env.DB.prepare('INSERT INTO payments (id,group_id,from_member_id,to_member_id,amount_minor,currency,date,created_at,created_by_user_id) VALUES (?,?,?,?,?,?,?,?,?)')
-    .bind(pid, g.id, from, to, amountMinor, currency, date, nowIso(), user.id).run();
-  await logActivity(env, g.id, user.name, 'payment_recorded', amountMinor, currency, `${detail.members.find((m:any)=>m.id===from)?.name} -> ${detail.members.find((m:any)=>m.id===to)?.name}`);
+  await env.DB.batch([
+    env.DB.prepare('INSERT INTO payments (id,group_id,from_member_id,to_member_id,amount_minor,currency,date,created_at,created_by_user_id) VALUES (?,?,?,?,?,?,?,?,?)')
+      .bind(pid, g.id, from, to, amountMinor, currency, date, nowIso(), user.id),
+    activityStmt(env, g.id, user.name, 'payment_recorded', amountMinor, currency, `${summary.members.find((m:any)=>m.id===from)?.name} -> ${summary.members.find((m:any)=>m.id===to)?.name}`),
+  ]);
   return json(await groupDetail(env, g, user.id), 201, origin);
 }
