@@ -61,6 +61,19 @@ function initials(name: string) {
   return (name || '?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();
 }
 
+// Person display for Settle up / Recorded payments: resolves a member id to
+// its real name (falling back to the API-provided name, then 'Unknown
+// member' — never 'undefined'), and labels the current user as 'You'.
+// The avatar always uses the real name's initials, even when the label is
+// 'You'. Only the display label changes; no names in state or payloads
+// are mutated. If myMemberId is unavailable, no 'You' substitution happens.
+function personDisplay(group: any, memberId: string | null | undefined, fallbackName: string | null | undefined) {
+  const member = memberId ? group.members.find((x:any)=>x.id===memberId) : null;
+  const name = member?.name || fallbackName || 'Unknown member';
+  const label = (group.myMemberId && memberId && memberId===group.myMemberId) ? 'You' : name;
+  return { name, label };
+}
+
 function Home({ user, setUser, groups, loadGroups, loadGroup, error, setError }: any) {
   const [showCreate, setShowCreate] = useState(false);
   const [editingName, setEditingName] = useState(false);
@@ -212,9 +225,39 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
       })()}
       <h3>Settle up</h3>
       {group.suggestions.length===0 && <p>All settled.</p>}
-      {group.suggestions.map((s:any,i:number)=>(<div key={i} style={{...rowCard,display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}><div style={{flex:1,minWidth:0,lineHeight:1.4}}>{s.fromName} owes {s.toName}: <strong>{s.display}</strong></div><button style={{...primary,flexShrink:0}} onClick={()=>setSettle(s)}>Settle</button></div>))}
+      {group.suggestions.map((s:any,i:number)=>{
+        const from = personDisplay(group, s.fromMemberId, s.fromName);
+        const to = personDisplay(group, s.toMemberId, s.toName);
+        return (<div key={i} style={{...rowCard,display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
+          <div style={{flex:1,minWidth:0,lineHeight:1.4,display:'flex',flexWrap:'wrap',alignItems:'center',gap:6}}>
+            <span style={{...avatar,width:28,height:28,fontSize:12}}>{initials(from.name)}</span>
+            <strong>{from.label}</strong>
+            <span style={{color:'#a3a3a3'}}>owes</span>
+            <span style={{...avatar,width:28,height:28,fontSize:12}}>{initials(to.name)}</span>
+            <strong>{to.label}</strong>
+            <strong>{s.display}</strong>
+          </div>
+          <button style={{...primary,flexShrink:0}} onClick={()=>setSettle(s)}>Settle</button>
+        </div>);
+      })}
       <h3>Recorded payments</h3>
-      {group.payments.map((p:any)=>(<div key={p.id} style={{...rowCard,display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}><div style={{flex:1,minWidth:0,lineHeight:1.4}}>{p.fromName} → {p.toName}: {p.display} · {fmtDate(p.date)}</div><AsyncButton style={{...btn,flexShrink:0}} onClick={async()=>{try{await api(`/api/groups/${group.id}/payments/${p.id}`,'DELETE'); reload();}catch(er:any){setError(er.message);}}}>Delete</AsyncButton></div>))}
+      {group.payments.map((p:any)=>{
+        const from = personDisplay(group, p.from_member_id, p.fromName);
+        const to = personDisplay(group, p.to_member_id, p.toName);
+        return (<div key={p.id} style={{...rowCard,display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
+          <div style={{flex:1,minWidth:0,lineHeight:1.4}}>
+            <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:6}}>
+              <span style={{...avatar,width:28,height:28,fontSize:12}}>{initials(from.name)}</span>
+              <strong>{from.label}</strong>
+              <span style={{color:'#a3a3a3'}}>paid</span>
+              <span style={{...avatar,width:28,height:28,fontSize:12}}>{initials(to.name)}</span>
+              <strong>{to.label}</strong>
+            </div>
+            <div style={{fontSize:13,lineHeight:1.4,marginTop:4}}><strong>{p.display}</strong> <span style={{color:'#a3a3a3'}}>· {fmtDate(p.date)}</span></div>
+          </div>
+          <AsyncButton style={{...btn,flexShrink:0}} onClick={async()=>{try{await api(`/api/groups/${group.id}/payments/${p.id}`,'DELETE'); reload();}catch(er:any){setError(er.message);}}}>Delete</AsyncButton>
+        </div>);
+      })}
     </>}
     {tab==='members' && <>
       {group.members.map((m:any)=>{
