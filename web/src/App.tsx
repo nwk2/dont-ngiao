@@ -11,6 +11,12 @@ const noAccountChip: React.CSSProperties = { fontSize:11, background:'#422006', 
 const currencyChip: React.CSSProperties = { fontSize:12, background:'#134e4a', padding:'3px 10px', borderRadius:99, color:'#5eead4', fontWeight:600, whiteSpace:'nowrap' };
 const btn: React.CSSProperties = { padding:'9px 14px', borderRadius:10, border:'1px solid #333', background:'#242424', color:'#fff' };
 const primary: React.CSSProperties = { ...btn, background:'#2dd4bf', color:'#0f172a', borderColor:'#2dd4bf', fontWeight:600 };
+// Chunk 9: one shared compact style for the Spend by category controls, so
+// Group, Mine, and the currency select look like a set. Compact (down from
+// the inherited ~16px button size), explicit height so the native select
+// matches the buttons. Other buttons in the app keep btn/primary untouched.
+const catControl: React.CSSProperties = { padding:'8px 14px', fontSize:14, lineHeight:1.4, height:36, boxSizing:'border-box', borderRadius:10, border:'1px solid #333', background:'#242424', color:'#fff' };
+const catControlActive: React.CSSProperties = { ...catControl, background:'#2dd4bf', color:'#0f172a', borderColor:'#2dd4bf', fontWeight:600 };
 const input: React.CSSProperties = { width:'100%', boxSizing:'border-box', padding:'10px', border:'1px solid #333', borderRadius:10, margin:'4px 0 10px', background:'#242424', color:'#fff' };
 
 // Per-button async loader: each button tracks its own busy state, so one
@@ -215,8 +221,8 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
     </div>
     {tab==='expenses' && <>
       <div style={card}><h3 style={{marginTop:0}}>Spend by category</h3>
-        <div><button style={catView==='group'?primary:btn} onClick={()=>setCatView('group')}>Group</button>{' '}<button style={catView==='mine'?primary:btn} onClick={()=>setCatView('mine')}>Mine</button>{' '}
-        {currencies.length>1 && <select value={cur} onChange={e=>setCatCur(e.target.value)}>{currencies.map(c=><option key={c}>{c}</option>)}</select>}</div>
+        <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}><button style={catView==='group'?catControlActive:catControl} onClick={()=>setCatView('group')}>Group</button><button style={catView==='mine'?catControlActive:catControl} onClick={()=>setCatView('mine')}>Mine</button>
+        {currencies.length>1 && <select style={catControl} value={cur} onChange={e=>setCatCur(e.target.value)}>{currencies.map(c=><option key={c}>{c}</option>)}</select>}</div>
         <Pie data={catData} currency={cur} />
         <p style={{fontSize:12,color:'#a3a3a3'}}>{catView==='mine' ? 'Mine = your split shares only, computed on the server. Other members\' individual breakdowns are never sent to you.' : 'Group = total spend for the whole group.'} Per currency only, never converted.</p>
       </div>
