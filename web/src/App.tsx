@@ -95,11 +95,25 @@ function initials(name: string) {
 // The avatar always uses the real name's initials, even when the label is
 // 'You'. Only the display label changes; no names in state or payloads
 // are mutated. If myMemberId is unavailable, no 'You' substitution happens.
+// Settle rows use a colour dot instead of an avatar (see memberDotColor):
+// the dot colour is a deterministic hash of the group_member id, NOT
+// Math.random and NOT the display name — so the same member gets the same
+// dot on every device, every reload, and for every viewer of the group
+// (the member id is the shared D1 group_members row), and renaming a
+// member does not change their dot. Colours repeat only if a group has
+// more members than the palette size (modulo).
+const MEMBER_DOT_COLORS = ['#5eead4','#a5b4fc','#fda4af','#fcd34d','#86efac','#f0abfc','#93c5fd','#fdba74'];
+function memberDotColor(memberId: string | null | undefined) {
+  if (!memberId) return '#a3a3a3';
+  let h = 0;
+  for (let i = 0; i < memberId.length; i++) h = ((h * 31) + memberId.charCodeAt(i)) >>> 0;
+  return MEMBER_DOT_COLORS[h % MEMBER_DOT_COLORS.length];
+}
 function personDisplay(group: any, memberId: string | null | undefined, fallbackName: string | null | undefined) {
   const member = memberId ? group.members.find((x:any)=>x.id===memberId) : null;
   const name = member?.name || fallbackName || 'Unknown member';
   const label = (group.myMemberId && memberId && memberId===group.myMemberId) ? 'You' : name;
-  return { name, label };
+  return { name, label, memberId: memberId || null };
 }
 
 function Home({ user, setUser, groups, loadGroups, loadGroup, error, setError }: any) {
@@ -282,13 +296,13 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         return (<div key={i} style={{...rowCard,display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
           <div style={{flex:1,minWidth:0,lineHeight:1.4}}>
             <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:6}}>
-              <span style={{...avatar,width:28,height:28,fontSize:12}}>{initials(from.name)}</span>
+              <span style={{width:10,height:10,borderRadius:'50%',background:memberDotColor(from.memberId),flexShrink:0}} />
               <strong>{from.label}</strong>
               <span style={{color:'#a3a3a3'}}>owes</span>
-              <span style={{...avatar,width:28,height:28,fontSize:12}}>{initials(to.name)}</span>
+              <span style={{width:10,height:10,borderRadius:'50%',background:memberDotColor(to.memberId),flexShrink:0}} />
               <strong>{to.label}</strong>
             </div>
-            <div style={{marginLeft:34,marginTop:4}}><strong>{s.display}</strong></div>
+            <div style={{marginLeft:16,marginTop:4}}><strong>{s.display}</strong></div>
           </div>
           <button style={{...primary,flexShrink:0}} onClick={()=>setSettle(s)}>Settle</button>
         </div>);
