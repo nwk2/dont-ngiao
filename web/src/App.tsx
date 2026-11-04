@@ -403,16 +403,19 @@ function Home({ user, setUser, onLogout, groups, loadGroups, loadGroup, error, s
 
 function CreateGroupModal({ onClose, onDone }: any) {
   const [name, setName] = useState(''); const [cur, setCur] = useState('SGD');
-  // Local error, same fix as Settings: this modal is full-screen, so the
-  // parent's error rendered behind it and a failed Create looked like
-  // "nothing happens" — the modal just stayed open with no message.
+  const [showCurrency, setShowCurrency] = useState(false);
+  // Local error, same fix as Settings: this sheet overlays the home
+  // view, so the parent's error rendered behind it and a failed Create
+  // looked like "nothing happens" — the sheet just stayed open.
   const [createError, setCreateError] = useState('');
-  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'#111111',zIndex:50,overflowY:'auto'}}>
-    <div style={{maxWidth:640,margin:'0 auto',padding:16}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h2>New group</h2><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
-      <label>Group name</label><input style={input} placeholder="Group name, e.g. ✈️ KL Trip" value={name} onChange={e=>setName(e.target.value)} />
-      <label>Default currency <select style={input} value={cur} onChange={e=>setCur(e.target.value)}>{CURRENCIES.map(c=><option key={c}>{c}</option>)}</select></label>
-      <AsyncButton style={primary} onClick={async()=>{setCreateError(''); try{await api('/api/groups','POST',{name,defaultCurrency:cur}); onDone();}catch(e:any){setCreateError(e.message);}}}>Create group</AsyncButton>
+  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+    <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto'}}>
+      <div style={{width:36,height:4,borderRadius:99,background:'#333',margin:'0 auto 12px'}} />
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h2 style={{margin:0}}>New group</h2><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
+      <label>Group name</label><input style={input} placeholder="e.g. Bali Trip 🌴" value={name} onChange={e=>setName(e.target.value)} />
+      <button type="button" onClick={()=>setShowCurrency(v=>!v)} style={{width:'100%',textAlign:'left',background:'#242424',border:'1px solid #333',borderRadius:16,padding:14,marginBottom:12,color:'#fff',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center'}}><span><span style={{display:'block',fontSize:12,color:'#a3a3a3'}}>Default currency</span><span style={{display:'block',marginTop:2}}>{cur}</span></span><span style={{color:'#a3a3a3'}}>›</span></button>
+      {showCurrency && <div style={{display:'flex',flexWrap:'wrap',gap:8,marginBottom:12}}>{CURRENCIES.map(c=><button key={c} type="button" style={c===cur?catControlActive:catControl} onClick={()=>{setCur(c); setShowCurrency(false);}}>{c}</button>)}</div>}
+      <AsyncButton style={{...primary, width:'100%', padding:'14px', fontSize:16}} onClick={async()=>{setCreateError(''); try{await api('/api/groups','POST',{name,defaultCurrency:cur}); onDone();}catch(e:any){setCreateError(e.message);}}}>Create group</AsyncButton>
       {createError && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:12,marginBottom:0}}>{createError}</p>}
     </div>
   </div>);
