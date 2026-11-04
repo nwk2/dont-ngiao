@@ -280,6 +280,23 @@ export default {
         return json(await groupDetail(env, g, user.id), 201, origin);
       }
       const rm = sub.match(/^members\/([^/]+)$/);
+      if (rm && req.method === 'PATCH') {
+        const targetId = decodeURIComponent(rm[1]);
+        const target = await env.DB.prepare('SELECT * FROM group_members WHERE id=? AND group_id=?').bind(targetId, groupId).first<Row>();
+        if (!target) return err('Member not found', 404, origin);
+        if (target.user_id) return err('Only placeholder members can have their email changed', 400, origin);
+        const email = body.email ? String(body.email).trim().toLowerCase() : '';
+        const at = email.indexOf('@'); const dot = email.lastIndexOf('.');
+        if (!email || at <= 0 || dot <= at + 1 || dot >= email.length - 1) return err('A valid email is required', 400, origin);
+        const dup = await env.DB.prepare('SELECT id FROM group_members WHERE group_id=? AND email=? AND id!=?').bind(groupId, email, targetId).first<Row>();
+        if (dup) return err('That email is already a member of this group', 409, origin);
+        let userId: string | null = null;
+        const u = await env.DB.prepare('SELECT id FROM users WHERE email=?').bind(email).first<Row>(); if (u) userId = u.id;
+        try { await env.DB.prepare('UPDATE group_members SET email=?, user_id=? WHERE id=? AND group_id=?').bind(email, userId, targetId, groupId).run(); }
+        catch { return err('That email is already a member of this group', 409, origin); }
+        await logActivity(env, groupId, user.name, 'member_email_updated', null, null, target.name);
+        return json(await groupDetail(env, g, user.id), 200, origin);
+      }
       if (rm && req.method === 'DELETE') {
         const targetId = decodeURIComponent(rm[1]);
         const target = await env.DB.prepare('SELECT * FROM group_members WHERE id=? AND group_id=?').bind(targetId, groupId).first<Row>();

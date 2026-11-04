@@ -148,6 +148,8 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
   const [showExpense, setShowExpense] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [settle, setSettle] = useState<any>(null);
+  const [editingMemberId, setEditingMemberId] = useState<string|null>(null);
+  const [emailDraft, setEmailDraft] = useState('');
   const [catView, setCatView] = useState<'group'|'mine'>('group');
   const [catCur, setCatCur] = useState<string>('');
   const currencies = Object.keys(group.categoryGroup || {});
@@ -215,14 +217,25 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
       {group.payments.map((p:any)=>(<div key={p.id} style={{...rowCard,display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}><div style={{flex:1,minWidth:0,lineHeight:1.4}}>{p.fromName} → {p.toName}: {p.display} · {fmtDate(p.date)}</div><AsyncButton style={{...btn,flexShrink:0}} onClick={async()=>{try{await api(`/api/groups/${group.id}/payments/${p.id}`,'DELETE'); reload();}catch(er:any){setError(er.message);}}}>Delete</AsyncButton></div>))}
     </>}
     {tab==='members' && <>
-      {group.members.map((m:any)=>(<div key={m.id} style={{...rowCard,display:'flex',alignItems:'center',gap:12}}>
+      {group.members.map((m:any)=>{
+        const isEditing = editingMemberId===m.id;
+        return (<div key={m.id} style={{...rowCard,display:'flex',alignItems:'center',gap:12}}>
         <div style={avatar}>{initials(m.name)}</div>
         <div style={{flex:1,minWidth:0}}>
+          {isEditing ? (<input style={{...input,margin:0}} placeholder="Email" value={emailDraft} onChange={e=>setEmailDraft(e.target.value)} aria-label="Member email" />) : (<>
           <div style={{fontWeight:600,lineHeight:1.4}}>{m.name}{!m.user_id ? <span style={noAccountChip}>No account yet</span> : null}</div>
-          <div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4,overflow:m.email?'hidden':undefined,textOverflow:m.email?'ellipsis':undefined,whiteSpace:m.email?'nowrap':undefined}}>{m.email ? m.email : 'Placeholder — they can claim this by signing up with the same email'}</div>
+          {m.email ? (<div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.email}</div>) : (!m.user_id ? (<div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4}}>Placeholder — no email set, no one can claim this yet</div>) : null)}
+          {!m.user_id && m.email ? (<div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4}}>Placeholder — they can claim this by signing up with the same email</div>) : null}
+          </>)}
         </div>
-        <AsyncButton style={{...btn,flexShrink:0}} onClick={async()=>{try{await api(`/api/groups/${group.id}/members/${m.id}`,'DELETE'); reload();}catch(er:any){setError(er.message);}}}>Remove</AsyncButton>
-      </div>))}
+        {isEditing ? (<span style={{display:'flex',gap:8,flexShrink:0}}>
+          <AsyncButton style={primary} onClick={async()=>{try{await api(`/api/groups/${group.id}/members/${m.id}`,'PATCH',{email:emailDraft}); setEditingMemberId(null); reload();}catch(er:any){setError(er.message);}}}>Save</AsyncButton>
+          <button style={btn} onClick={()=>setEditingMemberId(null)}>Cancel</button>
+        </span>) : (<span style={{display:'flex',gap:8,flexShrink:0}}>
+          {!m.user_id ? (<button style={btn} onClick={()=>{setEditingMemberId(m.id); setEmailDraft(m.email || '');}}>Edit email</button>) : null}
+          <AsyncButton style={{...btn,flexShrink:0}} onClick={async()=>{try{await api(`/api/groups/${group.id}/members/${m.id}`,'DELETE'); reload();}catch(er:any){setError(er.message);}}}>Remove</AsyncButton>
+        </span>)}
+      </div>);})}
       <AddMember groupId={group.id} reload={reload} setError={setError} />
     </>}
     {tab==='activity' && <>
@@ -235,7 +248,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
   </div>);
 }
 function activityTitle(a:any) {
-  const map: Record<string,string> = { group_created:'Group created', group_renamed:'Group renamed', group_currency_changed:'Default currency changed', expense_added:'Expense added', expense_deleted:'Expense deleted', payment_recorded:'Payment recorded', payment_deleted:'Payment deleted', member_added:'Member added', member_removed:'Member removed', member_left:'Member left', group_archived:'Group archived', group_restored:'Group restored' };
+  const map: Record<string,string> = { group_created:'Group created', group_renamed:'Group renamed', group_currency_changed:'Default currency changed', expense_added:'Expense added', expense_deleted:'Expense deleted', payment_recorded:'Payment recorded', payment_deleted:'Payment deleted', member_added:'Member added', member_removed:'Member removed', member_email_updated:'Member email updated', member_left:'Member left', group_archived:'Group archived', group_restored:'Group restored' };
   return map[a.type] || a.type;
 }
 function AddMember({ groupId, reload, setError }: any) {
