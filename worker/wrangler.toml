@@ -11,3 +11,23 @@ binding = "DB"
 database_name = "dont-ngiao"
 database_id = "216c4612-3535-4087-b4f1-f0f38bfb5214"
 migrations_dir = "migrations"
+
+# Observability: added 2026-11-04 so Workers Builds deploys keep Cloudflare
+# Logs enabled (dashboard setting alone would be overwritten by a deploy
+# from this wrangler.toml). Logs are the diagnostic for the Nov 2026
+# all-writes-fail bug: with invocation logs persisted, a failing write
+# shows its server-side exception in Workers > dont-ngiao > Logs instead
+# of being masked as Safari "Load failed" on the frontend.
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+persist = true
+
+[observability.traces]
+enabled = false
+head_sampling_rate = 1
+persist = true
+
+[observability.issue_detection]
+enabled = false

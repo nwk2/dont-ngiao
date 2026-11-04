@@ -126,6 +126,18 @@ async function claimPlaceholders(env: Env, user: Row) {
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
+    // Outer catch: without this, ANY throw inside a handler (e.g. a D1
+    // error on a write) becomes a Cloudflare 500 HTML page with NO CORS
+    // headers, which the browser blocks and Safari reports as only
+    // "Load failed" — hiding the real server error. With this, a throw
+    // returns a JSON error WITH the frontend origin, so the app shows
+    // the actual message (e.g. "no such column: groups.icon") instead.
+    // This does not fix a failing write; it makes the failure readable.
+    try { return await handleRequest(req, env); }
+    catch (e: any) { return err(e?.message || 'Internal error', 500, req.headers.get('Origin')); }
+  }
+};
+async function handleRequest(req: Request, env: Env): Promise<Response> {
     const origin = req.headers.get('Origin');
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(origin) });
     const url = new URL(req.url);
@@ -350,8 +362,8 @@ export default {
       return err('Not found', 404, origin);
     }
     return err('Not found', 404, origin);
-  }
-};
+}
+
 
 async function hasAnyExpense(env: Env, groupId: string, memberId: string): Promise<boolean> {
   const paid = await env.DB.prepare('SELECT COUNT(*) AS c FROM expenses WHERE group_id=? AND paid_by_member_id=?').bind(groupId, memberId).first<Row>();
