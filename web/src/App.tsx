@@ -306,7 +306,7 @@ function Home({ user, setUser, onLogout, groups, loadGroups, loadGroup, error, s
       <h3 style={{marginTop:0}}>How settling works here</h3>
       <p style={{fontSize:13,color:'#a3a3a3',marginBottom:0}}>Balances are per currency and never converted. Recording a payment never moves real money — it just records that money changed hands. Settle from a group's Balances tab, for one currency at a time.</p>
     </div>
-    {showCreate && <CreateGroupModal onClose={()=>setShowCreate(false)} onDone={()=>{setShowCreate(false); loadGroups();}} setError={setError} />}
+    {showCreate && <CreateGroupModal onClose={()=>setShowCreate(false)} onDone={()=>{setShowCreate(false); loadGroups();}} />}
     {showAccountMenu && (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
       <div style={{background:'#1c1c1e',borderRadius:'16px 16px 0 0',padding:16,width:'100%',maxWidth:640}}>
         <div style={{fontWeight:600}}>{user.name}</div>
@@ -321,14 +321,19 @@ function Home({ user, setUser, onLogout, groups, loadGroups, loadGroup, error, s
   </div>);
 }
 
-function CreateGroupModal({ onClose, onDone, setError }: any) {
+function CreateGroupModal({ onClose, onDone }: any) {
   const [name, setName] = useState(''); const [cur, setCur] = useState('SGD');
+  // Local error, same fix as Settings: this modal is full-screen, so the
+  // parent's error rendered behind it and a failed Create looked like
+  // "nothing happens" — the modal just stayed open with no message.
+  const [createError, setCreateError] = useState('');
   return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'#111111',zIndex:50,overflowY:'auto'}}>
     <div style={{maxWidth:640,margin:'0 auto',padding:16}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h2>New group</h2><button style={btn} onClick={onClose}>Close</button></div>
       <label>Group name</label><input style={input} placeholder="Group name, e.g. ✈️ KL Trip" value={name} onChange={e=>setName(e.target.value)} />
       <label>Default currency <select style={input} value={cur} onChange={e=>setCur(e.target.value)}>{CURRENCIES.map(c=><option key={c}>{c}</option>)}</select></label>
-      <AsyncButton style={primary} onClick={async()=>{try{await api('/api/groups','POST',{name,defaultCurrency:cur}); onDone();}catch(e:any){setError(e.message);}}}>Create group</AsyncButton>
+      <AsyncButton style={primary} onClick={async()=>{setCreateError(''); try{await api('/api/groups','POST',{name,defaultCurrency:cur}); onDone();}catch(e:any){setCreateError(e.message);}}}>Create group</AsyncButton>
+      {createError && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:12,marginBottom:0}}>{createError}</p>}
     </div>
   </div>);
 }
