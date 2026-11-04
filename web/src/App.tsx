@@ -353,9 +353,11 @@ function Auth({ onAuth, error, loading }: any) {
     {error && <p style={{color:'#f87171'}}>{error}</p>}
     {mode==='register' && <><label>Name</label><input style={input} value={name} onChange={e=>setName(e.target.value)} /></>}
     <label>Email</label><input style={input} value={email} onChange={e=>setEmail(e.target.value)} />
-    <label>Password</label><div style={{display:'flex',gap:8,alignItems:'center'}}><input type={showPassword ? 'text' : 'password'} style={{...input,flex:1,minWidth:0,margin:0}} value={password} onChange={e=>setPassword(e.target.value)} /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} style={{...btn,flexShrink:0}} onClick={()=>setShowPassword(v=>!v)}>{showPassword ? 'Hide' : 'Show'}</button></div>
-    <button style={{...primary, opacity: loading ? 0.6 : 1, cursor: loading ? 'not-allowed' : 'pointer'}} disabled={loading} onClick={()=>onAuth(mode,name,email,password)}>{loading && <span className="btn-spinner" aria-hidden="true" />}{loading ? (mode==='login' ? 'Logging in…' : 'Creating account…') : (mode==='login' ? 'Log in' : 'Create account')}</button>{' '}
-    <button style={btn} onClick={()=>setMode(mode==='login'?'register':'login')}>{mode==='login'?'Register':'Log in'}</button>
+    <label>Password</label><div style={{display:'flex',gap:8,alignItems:'center',margin:'4px 0 10px'}}><input type={showPassword ? 'text' : 'password'} style={{...input,flex:1,minWidth:0,margin:0}} value={password} onChange={e=>setPassword(e.target.value)} /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} style={{...btn,flexShrink:0}} onClick={()=>setShowPassword(v=>!v)}>{showPassword ? 'Hide' : 'Show'}</button></div>
+    <div style={{display:'flex',flexDirection:'column',gap:8}}>
+    <button style={{...primary, width:'100%', opacity: loading ? 0.6 : 1, cursor: loading ? 'not-allowed' : 'pointer'}} disabled={loading} onClick={()=>onAuth(mode,name,email,password)}>{loading && <span className="btn-spinner" aria-hidden="true" />}{loading ? (mode==='login' ? 'Logging in…' : 'Creating account…') : (mode==='login' ? 'Log in' : 'Create account')}</button>
+    <button style={{...btn, width:'100%'}} onClick={()=>setMode(mode==='login'?'register':'login')}>{mode==='login'?'Register':'Log in'}</button>
+    </div>
     <p style={{color:'#a3a3a3',fontSize:13}}>Prototype port: email/password only, no email verification or password reset yet.</p>
   </div>);
 }
