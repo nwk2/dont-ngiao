@@ -202,9 +202,13 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       }
       const salt = newSalt(); const hash = await hashPassword(password, salt);
       const id = uid();
-      try { await env.DB.prepare('INSERT INTO users (id,name,email,password_salt,password_hash,created_at) VALUES (?,?,?,?,?,?)').bind(id, name, email.toLowerCase(), salt, hash, nowIso()).run(); }
+      const createdAt = nowIso();
+      try { await env.DB.prepare('INSERT INTO users (id,name,email,password_salt,password_hash,created_at) VALUES (?,?,?,?,?,?)').bind(id, name, email.toLowerCase(), salt, hash, createdAt).run(); }
       catch { return err('Email already registered', 409, origin); }
-      const user = { id, name, email: email.toLowerCase() };
+      // Include created_at: YouView's "User since" line needs it, and a
+      // fresh register session never calls /api/me to fill it in (same
+      // omission as login, fixed below).
+      const user = { id, name, email: email.toLowerCase(), created_at: createdAt };
       await claimPlaceholders(env, user as Row);
       const token = uid();
       await env.DB.prepare('INSERT INTO sessions (token,user_id,created_at) VALUES (?,?,?)').bind(token, id, nowIso()).run();
@@ -225,7 +229,10 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       if (!u) { await rateRecord(env, 'login_failed', loginKey, Date.now()); return err('Invalid email or password', 401, origin); }
       if ((await hashPassword(password, u.password_salt)) !== u.password_hash) { await rateRecord(env, 'login_failed', loginKey, Date.now()); return err('Invalid email or password', 401, origin); }
       await rateClear(env, 'login_failed', loginKey);
-      const user = { id: u.id, name: u.name, email: u.email };
+      // Include created_at (u.created_at): same "User since" reason as
+      // register — a fresh login session never calls /api/me, so without
+      // this the line silently disappears until the next page reload.
+      const user = { id: u.id, name: u.name, email: u.email, created_at: u.created_at };
       await claimPlaceholders(env, user as Row);
       const token = uid();
       await env.DB.prepare('INSERT INTO sessions (token,user_id,created_at) VALUES (?,?,?)').bind(token, u.id, nowIso()).run();
