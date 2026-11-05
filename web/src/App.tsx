@@ -39,6 +39,23 @@ function catIcon(cat: string) {
   };
   return (<svg {...common}>{paths[cat] || paths['Other']}</svg>);
 }
+// LOG EVENT ICONS, 2026-11-06 (all four Log enhancements): feather-style
+// line SVGs in the same 18px language as catIcon, on a 36px radius-10
+// chip like the Expenses category chips. Live events (added/recorded)
+// get the dark-teal chip (#134e4a bg, #5eead4 icon — the currencyChip
+// language); deleted events get the destructive chip (#422006 bg,
+// #f87171 icon).
+function logIconChip(type: string) {
+  const deleted = type === 'expense_deleted' || type === 'payment_deleted';
+  const common = { width:18, height:18, viewBox:'0 0 24 24', fill:'none', stroke:deleted ? '#f87171' : '#5eead4', strokeWidth:2, strokeLinecap:'round' as const, strokeLinejoin:'round' as const };
+  const paths: Record<string, React.ReactNode> = {
+    expense_added: (<><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="16" /><line x1="8" y1="12" x2="16" y2="12" /></>),
+    expense_deleted: (<><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></>),
+    payment_recorded: (<><line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" /></>),
+    payment_deleted: (<><circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></>),
+  };
+  return (<span style={{width:36,height:36,borderRadius:10,background:deleted?'#422006':'#134e4a',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><svg {...common}>{paths[type] || paths['expense_added']}</svg></span>);
+}
 const homeCard: React.CSSProperties = { background:'#1c1c1e', borderRadius:20, padding:16, marginBottom:12, color:'#f5f5f5', lineHeight:1.45 };
 const tabTrack: React.CSSProperties = { display:'flex', gap:0, background:'#242424', borderRadius:999, padding:3, marginBottom:16 };
 const tabPill: React.CSSProperties = { flex:1, padding:'10px 4px', fontSize:14, color:'#a3a3a3', background:'transparent', border:'none', borderRadius:999, fontWeight:400, cursor:'pointer' };
@@ -1126,7 +1143,15 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
     </div>)}
     {tab==='log' && <>
       {displayedActivity.length===0 && <p>No log entries yet.</p>}
-      {displayedActivity.length>0 && <div style={balCard}>{displayedActivity.map((a:any,ai:number,arr:any[])=>{const d = new Date(a.created_at); const dateStr = `${d.getDate()} ${d.toLocaleString('en-GB',{month:'short'})} · ${d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}`; return (<div key={a.id} style={{...balRow,flexDirection:'column',alignItems:'stretch',gap:2,borderBottom:ai===arr.length-1?'none':balHairline}}><div style={{fontWeight:600,lineHeight:1.4}}>{activityTitle(a)}{a.amount_minor!=null ? ` · ${fmt(a.amount_minor,a.currency)}` : ''}</div><div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4}}>{a.actorName || a.actor_name} · {dateStr}{a.detail?` · ${a.detail}`:''}</div></div>);})}</div>}
+      {/* LOG ROWS, 2026-11-06 (all four enhancements): Expenses-style rows —
+      icon chip (live = dark teal, deleted = destructive red) + actor avatar
+      (36px) or, for payments, the overlapping from→to avatar pair (28px,
+      debtor first, as in Settle/Recorded payments) + text + amount in its
+      own right-aligned tabular-nums column. The pair's fallback names come
+      from the "X -> Y" detail string, so old rows (ids NULL) still show
+      the right people; memberDotColor falls back to grey when an id is
+      missing. Subline and title text unchanged. */}
+      {displayedActivity.length>0 && <div style={balCard}>{displayedActivity.map((a:any,ai:number,arr:any[])=>{const d = new Date(a.created_at); const dateStr = `${d.getDate()} ${d.toLocaleString('en-GB',{month:'short'})} · ${d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}`; const isPayment = a.type==='payment_recorded' || a.type==='payment_deleted'; const parts = isPayment ? (a.detail||'').split(' -> ') : []; const from = personDisplay(group, a.from_member_id, parts[0]); const to = personDisplay(group, a.to_member_id, parts[1]); const actor = personDisplay(group, a.actor_member_id, a.actorName || a.actor_name); return (<div key={a.id} style={{...balRow,borderBottom:ai===arr.length-1?'none':balHairline}}>{logIconChip(a.type)}<div style={{width:46,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{isPayment ? (<><span style={{...avatar,width:28,height:28,fontSize:12,background:memberDotColor(group, from.memberId)}}>{initials(from.name)}</span><span style={{...avatar,width:28,height:28,fontSize:12,marginLeft:-10,border:'2px solid #1c1c1e',background:memberDotColor(group, to.memberId)}}>{initials(to.name)}</span></>) : (<span style={{...avatar,width:36,height:36,fontSize:14,background:memberDotColor(group, actor.memberId)}}>{initials(actor.name)}</span>)}</div><div style={{flex:1,minWidth:0,lineHeight:1.4}}><div style={{fontWeight:600}}>{activityTitle(a)}</div><div style={{fontSize:13,color:'#a3a3a3'}}>{a.actorName || a.actor_name} · {dateStr}{a.detail?` · ${a.detail}`:''}</div></div>{a.amount_minor!=null && <div style={{textAlign:'right',flexShrink:0,lineHeight:1.4}}><strong style={{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'}}>{fmt(a.amount_minor,a.currency)}</strong></div>}</div>);})}</div>}
       {activityMore && <AsyncButton style={{...btn,width:'100%',padding:'14px',fontSize:16,marginTop:4}} onClick={loadOlderActivity}>{activityLoading ? 'Loading…' : 'Load older entries'}</AsyncButton>}
       {!activityMore && displayedActivity.length>0 && <p style={{fontSize:13,color:'#a3a3a3'}}>That's all the log for this group.</p>}
       {activityError && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{activityError}</p>}
