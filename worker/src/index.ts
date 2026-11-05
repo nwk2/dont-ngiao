@@ -377,6 +377,14 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       if (!g) return err('Group not found', 404, origin);
       if (auth instanceof Response) return auth;
       const { user, member } = auth;
+      // ARCHIVED READ-ONLY, Nov 2026: an archived group is view-only.
+      // GET and POST /restore are allowed; every other write is 403.
+      // This is the server enforcement — the frontend hiding buttons
+      // is not the protection. Leave is also blocked: restore first,
+      // then leave, so a restore-then-leave sequence is explicit.
+      if (g.is_archived && req.method !== 'GET' && !(sub === 'restore' && req.method === 'POST')) {
+        return err('This group is archived. Restore it to edit it again.', 403, origin);
+      }
 
       if (sub === '' && req.method === 'GET') return json(await groupDetail(env, g, user.id), 200, origin);
       if (sub === '' && req.method === 'PATCH') {

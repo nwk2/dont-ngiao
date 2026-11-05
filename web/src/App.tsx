@@ -693,7 +693,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         <div style={{flex:1,minWidth:0,lineHeight:1.4}}><div style={{fontWeight:600}}>{e.description}</div><div style={{fontSize:13,color:'#a3a3a3'}}>Paid by {e.payerName} · {fmtDate(e.date)}</div></div>
         <div style={{textAlign:'right',flexShrink:0,lineHeight:1.4}}><strong style={{whiteSpace:'nowrap'}}>{e.display}</strong><div style={{fontSize:13,color:'#a3a3a3'}}>{mySplit ? `your share ${fmt(mySplit.amount_minor,e.currency)}` : 'Not involved'}</div></div>
       </div>);})}</div>}
-      {!showExpense && <div style={{position:'fixed',left:0,right:0,bottom:0,background:'#1c1c1e',borderTop:'1px solid #333',padding:12,textAlign:'center'}}><button style={primary} onClick={()=>setShowExpense(true)}>+ Add expense</button></div>}
+      {!showExpense && !group.isArchived && <div style={{position:'fixed',left:0,right:0,bottom:0,background:'#1c1c1e',borderTop:'1px solid #333',padding:12,textAlign:'center'}}><button style={primary} onClick={()=>setShowExpense(true)}>+ Add expense</button></div>}
     </>}
     {tab==='balances' && <>
       {group.balances.length===0 && <p>No balances yet.</p>}
@@ -754,7 +754,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
             </div>
             <div style={{marginLeft:18,marginTop:4}}><strong>{s.display}</strong></div>
           </div>
-          <button style={{...primary,flexShrink:0,background:canSettle?'#2dd4bf':'#1f4d4a',borderColor:canSettle?'#2dd4bf':'#1f4d4a',color:canSettle?'#0f172a':'#0f172a',cursor:canSettle?'pointer':'not-allowed'}} disabled={!canSettle} onClick={()=>setSettle(s)}>Settle</button>
+          !group.isArchived && <button style={{...primary,flexShrink:0,background:canSettle?'#2dd4bf':'#1f4d4a',borderColor:canSettle?'#2dd4bf':'#1f4d4a',color:canSettle?'#0f172a':'#0f172a',cursor:canSettle?'pointer':'not-allowed'}} disabled={!canSettle} onClick={()=>setSettle(s)}>Settle</button>
         </div>);
       })}</div>}
       <p style={{fontSize:13,color:'#a3a3a3',lineHeight:1.45,margin:'8px 0 0'}}>Only the creditor can settle a debt — if a Settle button is dark, you're not part of that pair. Settling records a payment between the two people — partial amounts are fine, edit the amount in the sheet.</p>
@@ -769,7 +769,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
             <div style={{fontSize:13,lineHeight:1.4,marginTop:4}}><strong>{p.display}</strong> <span style={{color:'#a3a3a3'}}>· {fmtDate(p.date).replace(/ \d{4}$/,'')}</span></div>
             {paymentErrors[p.id] && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:4,marginBottom:0}}>{paymentErrors[p.id]}</p>}
           </div>
-          {(group.myMemberId === p.from_member_id || group.myMemberId === p.to_member_id) && <button style={{...btn,flexShrink:0,background:'#422006',borderColor:'#422006',color:'#f87171',fontWeight:600}} onClick={()=>setConfirm({title:'Delete payment?',message:`Delete the ${p.display} payment from ${from.label} to ${to.label} on ${fmtDate(p.date)}? This cannot be undone.`,onError:(msg:string)=>setPaymentErrors(prev=>({...prev,[p.id]:msg})),action:async()=>{const d = await api(`/api/groups/${group.id}/payments/${p.id}`,'DELETE'); reload(d);}})}>Delete</button>}
+          {!group.isArchived && (group.myMemberId === p.from_member_id || group.myMemberId === p.to_member_id) && <button style={{...btn,flexShrink:0,background:'#422006',borderColor:'#422006',color:'#f87171',fontWeight:600}} onClick={()=>setConfirm({title:'Delete payment?',message:`Delete the ${p.display} payment from ${from.label} to ${to.label} on ${fmtDate(p.date)}? This cannot be undone.`,onError:(msg:string)=>setPaymentErrors(prev=>({...prev,[p.id]:msg})),action:async()=>{const d = await api(`/api/groups/${group.id}/payments/${p.id}`,'DELETE'); reload(d);}})}>Delete</button>}
         </div>);
       })}</div>}
       <p style={{fontSize:13,color:'#a3a3a3',lineHeight:1.45,margin:'8px 0 0'}}>Delete shows only on payments you're part of — as the person who paid or the person who was paid.</p>
@@ -790,7 +790,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         {isEditing ? (<span style={{display:'flex',gap:8,flexShrink:0}}>
           <AsyncButton style={primary} onClick={async()=>{try{const d = await api(`/api/groups/${group.id}/members/${m.id}`,'PATCH',{email:emailDraft}); setEditingMemberId(null); reload(d);}catch(er:any){setError(er.message);}}}>Save</AsyncButton>
           <button style={btn} onClick={()=>setEditingMemberId(null)}>Cancel</button>
-        </span>) : (!m.user_id || m.id === group.myMemberId ? null : (<span style={{display:'flex',gap:8,flexShrink:0}}>
+        </span>) : (group.isArchived || !m.user_id || m.id === group.myMemberId ? null : (<span style={{display:'flex',gap:8,flexShrink:0}}>
           {/* Remove is for OTHER members only. Your own row gets no
           Remove button (2026-11-04): self-removal is Settings -> Leave
           group, which has the last-member cleanup (delete/archive) and
@@ -799,14 +799,14 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
           <button style={{...btn,flexShrink:0}} onClick={()=>setConfirm({title:'Remove member?',message:`Remove ${m.name} from this group? This cannot be undone.`,onError:(msg:string)=>setMemberErrors(prev=>({...prev,[m.id]:msg})),action:async()=>{const d = await api(`/api/groups/${group.id}/members/${m.id}`,'DELETE'); reload(d);}})}>Remove</button>
         </span>))}
         </div>
-        {!isEditing && !m.user_id ? (<div style={{display:'flex',justifyContent:'flex-end',gap:8,marginTop:12}}>
+        {!isEditing && !group.isArchived && !m.user_id ? (<div style={{display:'flex',justifyContent:'flex-end',gap:8,marginTop:12}}>
           <button style={btn} onClick={()=>{setEditingMemberId(m.id); setEmailDraft(m.email || '');}}>Edit email</button>
           <button style={{...btn,flexShrink:0}} onClick={()=>setConfirm({title:'Remove member?',message:`Remove ${m.name} from this group? This cannot be undone.`,onError:(msg:string)=>setMemberErrors(prev=>({...prev,[m.id]:msg})),action:async()=>{const d = await api(`/api/groups/${group.id}/members/${m.id}`,'DELETE'); reload(d);}})}>Remove</button>
         </div>) : null}
         {memberErrors[m.id] && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{memberErrors[m.id]}</p>}
       </div>);})}</div>}
       <p style={{fontSize:13,color:'#a3a3a3',lineHeight:1.45,margin:'8px 0 12px'}}>Email is optional — add a placeholder now and attach an email later to link their account.</p>
-      <AddMember groupId={group.id} reload={reload} />
+      {!group.isArchived && <AddMember groupId={group.id} reload={reload} />}
     </>}
     {tab==='activity' && <>
       {group.activity.length===0 && <p>No activity yet.</p>}
@@ -913,7 +913,7 @@ function ExpenseDetailSheet({ group, expense: e, onClose, setConfirm, reload }: 
       </div>);})}</div>
       {sheetError && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:12,marginBottom:0}}>{sheetError}</p>}
       <div style={{display:'flex',gap:8,marginTop:12}}>
-        <button style={btn} onClick={()=>setConfirm({title:'Delete expense?',message:`Delete '${e.description}' (${e.display})? This will also remove its splits. This cannot be undone.`,onError:(msg:string)=>setSheetError(msg),action:async()=>{const d = await api(`/api/groups/${group.id}/expenses/${e.id}`,'DELETE'); onClose(); reload(d);}})}>Delete expense</button>
+        {!group.isArchived && <button style={btn} onClick={()=>setConfirm({title:'Delete expense?',message:`Delete '${e.description}' (${e.display})? This will also remove its splits. This cannot be undone.`,onError:(msg:string)=>setSheetError(msg),action:async()=>{const d = await api(`/api/groups/${group.id}/expenses/${e.id}`,'DELETE'); onClose(); reload(d);}})}>Delete expense</button>}
         <button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button>
       </div>
     </div>
@@ -952,6 +952,14 @@ function SettingsModal({ group, onClose, reload, back }: any) {
   // this local error, since they shared the hidden-error problem.
   const dirty = name.trim() !== group.name || cur !== group.defaultCurrency;
   const [settingsError, setSettingsError] = useState('');
+  if (group.isArchived) return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'#111111',zIndex:50,overflowY:'auto'}}>
+    <div style={{maxWidth:640,margin:'0 auto',padding:16}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h2>Group settings</h2><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
+      <p style={{fontSize:13,color:'#a3a3a3'}}>This group is archived and read-only. Restore it to edit it again.</p>
+      <AsyncButton style={{...btn, width:'100%', padding:'14px', fontSize:16}} onClick={async()=>{setSettingsError(''); try{const d = await api(`/api/groups/${group.id}/restore`,'POST'); reload(d);}catch(e:any){setSettingsError(e.message);}}}>Restore group</AsyncButton>
+      {settingsError && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:12,marginBottom:0}}>{settingsError}</p>}
+    </div>
+  </div>);
   return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'#111111',zIndex:50,overflowY:'auto'}}>
     <div style={{maxWidth:640,margin:'0 auto',padding:16}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h2>Group settings</h2><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
