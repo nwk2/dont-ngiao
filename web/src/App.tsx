@@ -480,15 +480,13 @@ function useBlink() {
   return blink;
 }
 
-function AuthBear({ focus, value, showPassword }: any) {
+function AuthBear({ focus, value, eyesClosed, oneEyePeek }: any) {
   const blink = useBlink();
   const len = (value || '').length;
   const dx = focus ? Math.min(len, 16) * 0.2 - 1.6 : 0;
   const dy = focus ? 4 : 2; // anxious look-down: down even at idle, clearly down when a field is focused
   const eyeRy = blink ? 1 : 9;
-  const pw = focus === 'password';
-  const eyesClosed = pw && !showPassword; // hidden password: both eyes shut
-  const oneEyePeek = pw && showPassword;  // shown password: left eye open, right winking shut
+
   return (<div aria-hidden="true" style={{display:'flex',justifyContent:'center',marginBottom:8}}>
     <svg width="88" height="88" viewBox="0 0 120 120">
       <circle cx="28" cy="30" r="16" fill="#8d6b4f" /><circle cx="28" cy="30" r="8" fill="#c9a88a" />
@@ -523,15 +521,13 @@ function AuthBear({ focus, value, showPassword }: any) {
 // keeps the bear, so Wai can compare them by toggling the pill. Corgi
 // markers: tall pointy ears, tan face with a white blaze, white muzzle,
 // tongue out. Cover paws are white (contrast vs tan face).
-function AuthCorgi({ focus, value, showPassword }: any) {
+function AuthCorgi({ focus, value, eyesClosed, oneEyePeek }: any) {
   const blink = useBlink();
   const len = (value || '').length;
   const dx = focus ? Math.min(len, 16) * 0.2 - 1.6 : 0;
   const dy = focus ? 4 : 2; // anxious look-down: down even at idle, clearly down when a field is focused
   const eyeRy = blink ? 1 : 9;
-  const pw = focus === 'password';
-  const eyesClosed = pw && !showPassword; // hidden password: both eyes shut
-  const oneEyePeek = pw && showPassword;  // shown password: left eye open, right winking shut
+
   return (<div aria-hidden="true" style={{display:'flex',justifyContent:'center',marginBottom:8}}>
     <svg width="88" height="88" viewBox="0 0 120 120">
       <path d="M22 44 L30 6 L54 32 Z" fill="#d99a5b" stroke="#d99a5b" strokeWidth="4" strokeLinejoin="round" />
@@ -570,20 +566,28 @@ function Auth({ onAuth, error, loading }: any) {
   const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [focus, setFocus] = useState<string|null>(null);
+  const [lastField, setLastField] = useState<string|null>(null);
+  const passwordRef = useRef<any>(null);
   const focusValue = focus==='name' ? name : focus==='email' ? email : focus==='password' ? password : '';
   // Pet placement 2026-11-05, corrected same day: inside the form card,
   // above the FIRST field in both modes (Login: above Email, Register:
   // above Name — Wai corrected the earlier 'just above Email' placement,
   // which had put the pet after Name in Register).
-  const pet = mode==='login' ? <AuthCorgi focus={focus} value={focusValue} showPassword={showPassword} /> : <AuthBear focus={focus} value={focusValue} showPassword={showPassword} />;
+  const pwFocused = focus === 'password';
+  const eyesClosed = pwFocused && !showPassword;
+  // Peek is sticky: it also fires when the password was the last field
+  // touched and is now shown, even if focus was dropped by the toggle
+  // tap or an iOS focus quirk. Focusing another field clears it via lastField.
+  const oneEyePeek = showPassword && (pwFocused || lastField === 'password');
+  const pet = mode==='login' ? <AuthCorgi focus={focus} value={focusValue} eyesClosed={eyesClosed} oneEyePeek={oneEyePeek} /> : <AuthBear focus={focus} value={focusValue} eyesClosed={eyesClosed} oneEyePeek={oneEyePeek} />;
   return (<div style={S}><h1>Don't Ngiao</h1><p style={{color:'#a3a3a3',marginTop:0}}>Mai ngiao, mai drama.</p>
     <div style={{...tabTrack,marginBottom:16}}><button style={mode==='login'?tabPillActive:tabPill} onClick={()=>setMode('login')}>Log in</button><button style={mode==='register'?tabPillActive:tabPill} onClick={()=>setMode('register')}>Register</button></div>
     <div style={homeCard}>
     {error && <p style={{color:'#f87171',marginTop:0}}>{error}</p>}
     {pet}
-    {mode==='register' && <><label>Name</label><input style={input} value={name} onChange={e=>setName(e.target.value)} onFocus={()=>setFocus('name')} onBlur={()=>setFocus(null)} /></>}
-    <label>Email</label><input style={input} value={email} onChange={e=>setEmail(e.target.value)} onFocus={()=>setFocus('email')} onBlur={()=>setFocus(null)} />
-    <label>Password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={showPassword ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={password} onChange={e=>setPassword(e.target.value)} onFocus={()=>setFocus('password')} onBlur={()=>setFocus(null)} /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onClick={()=>setShowPassword(v=>!v)}>{showPassword ? '🙈' : '👁️'}</button></div>
+    {mode==='register' && <><label>Name</label><input style={input} value={name} onChange={e=>setName(e.target.value)} onFocus={()=>{setFocus('name'); setLastField('name');}} onBlur={()=>setFocus(null)} /></>}
+    <label>Email</label><input style={input} value={email} onChange={e=>setEmail(e.target.value)} onFocus={()=>{setFocus('email'); setLastField('email');}} onBlur={()=>setFocus(null)} />
+    <label>Password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input ref={passwordRef} type={showPassword ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={password} onChange={e=>setPassword(e.target.value)} onFocus={()=>{setFocus('password'); setLastField('password');}} onBlur={()=>setFocus(null)} /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onMouseDown={e=>e.preventDefault()} onClick={()=>{setShowPassword(v=>!v); passwordRef.current?.focus();}}>{showPassword ? '🙈' : '👁️'}</button></div>
     <button style={{...primary, width:'100%', padding:'14px', fontSize:16, opacity: loading ? 0.6 : 1, cursor: loading ? 'not-allowed' : 'pointer'}} disabled={loading} onClick={()=>onAuth(mode,name,email,password)}>{loading && <span className="btn-spinner" aria-hidden="true" />}{loading ? (mode==='login' ? 'Logging in…' : 'Creating account…') : (mode==='login' ? 'Log in' : 'Create account')}</button>
     </div>
     <p style={{color:'#a3a3a3',fontSize:13}}>Forgot your password? Ask the admin for a reset link.</p>
