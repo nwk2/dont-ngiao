@@ -758,7 +758,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
               const member = group.members.find((x:any)=>x.id===b.memberId);
               const displayName = b.memberId===group.myMemberId ? `You (${b.memberName})` : b.memberName;
               return (<div key={b.memberId+b.currency} style={{...balRow,borderBottom:bi===arr.length-1?'none':balHairline}}>
-                <div style={avatar}>{initials(b.memberName)}</div>
+                <div style={{...avatar,background:memberDotColor(group, b.memberId)}}>{initials(b.memberName)}</div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:600,lineHeight:1.4}}>{displayName}{member && !member.user_id ? <span style={noAccountChip}>No account yet</span> : null}</div>
                   <div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4}}>Paid {fmt(b.paid ?? 0, cur)} · Share {fmt(b.share ?? 0, cur)}</div>
@@ -799,7 +799,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         const from = personDisplay(group, p.from_member_id, p.fromName);
         const to = personDisplay(group, p.to_member_id, p.toName);
         return (<div key={p.id} style={{...balRow,justifyContent:'space-between',borderBottom:pi===group.payments.length-1?'none':balHairline}}>
-          <div style={{display:'flex',alignItems:'center',flexShrink:0}}><span style={{...avatar,width:28,height:28,fontSize:12}}>{initials(from.name)}</span><span style={{...avatar,width:28,height:28,fontSize:12,marginLeft:-10,border:'2px solid #1c1c1e'}}>{initials(to.name)}</span></div>
+          <div style={{display:'flex',alignItems:'center',flexShrink:0}}><span style={{...avatar,width:28,height:28,fontSize:12,background:memberDotColor(group, from.memberId)}}>{initials(from.name)}</span><span style={{...avatar,width:28,height:28,fontSize:12,marginLeft:-10,border:'2px solid #1c1c1e',background:memberDotColor(group, to.memberId)}}>{initials(to.name)}</span></div>
           <div style={{flex:1,minWidth:0,lineHeight:1.4}}>
             <div>{from.label} <span style={{color:'#a3a3a3'}}>paid</span> {to.label}</div>
             <div style={{fontSize:13,lineHeight:1.4,marginTop:4}}><strong>{p.display}</strong> <span style={{color:'#a3a3a3'}}>· {fmtDate(p.date).replace(/ \d{4}$/,'')}</span></div>
@@ -946,7 +946,7 @@ function ExpenseDetailSheet({ group, expense: e, onClose, setConfirm, reload }: 
     <div style={{background:'#1c1c1e',borderRadius:'16px 16px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'80vh',overflowY:'auto'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}><div><h2 style={{marginTop:0,marginBottom:4}}>{e.description}</h2><div><span style={{fontSize:12,background:'#2a2a2a',padding:'2px 6px',borderRadius:99}}>{e.category}</span>{' '}<span style={{fontSize:12,background:'#134e4a',padding:'2px 6px',borderRadius:99}}>{e.currency}</span></div><div style={{fontSize:13,color:'#a3a3a3',marginTop:6}}>Paid by {e.payerName} · split between {e.splits.length} people · {fmtDate(e.date)}</div></div><div style={{textAlign:'right',flexShrink:0}}><strong>{e.display}</strong></div></div>
       <div style={{marginTop:12}}>{e.splits.map((s:any)=>{const member = group.members.find((x:any)=>x.id===s.member_id); const pd = personDisplay(group, s.member_id, member?.name); const isMine = group.myMemberId && s.member_id===group.myMemberId; return (<div key={s.member_id} style={{...rowCard,display:'flex',alignItems:'center',gap:12,background:isMine?'#134e4a':'#1c1c1e'}}>
-        <div style={avatar}>{initials(pd.name)}</div>
+        <div style={{...avatar,background:memberDotColor(group, pd.memberId)}}>{initials(pd.name)}</div>
         <div style={{flex:1,minWidth:0,fontWeight:600,lineHeight:1.4}}>{pd.label}{member && !member.user_id ? <span style={noAccountChip}>No account yet</span> : null}</div>
         <strong style={{color:isMine?'#5eead4':'#f5f5f5',whiteSpace:'nowrap',flexShrink:0}}>{fmt(s.amount_minor,e.currency)}</strong>
       </div>);})}</div>
