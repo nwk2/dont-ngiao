@@ -581,8 +581,16 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
   const [detailExpense, setDetailExpense] = useState<any>(null);
   const [settle, setSettle] = useState<any>(null);
   const [confirm, setConfirm] = useState<any>(null);
-  const [editingMemberId, setEditingMemberId] = useState<string|null>(null);
+  // Member detail sheet (option C, 2026-11-05): tapping a member row opens
+  // a bottom sheet, like You's tappable rows (Edit name, Archive Groups).
+  // Edit email + Remove live inside the sheet, NOT on the row and NOT
+  // inline — Edit/Remove are infrequent, so the extra tap is fine, and
+  // the list never jumps when an editor opens. Own rows and archived
+  // rows have no actions, so they are not tappable (no chevron), like
+  // You's disabled Change password row.
+  const [detailMember, setDetailMember] = useState<any>(null);
   const [emailDraft, setEmailDraft] = useState('');
+  const [memberSheetError, setMemberSheetError] = useState('');
   const [catView, setCatView] = useState<'group'|'mine'>('group');
   const [catChart, setCatChart] = useState<'pie'|'bar'>('pie');
   // Activity pagination, 50/page: group.activity is the first page from
@@ -839,38 +847,52 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
     </>}
     {tab==='members' && <>
       {group.members.length>0 && <div style={balCard}>{group.members.map((m:any,mi:number,arr:any[])=>{
-        const isEditing = editingMemberId===m.id;
-        return (<div key={m.id} style={{...balRow,flexDirection:'column',alignItems:'stretch',borderBottom:mi===arr.length-1?'none':balHairline}}>
-        <div style={{display:'flex',alignItems:'center',gap:12}}>
+        // Tappable iff the sheet would have an action: not archived, and
+        // not your own row (self-removal is Settings -> Leave, 2026-11-04).
+        // Account members other than you get Remove in the sheet;
+        // placeholders get Edit email + Remove. Own/archived rows: plain.
+        const tappable = !group.isArchived && m.id !== group.myMemberId;
+        return (<div key={m.id} style={{...balRow,borderBottom:mi===arr.length-1?'none':balHairline,cursor:tappable?'pointer':'default'}} onClick={tappable?()=>{setDetailMember(m); setEmailDraft(m.email || ''); setMemberSheetError('');}:undefined}>
         <div style={{...avatar,background:memberDotColor(group, m.id)}}>{initials(m.name)}</div>
         <div style={{flex:1,minWidth:0}}>
-          {isEditing ? (<input style={{...input,margin:0}} placeholder="Email" value={emailDraft} onChange={e=>setEmailDraft(e.target.value)} aria-label="Member email" />) : (<>
           <div style={{fontWeight:600,lineHeight:1.4}}>{m.id === group.myMemberId ? `You (${m.name})` : m.name}{!m.user_id ? <span style={noAccountChip}>No account yet</span> : null}</div>
           {m.email ? (<div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.email}</div>) : (!m.user_id ? (<div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4}}>No email set — can't be claimed yet</div>) : null)}
           {!m.user_id && m.email ? (<div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4}}>Can be claimed with this email</div>) : null}
-          </>)}
         </div>
-        {isEditing ? (<span style={{display:'flex',gap:8,flexShrink:0}}>
-          <AsyncButton style={{...primary,padding:'6px 10px',fontSize:13,whiteSpace:'nowrap'}} onClick={async()=>{try{const d = await api(`/api/groups/${group.id}/members/${m.id}`,'PATCH',{email:emailDraft}); setEditingMemberId(null); reload(d);}catch(er:any){setError(er.message);}}}>Save</AsyncButton>
-          <button style={{...btn,padding:'6px 10px',fontSize:13,whiteSpace:'nowrap'}} onClick={()=>setEditingMemberId(null)}>Cancel</button>
-        </span>) : (group.isArchived || m.id === group.myMemberId ? null : (<span style={{display:'flex',gap:8,flexShrink:0,flexWrap:'wrap',justifyContent:'flex-end'}}>
-          {/* Edit email + Remove now live on the FIRST row, right of the
-          name (2026-11-05): the old second row left a full empty row
-          under every placeholder and made the buttons read as detached.
-          Remove is destructive red-tint, matching Delete payment / Leave.
-          Remove is for OTHER members only. Your own row gets no Remove
-          button (2026-11-04): self-removal is Settings -> Leave group,
-          which has the last-member cleanup (delete/archive) and
-          navigates back to Home. */}
-          {!m.user_id && <button style={{...btn,padding:'6px 10px',fontSize:13,whiteSpace:'nowrap'}} onClick={()=>{setEditingMemberId(m.id); setEmailDraft(m.email || '');}}>Edit email</button>}
-          <button style={{...btn,flexShrink:0,padding:'6px 10px',fontSize:13,whiteSpace:'nowrap',background:'#422006',borderColor:'#422006',color:'#f87171',fontWeight:600}} onClick={()=>setConfirm({title:'Remove member?',message:`Remove ${m.name} from this group? This cannot be undone.`,onError:(msg:string)=>setMemberErrors(prev=>({...prev,[m.id]:msg})),action:async()=>{const d = await api(`/api/groups/${group.id}/members/${m.id}`,'DELETE'); reload(d);}})}>Remove</button>
-        </span>))}
-        </div>
-        {memberErrors[m.id] && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{memberErrors[m.id]}</p>}
+        {tappable && <span style={{color:'#a3a3a3',flexShrink:0}}>›</span>}
       </div>);})}</div>}
       <p style={{fontSize:13,color:'#a3a3a3',lineHeight:1.45,margin:'8px 0 12px'}}>Email is optional — add a placeholder now and attach an email later to link their account.</p>
       {!group.isArchived && <AddMember groupId={group.id} reload={reload} />}
     </>}
+    {detailMember && (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+      <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto'}}>
+        <div style={{width:36,height:4,borderRadius:99,background:'#333',margin:'0 auto 12px'}} />
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h2 style={{margin:0}}>Member</h2><button type="button" aria-label="Close" title="Close" onClick={()=>setDetailMember(null)} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
+        <div style={{display:'flex',alignItems:'center',gap:12,marginTop:16}}>
+          <div style={{...avatar,background:memberDotColor(group, detailMember.id)}}>{initials(detailMember.name)}</div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:600,lineHeight:1.4}}>{detailMember.id === group.myMemberId ? `You (${detailMember.name})` : detailMember.name}{!detailMember.user_id ? <span style={noAccountChip}>No account yet</span> : null}</div>
+            {detailMember.email ? (<div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{detailMember.email}</div>) : (!detailMember.user_id ? (<div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4}}>No email set — can't be claimed yet</div>) : null)}
+            {!detailMember.user_id && detailMember.email ? (<div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4}}>Can be claimed with this email</div>) : null}
+          </div>
+        </div>
+        {/* Edit email: placeholders only, as before — an account member's
+        email is their account email, not a per-group field. */}
+        {!detailMember.user_id && <>
+          <label style={{display:'block',marginTop:16}}>Email</label>
+          <input style={input} placeholder="Email" value={emailDraft} onChange={e=>setEmailDraft(e.target.value)} aria-label="Member email" />
+          <p style={{fontSize:13,color:'#a3a3a3',lineHeight:1.45,marginTop:0}}>Attach an email later to link their account — they can claim this member by signing up with the same email.</p>
+          {memberSheetError && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{memberSheetError}</p>}
+          <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={async()=>{setMemberSheetError(''); try{const d = await api(`/api/groups/${group.id}/members/${detailMember.id}`,'PATCH',{email:emailDraft}); setDetailMember(null); reload(d);}catch(er:any){setMemberSheetError(er.message);}}}>Save email</AsyncButton>
+        </>}
+        {/* Remove: other members only, as before. Confirm button is now
+        labelled 'Remove', not the ConfirmSheet default 'Delete' — the
+        action is called Remove everywhere else in this flow. */}
+        <div style={{marginTop:20}}>
+          <AsyncButton style={{...btn,width:'100%',padding:'14px',fontSize:16,background:'#422006',borderColor:'#422006',color:'#f87171'}} onClick={()=>{setDetailMember(null); setConfirm({title:'Remove member?',message:`Remove ${detailMember.name} from this group? This cannot be undone.`,confirmLabel:'Remove',onError:(msg:string)=>setMemberErrors(prev=>({...prev,[detailMember.id]:msg})),action:async()=>{const d = await api(`/api/groups/${group.id}/members/${detailMember.id}`,'DELETE'); reload(d);}});}}>Remove member</AsyncButton>
+        </div>
+      </div>
+    </div>)}
     {tab==='activity' && <>
       {displayedActivity.length===0 && <p>No activity yet.</p>}
       {displayedActivity.length>0 && <div style={balCard}>{displayedActivity.map((a:any,ai:number,arr:any[])=>{const d = new Date(a.created_at); const dateStr = `${d.getDate()} ${d.toLocaleString('en-GB',{month:'short'})} · ${d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}`; return (<div key={a.id} style={{...balRow,flexDirection:'column',alignItems:'stretch',gap:2,borderBottom:ai===arr.length-1?'none':balHairline}}><div style={{fontWeight:600,lineHeight:1.4}}>{activityTitle(a)}{a.amount_minor!=null ? ` · ${fmt(a.amount_minor,a.currency)}` : ''}</div><div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4}}>{a.actor_name} · {dateStr}{a.detail?` · ${a.detail}`:''}</div></div>);})}</div>}
