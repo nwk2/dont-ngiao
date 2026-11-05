@@ -97,14 +97,52 @@ function AsyncButton({ onClick, children, style, disabled, ...rest }: AsyncButto
 // other async buttons. Callers pass an action that throws on failure;
 // the GroupView wrapper routes that error: to the caller's onError
 // callback when one is supplied (row/card-local error, Chunk 4), else
+// SHEET DRAG-TO-DISMISS, 2026-11-06: detail sheets (expense, member)
+// dismiss on swipe-down, matching iOS sheet behaviour. Pointer events
+// on the handle zone (grabber + title row) only, so the scrollable
+// content still scrolls. Drag past 100px, or a fast flick, closes;
+// otherwise the sheet springs back. Form sheets (Add expense, Settle,
+// New group, Add member) intentionally have no drag dismissal — a
+// swipe there could discard half-entered input — and no grabber, so
+// nothing promises it. Backdrop tap follows the same rule: detail
+// sheets only, via a target check on the backdrop (a tap inside the
+// sheet bubbles but is not the backdrop itself).
+function useSheetDrag(onClose: () => void) {
+  const [dragY, setDragY] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const startY = useRef<number | null>(null);
+  const startT = useRef(0);
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if ((e.target as HTMLElement).closest('button')) return;
+    startY.current = e.clientY; startT.current = Date.now();
+    setDragging(true);
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!dragging || startY.current === null) return;
+    setDragY(Math.max(0, e.clientY - startY.current));
+  };
+  const onPointerUp = (e: React.PointerEvent) => {
+    if (!dragging || startY.current === null) return;
+    const dy = Math.max(0, e.clientY - startY.current);
+    const dt = Date.now() - startT.current;
+    const flick = dt > 0 && dy / dt > 0.6;
+    setDragging(false); startY.current = null;
+    if (dy > 100 || flick) onClose(); else setDragY(0);
+  };
+  const onPointerCancel = () => { setDragging(false); startY.current = null; setDragY(0); };
+  return { dragY, dragging, onPointerDown, onPointerMove, onPointerUp, onPointerCancel };
+}
+
 // to the global setError — and closes the sheet either way.
 function ConfirmSheet({ title, message, confirmLabel, onConfirm, onCancel }: any) {
   return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
-    <div style={{background:'#1c1c1e',borderRadius:'16px 16px 0 0',padding:16,width:'100%',maxWidth:640}}>
+    <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640}}>
       <h2 style={{marginTop:0}}>{title}</h2>
       <p style={{color:'#a3a3a3',lineHeight:1.45}}>{message}</p>
       <div style={{display:'flex',gap:8}}>
-        <AsyncButton style={{...btn,background:'#dc2626',color:'#fff',borderColor:'#dc2626',fontWeight:600}} onClick={onConfirm}>{confirmLabel || 'Delete'}</AsyncButton>
+        <AsyncButton style={{...btn,background:'#422006',color:'#f87171',borderColor:'#422006',fontWeight:600}} onClick={onConfirm}>{confirmLabel || 'Delete'}</AsyncButton>
         <button style={btn} onClick={onCancel}>Cancel</button>
       </div>
     </div>
@@ -460,7 +498,6 @@ function CreateGroupModal({ onClose, onDone }: any) {
   const [createError, setCreateError] = useState('');
   return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
     <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto'}}>
-      <div style={{width:36,height:4,borderRadius:99,background:'#333',margin:'0 auto 12px'}} />
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h2 style={{margin:0}}>New group</h2><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
       <label>Group name</label><input style={input} placeholder="e.g. Bali Trip 🌴" value={name} onChange={e=>setName(e.target.value)} />
       <button type="button" onClick={()=>setShowCurrency(v=>!v)} style={{width:'100%',textAlign:'left',background:'#242424',border:'1px solid #333',borderRadius:16,padding:14,marginBottom:12,color:'#fff',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center'}}><span><span style={{display:'block',fontSize:12,color:'#a3a3a3'}}>Default currency</span><span style={{display:'block',marginTop:2}}>{cur}</span></span><span style={{color:'#a3a3a3'}}>›</span></button>
@@ -727,6 +764,9 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
   // rows have no actions, so they are not tappable (no chevron), like
   // You's disabled Change password row.
   const [detailMember, setDetailMember] = useState<any>(null);
+  // Member sheet drag (2026-11-06): the hook lives here, not inside the
+  // conditional sheet JSX below — hooks can't be called conditionally.
+  const memberDrag = useSheetDrag(()=>setDetailMember(null));
   const [emailDraft, setEmailDraft] = useState('');
   const [memberSheetError, setMemberSheetError] = useState('');
   // Save email is disabled when there is nothing new and valid to save:
@@ -911,7 +951,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         <div style={{flex:1,minWidth:0,lineHeight:1.4}}><div style={{fontWeight:600}}>{e.description}</div><div style={{fontSize:13,color:'#a3a3a3'}}>Paid by {e.payerName} · {fmtDate(e.date)}</div></div>
         <div style={{textAlign:'right',flexShrink:0,lineHeight:1.4}}><strong style={{whiteSpace:'nowrap'}}>{e.display}</strong><div style={{fontSize:13,color:'#a3a3a3'}}>{mySplit ? `your share ${fmt(mySplit.amount_minor,e.currency)}` : 'Not involved'}</div></div>
       </div>);})}</div>}
-      {!showExpense && !group.isArchived && <div style={{position:'fixed',left:0,right:0,bottom:0,background:'#1c1c1e',borderTop:'1px solid #333',padding:12,textAlign:'center'}}><button style={primary} onClick={()=>setShowExpense(true)}>+ Add expense</button></div>}
+      {!showExpense && !group.isArchived && <div style={{position:'fixed',left:0,right:0,bottom:0,background:'#1c1c1e',borderTop:'1px solid #333',padding:12,textAlign:'center'}}><button style={{...primary,width:'100%'}} onClick={()=>setShowExpense(true)}>+ Add expense</button></div>}
     </>}
     {tab==='balances' && <>
       {/* EMPTY STATE, 2026-11-05: a group with no balances, no settle
@@ -1033,10 +1073,10 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
       </div>);})}</div>}
       {!group.isArchived && <div style={{marginTop:12}}><AddMember groupId={group.id} reload={reload} /></div>}
     </>}
-    {detailMember && (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
-      <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto'}}>
-        <div style={{width:36,height:4,borderRadius:99,background:'#333',margin:'0 auto 12px'}} />
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h2 style={{margin:0}}>Member</h2><button type="button" aria-label="Close" title="Close" onClick={()=>setDetailMember(null)} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
+    {detailMember && (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) setDetailMember(null); }}>
+      <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto',transform:memberDrag.dragY?`translateY(${memberDrag.dragY}px)`:undefined,transition:memberDrag.dragging?'none':'transform 0.2s ease-out'}}>
+        <div style={{width:36,height:4,borderRadius:99,background:'#333',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={memberDrag.onPointerDown} onPointerMove={memberDrag.onPointerMove} onPointerUp={memberDrag.onPointerUp} onPointerCancel={memberDrag.onPointerCancel} />
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={memberDrag.onPointerDown} onPointerMove={memberDrag.onPointerMove} onPointerUp={memberDrag.onPointerUp} onPointerCancel={memberDrag.onPointerCancel}><h2 style={{margin:0}}>Member</h2><button type="button" aria-label="Close" title="Close" onClick={()=>setDetailMember(null)} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
         <div style={{display:'flex',alignItems:'center',gap:12,marginTop:16}}>
           <div style={{...avatar,background:memberDotColor(group, detailMember.id)}}>{initials(detailMember.name)}</div>
           <div style={{flex:1,minWidth:0}}>
@@ -1087,7 +1127,6 @@ function AddMember({ groupId, reload }: any) {
     <button style={{...btn,width:'100%',padding:'14px',fontSize:16}} onClick={()=>{setName(''); setEmail(''); setAddError(''); setShow(true);}}>+ Add member</button>
     {show && (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
       <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto'}}>
-        <div style={{width:36,height:4,borderRadius:99,background:'#333',margin:'0 auto 12px'}} />
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h2 style={{margin:0}}>Add member</h2><button type="button" aria-label="Close" title="Close" onClick={()=>setShow(false)} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
         <label style={{display:'block',marginTop:16}}>Name</label>
         <input style={input} placeholder="Name" value={name} onChange={e=>setName(e.target.value)} />
@@ -1127,7 +1166,6 @@ function ExpenseModal({ group, onClose, reload }: any) {
   const sym = (cur:string) => { const m:any = {SGD:'S$',USD:'$',EUR:'€',GBP:'£',AUD:'A$',CAD:'C$',JPY:'¥',KRW:'₩',VND:'₫',HKD:'HK$',TWD:'NT$',CNY:'¥',INR:'₹',MYR:'RM',THB:'฿',IDR:'Rp',PHP:'₱',NZD:'NZ$',CHF:'CHF'}; return m[cur] || cur; };
   return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
     <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto'}}>
-      <div style={{width:36,height:4,borderRadius:99,background:'#333',margin:'0 auto 12px'}} />
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h2 style={{margin:0}}>Add expense</h2><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
       <button type="button" onClick={()=>setShowCurrency(v=>!v)} style={{display:'block',width:'100%',background:'transparent',border:'none',padding:'12px 0 4px',cursor:'pointer'}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><span style={{fontSize:36,fontWeight:700,lineHeight:1}}>{sym(currency)}</span><input style={{width:170,background:'transparent',border:'none',color:'#fff',fontSize:36,fontWeight:700,lineHeight:1,padding:0,textAlign:'left',outline:'none'}} inputMode="decimal" placeholder="0.00" value={amount} onChange={e=>setAmount(e.target.value)} onFocus={e=>e.target.select()} onClick={e=>e.stopPropagation()} aria-label="Amount" /></div>
@@ -1182,19 +1220,18 @@ function ExpenseDetailSheet({ group, expense: e, onClose, setConfirm, reload }: 
   // the sheet stays open (the action throws before onClose(), so the
   // confirm wrapper's onError is what displays it — not the global error).
   const [sheetError, setSheetError] = useState('');
-  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
-    <div style={{background:'#1c1c1e',borderRadius:'16px 16px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'80vh',overflowY:'auto'}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}><div><h2 style={{marginTop:0,marginBottom:4}}>{e.description}</h2><div><span style={{fontSize:12,background:'#2a2a2a',padding:'2px 6px',borderRadius:99}}>{e.category}</span></div><div style={{fontSize:13,color:'#a3a3a3',marginTop:6}}>Paid by {e.payerName} · split between {e.splits.length} people · {fmtDate(e.date)}</div></div><div style={{textAlign:'right',flexShrink:0}}><strong>{e.display}</strong></div></div>
+  const drag = useSheetDrag(onClose);
+  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
+    <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'80vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
+      <div style={{width:36,height:4,borderRadius:99,background:'#333',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} onPointerMove={drag.onPointerMove} onPointerUp={drag.onPointerUp} onPointerCancel={drag.onPointerCancel} />
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} onPointerMove={drag.onPointerMove} onPointerUp={drag.onPointerUp} onPointerCancel={drag.onPointerCancel}><div><h2 style={{marginTop:0,marginBottom:4}}>{e.description}</h2><div><span style={{fontSize:12,background:'#2a2a2a',padding:'2px 6px',borderRadius:99}}>{e.category}</span></div><div style={{fontSize:13,color:'#a3a3a3',marginTop:6}}>Paid by {e.payerName} · split between {e.splits.length} people · {fmtDate(e.date)}</div></div><div style={{display:'flex',alignItems:'flex-start',gap:8,flexShrink:0}}><div style={{textAlign:'right'}}><strong>{e.display}</strong></div><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div></div>
       <div style={{marginTop:12}}>{e.splits.map((s:any)=>{const member = group.members.find((x:any)=>x.id===s.member_id); const pd = personDisplay(group, s.member_id, member?.name); const isMine = group.myMemberId && s.member_id===group.myMemberId; return (<div key={s.member_id} style={{...rowCard,display:'flex',alignItems:'center',gap:12,background:isMine?'#134e4a':'#1c1c1e'}}>
         <div style={{...avatar,background:memberDotColor(group, pd.memberId)}}>{initials(pd.name)}</div>
         <div style={{flex:1,minWidth:0,fontWeight:600,lineHeight:1.4}}>{pd.label}{member && !member.user_id ? <span style={noAccountChip}>No account yet</span> : null}</div>
         <strong style={{color:isMine?'#5eead4':'#f5f5f5',whiteSpace:'nowrap',flexShrink:0}}>{fmt(s.amount_minor,e.currency)}</strong>
       </div>);})}</div>
       {sheetError && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:12,marginBottom:0}}>{sheetError}</p>}
-      <div style={{display:'flex',gap:8,marginTop:12}}>
-        {!group.isArchived && <button style={{...btn,background:'#422006',borderColor:'#422006',color:'#f87171'}} onClick={()=>setConfirm({title:'Delete expense?',message:`Delete '${e.description}' (${e.display})? This will also remove its splits. This cannot be undone.`,onError:(msg:string)=>setSheetError(msg),action:async()=>{const d = await api(`/api/groups/${group.id}/expenses/${e.id}`,'DELETE'); onClose(); reload(d);}})}>Delete expense</button>}
-        <button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button>
-      </div>
+      {!group.isArchived && <button style={{...btn,width:'100%',padding:'14px',fontSize:16,marginTop:12,background:'#422006',borderColor:'#422006',color:'#f87171'}} onClick={()=>setConfirm({title:'Delete expense?',message:`Delete '${e.description}' (${e.display})? This will also remove its splits. This cannot be undone.`,onError:(msg:string)=>setSheetError(msg),action:async()=>{const d = await api(`/api/groups/${group.id}/expenses/${e.id}`,'DELETE'); onClose(); reload(d);}})}>Delete expense</button>}
     </div>
   </div>);
 }
@@ -1204,7 +1241,7 @@ function SettleModal({ group, suggestion, onClose, reload, setError }: any) {
   const minor = toMinor(amount, suggestion.currency);
   const remaining = minor===null ? null : suggestion.amountMinor - minor;
   return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
-    <div style={{background:'#1c1c1e',borderRadius:'16px 16px 0 0',padding:16,width:'100%',maxWidth:640}}>
+    <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640}}>
       <h2 style={{marginTop:0}}>Settle</h2><p>{suggestion.fromName} → {suggestion.toName} · {suggestion.currency}</p>
       <p style={{color:'#a3a3a3'}}>Recording a payment never moves real money — it just records that money changed hands.</p>
       <label>Amount ({suggestion.currency})</label><input style={input} value={amount} onChange={e=>setAmount(e.target.value)} />
