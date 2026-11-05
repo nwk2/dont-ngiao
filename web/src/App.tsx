@@ -512,7 +512,7 @@ function AuthBear({ focus, value, showPassword }: any) {
   const blink = useBlink();
   const len = (value || '').length;
   const dx = focus ? Math.min(len, 16) * 0.2 - 1.6 : 0;
-  const dy = focus ? 3 : 0;
+  const dy = focus ? 4 : 2; // anxious look-down: down even at idle, clearly down when a field is focused
   const eyeRy = blink ? 1 : 9;
   const pw = focus === 'password';
   const binocular = pw && !showPassword;
@@ -524,7 +524,8 @@ function AuthBear({ focus, value, showPassword }: any) {
       <circle cx="60" cy="66" r="44" fill="#8d6b4f" />
       <ellipse cx="60" cy="82" rx="19" ry="14" fill="#e8dcc8" />
       <ellipse cx="60" cy="76" rx="7" ry="5" fill="#3e2723" />
-      <path d="M60 81 v4 M60 85 Q52 92 44 88 M60 85 Q68 92 76 88" fill="none" stroke="#3e2723" strokeWidth="2" strokeLinecap="round" />
+      <path d="M48 88 Q52 84 56 88 Q60 84 64 88 Q68 84 72 88" fill="none" stroke="#3e2723" strokeWidth="2" strokeLinecap="round" />
+      <path d="M36 46 L52 41 M68 41 L84 46" fill="none" stroke="#3e2723" strokeWidth="2.5" strokeLinecap="round" />
       <g>
         <ellipse cx="44" cy="58" rx="9" ry={eyeRy} fill="#fff" />
         <ellipse cx="76" cy="58" rx="9" ry={eyeRy} fill="#fff" />
@@ -546,7 +547,7 @@ function AuthCorgi({ focus, value, showPassword }: any) {
   const blink = useBlink();
   const len = (value || '').length;
   const dx = focus ? Math.min(len, 16) * 0.2 - 1.6 : 0;
-  const dy = focus ? 3 : 0;
+  const dy = focus ? 4 : 2; // anxious look-down: down even at idle, clearly down when a field is focused
   const eyeRy = blink ? 1 : 9;
   const pw = focus === 'password';
   const binocular = pw && !showPassword;
@@ -563,7 +564,8 @@ function AuthCorgi({ focus, value, showPassword }: any) {
       <ellipse cx="60" cy="98" rx="7" ry="9" fill="#f48fb1" />
       <path d="M60 96 v6" stroke="#e57373" strokeWidth="1.5" strokeLinecap="round" />
       <ellipse cx="60" cy="78" rx="7" ry="5" fill="#3e2723" />
-      <path d="M60 83 v3 M60 86 Q52 92 46 89 M60 86 Q68 92 74 89" fill="none" stroke="#3e2723" strokeWidth="2" strokeLinecap="round" />
+      <path d="M48 89 Q52 85 56 89 Q60 85 64 89 Q68 85 72 89" fill="none" stroke="#3e2723" strokeWidth="2" strokeLinecap="round" />
+      <path d="M36 46 L52 41 M68 41 L84 46" fill="none" stroke="#3e2723" strokeWidth="2.5" strokeLinecap="round" />
       <g>
         <ellipse cx="44" cy="58" rx="9" ry={eyeRy} fill="#fff" />
         <ellipse cx="76" cy="58" rx="9" ry={eyeRy} fill="#fff" />
