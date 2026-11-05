@@ -358,7 +358,7 @@ function Home({ user, setUser, onLogout, groups, loadGroups, loadGroup, error, s
         </button>
       </div>
     </div>
-    <h1 style={{marginBottom:4}}>Don't Ngiao</h1><p style={{color:'#a3a3a3',marginTop:0}}>Mai ngiao, mai drama.</p>
+    <h1 style={{marginBottom:4}}>Don't Ngiao</h1>
     {error && <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:12}}><span style={{color:'#f87171'}}>{error}</span><button style={btn} onClick={()=>loadGroups()}>Retry</button></div>}
     <div style={{background:'linear-gradient(135deg,#0f766e,#059669,#10b981)',borderRadius:24,padding:20,marginBottom:20,color:'#fff'}}>
       <div style={{fontSize:12,letterSpacing:1.5,color:'#ccfbf1',fontWeight:600}}>ALL ACROSS {(groups?.active?.length ?? 0)} {((groups?.active?.length ?? 0) === 1) ? 'GROUP' : 'GROUPS'}</div>
