@@ -395,7 +395,7 @@ function Home({ user, setUser, onLogout, groups, loadGroups, loadGroup, error, s
       return (<div key={g.id} style={{...homeCard,cursor:'pointer'}} onClick={()=>loadGroup(g.id)}>
         <strong style={{fontSize:17}}>{g.name}</strong>
         <div style={{fontSize:13,color:'#a3a3a3',marginTop:6}}>{g.memberCount ?? '?'} {(g.memberCount===1)?'person':'people'} · {g.expenseCount ?? '?'} expenses{spent.length>0 ? ` · ${spent.map((s:any)=>fmt(s.amount,s.currency)).join(' + ')} spent` : ''}</div>
-        {my.length>0 && <div style={{marginTop:8}}>{groupBalancesByVerb(my).map((g:any)=>g.items.map((b:any,i:number)=>(<div key={b.currency} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,fontSize:14,color:b.balance>0?'#5eead4':b.balance<0?'#f87171':'#a3a3a3'}}><span>{i===0 ? g.verb : ''}</span><span style={{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'}}>{fmt(Math.abs(b.balance),b.currency)}</span></div>))}</div>}
+        {my.length>0 && <div style={{marginTop:8}}>{groupBalancesByVerb(my).map((g:any)=>g.items.map((b:any,i:number)=>(<div key={b.currency} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,fontSize:14,color:b.balance>0?'#5eead4':b.balance<0?'#f87171':'#a3a3a3'}}><span>{i===0 ? g.verb : ''}</span><span style={{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'}}>{fmt(Math.abs(b.balance),b.currency)}</span></div>)))}</div>}
       </div>);
     })}
     <div style={{...homeCard,marginTop:20}}>
