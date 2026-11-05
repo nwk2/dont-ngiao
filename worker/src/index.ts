@@ -669,11 +669,11 @@ async function groupDetail(env: Env, g: Row, userId: string) {
   // Category breakdowns, per currency. Mine is server-computed from requester's shares only.
   const catGroup: Record<string, Record<string, number>> = {}; const catMine: Record<string, Record<string, number>> = {};
   for (const e of s.expenses) {
-    const cat = e.category || 'Uncategorized';
+    const cat = e.category === 'Uncategorized' ? 'Other' : (e.category || 'Other');
     catGroup[e.currency] = catGroup[e.currency] || {}; catGroup[e.currency][cat] = (catGroup[e.currency][cat]||0) + e.amount_minor;
     if (myMemberRow) { catMine[e.currency] = catMine[e.currency] || {}; for (const sp of splitsByExpense[e.id]||[]) if (sp.member_id===myMemberRow.id) catMine[e.currency][cat] = (catMine[e.currency][cat]||0) + sp.amount_minor; }
   }
-  const expensesOut = s.expenses.map(e=>({ ...e, splits: splitsByExpense[e.id]||[], payerName: s.members.find(m=>m.id===e.paid_by_member_id)?.name, display: formatAmount(e.amount_minor, e.currency) }));
+  const expensesOut = s.expenses.map(e=>({ ...e, category: e.category === 'Uncategorized' ? 'Other' : (e.category || 'Other'), splits: splitsByExpense[e.id]||[], payerName: s.members.find(m=>m.id===e.paid_by_member_id)?.name, display: formatAmount(e.amount_minor, e.currency) }));
   const paymentsOut = s.payments.map(p=>({ ...p, fromName: s.members.find(m=>m.id===p.from_member_id)?.name, toName: s.members.find(m=>m.id===p.to_member_id)?.name, display: formatAmount(p.amount_minor, p.currency) }));
   const balancesOut = s.balances.map(b=>({ ...b, display: formatAmount(b.balance, b.currency) }));
   return {
@@ -698,7 +698,7 @@ async function addExpense(env: Env, g: Row, user: Row, body: any, origin: string
   const paidBy = String(body.paidByMemberId || '');
   if (!memberIds.has(paidBy)) return err('Payer must be a group member', 400, origin);
   const description = String(body.description || '').trim(); if (!description) return err('Description is required', 400, origin);
-  const category = (CATEGORIES as readonly string[]).includes(body.category) ? body.category : 'Uncategorized';
+  const category = (CATEGORIES as readonly string[]).includes(body.category) ? body.category : 'Other';
   const date = String(body.date || '').slice(0,10); if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return err('Date must be YYYY-MM-DD', 400, origin);
   const splitType = body.splitType || 'equal';
   const participants: string[] = Array.isArray(body.participants) ? body.participants.filter((id:string)=>memberIds.has(id)) : [];

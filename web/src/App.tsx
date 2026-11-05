@@ -23,7 +23,7 @@ const balHairline = '1px solid #2e2e2e';
 // their current cards until their own chunks. Logic unchanged everywhere:
 // Home group list, archived Restore/Open, account menu, Edit name,
 // group header, changeTab behaviour, tab keys.
-const EXP_CAT_COLORS: Record<string,string> = { 'Food & Drink':'#b8bb26', 'Transport':'#83a598', 'Accommodation':'#d3869b', 'Activities':'#fabd2f', 'Shopping':'#fe8019', 'Other':'#8ec07c', 'Uncategorized':'#928374' };
+const EXP_CAT_COLORS: Record<string,string> = { 'Food & Drink':'#b8bb26', 'Transport':'#83a598', 'Accommodation':'#d3869b', 'Activities':'#fabd2f', 'Shopping':'#fe8019', 'Other':'#8ec07c' };
 function catIcon(cat: string) {
   // Feather-style line SVGs, white stroke on a coloured chip, matching the
   // approved prototype Expenses icon chips. Colours mirror pie.tsx
@@ -36,9 +36,8 @@ function catIcon(cat: string) {
     'Activities': (<><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></>),
     'Shopping': (<><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" /><line x1="3" y1="6" x2="21" y2="6" /><path d="M16 10a4 4 0 0 1-8 0" /></>),
     'Other': (<><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></>),
-    'Uncategorized': (<><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></>),
   };
-  return (<svg {...common}>{paths[cat] || paths['Uncategorized']}</svg>);
+  return (<svg {...common}>{paths[cat] || paths['Other']}</svg>);
 }
 const homeCard: React.CSSProperties = { background:'#1c1c1e', borderRadius:20, padding:16, marginBottom:12, color:'#f5f5f5', lineHeight:1.45 };
 const tabTrack: React.CSSProperties = { display:'flex', gap:0, background:'#242424', borderRadius:999, padding:3, marginBottom:16 };
@@ -730,6 +729,14 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
   const [detailMember, setDetailMember] = useState<any>(null);
   const [emailDraft, setEmailDraft] = useState('');
   const [memberSheetError, setMemberSheetError] = useState('');
+  // Save email is disabled when there is nothing new and valid to save:
+  // empty, unchanged from the member's current email, or failing the same
+  // @/. check the worker enforces on PATCH /members/:id. The server still
+  // 400s as a backstop; this only stops a pressable dead button.
+  const emailTrimmed = emailDraft.trim().toLowerCase();
+  const emailAt = emailTrimmed.indexOf('@'); const emailDot = emailTrimmed.lastIndexOf('.');
+  const emailValid = !!emailTrimmed && emailAt > 0 && emailDot > emailAt + 1 && emailDot < emailTrimmed.length - 1;
+  const saveEmailDisabled = !detailMember || !!detailMember.user_id || !emailValid || emailTrimmed === (detailMember?.email || '').toLowerCase();
   // HYBRID REMOVE RULE (mirror of the worker guard, 2026-11-05):
   // placeholder -> anyone; account member -> creator only; creator ->
   // nobody. Tappable iff the sheet would have an action: Edit email
@@ -921,7 +928,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
           <div style={{padding:'14px 14px 6px',fontSize:12,letterSpacing:1,color:'#a3a3a3',fontWeight:600}}>YOUR POSITION IN THIS GROUP</div>
           {mine.map((b:any,i:number)=>(<div key={b.currency} style={{...balRow,justifyContent:'space-between',borderBottom:i===mine.length-1?'none':balHairline}}>
             <div style={{display:'flex',alignItems:'center',gap:8}}><span>{b.balance>0?'You are owed':b.balance<0?'You owe':'Settled'}</span>{!singleCurrency && <span style={currencyChip}>{b.currency}</span>}</div>
-            <strong style={{color:b.balance>0?'#2dd4bf':b.balance<0?'#f5f5f5':'#a3a3a3',fontSize:16,whiteSpace:'nowrap'}}>{b.balance===0?'Settled':fmt(Math.abs(b.balance), b.currency)}</strong>
+            <strong style={{color:b.balance>0?'#5eead4':b.balance<0?'#f87171':'#a3a3a3',fontSize:16,whiteSpace:'nowrap'}}>{b.balance===0?'Settled':fmt(Math.abs(b.balance), b.currency)}</strong>
           </div>))}
         </div>);
       })()}
@@ -1027,7 +1034,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
           <input style={input} placeholder="Email" value={emailDraft} onChange={e=>setEmailDraft(e.target.value)} aria-label="Member email" />
           <p style={{fontSize:13,color:'#a3a3a3',lineHeight:1.45,marginTop:0}}>Attach an email later to link their account — they can claim this member by signing up with the same email.</p>
           {memberSheetError && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{memberSheetError}</p>}
-          <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={async()=>{setMemberSheetError(''); try{const d = await api(`/api/groups/${group.id}/members/${detailMember.id}`,'PATCH',{email:emailDraft}); setDetailMember(null); reload(d);}catch(er:any){setMemberSheetError(er.message);}}}>Save email</AsyncButton>
+          <AsyncButton disabled={saveEmailDisabled} style={{...primary,width:'100%',padding:'14px',fontSize:16,opacity:saveEmailDisabled?0.5:1}} onClick={async()=>{setMemberSheetError(''); try{const d = await api(`/api/groups/${group.id}/members/${detailMember.id}`,'PATCH',{email:emailDraft.trim()}); setDetailMember(null); reload(d);}catch(er:any){setMemberSheetError(er.message);}}}>Save email</AsyncButton>
         </>}
         {/* Remove: per the hybrid rule (see GroupView helpers). Confirm
         button is labelled 'Remove', not the ConfirmSheet default
@@ -1088,10 +1095,10 @@ function ExpenseModal({ group, onClose, reload }: any) {
   // - tap the amount header to pick currency (19, not prototype's 4).
   // - Split and Date are tappable summary cards opening their editors
   //   inside the sheet (split editor + calendar), not display-only.
-  // - Category as pills (full names, incl. Uncategorized), not a select.
+  // - Category as pills (full names), not a select.
   const [modalError, setModalError] = useState('');
   const [description, setDescription] = useState(''); const [amount, setAmount] = useState(''); const [currency, setCurrency] = useState(group.defaultCurrency);
-  const [date, setDate] = useState(todayIso()); const [payer, setPayer] = useState(group.members[0]?.id || ''); const [category, setCategory] = useState('Uncategorized');
+  const [date, setDate] = useState(todayIso()); const [payer, setPayer] = useState(group.members[0]?.id || ''); const [category, setCategory] = useState('Other');
   const [splitType, setSplitType] = useState<'equal'|'exact'|'percent'>('equal');
   const [selected, setSelected] = useState<string[]>(group.members.map((m:any)=>m.id));
   const [percents, setPercents] = useState<Record<string,string>>({}); const [exact, setExact] = useState<Record<string,string>>({});
@@ -1159,7 +1166,7 @@ function ExpenseDetailSheet({ group, expense: e, onClose, setConfirm, reload }: 
   const [sheetError, setSheetError] = useState('');
   return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
     <div style={{background:'#1c1c1e',borderRadius:'16px 16px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'80vh',overflowY:'auto'}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}><div><h2 style={{marginTop:0,marginBottom:4}}>{e.description}</h2><div><span style={{fontSize:12,background:'#2a2a2a',padding:'2px 6px',borderRadius:99}}>{e.category}</span>{' '}<span style={{fontSize:12,background:'#134e4a',padding:'2px 6px',borderRadius:99}}>{e.currency}</span></div><div style={{fontSize:13,color:'#a3a3a3',marginTop:6}}>Paid by {e.payerName} · split between {e.splits.length} people · {fmtDate(e.date)}</div></div><div style={{textAlign:'right',flexShrink:0}}><strong>{e.display}</strong></div></div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}><div><h2 style={{marginTop:0,marginBottom:4}}>{e.description}</h2><div><span style={{fontSize:12,background:'#2a2a2a',padding:'2px 6px',borderRadius:99}}>{e.category}</span></div><div style={{fontSize:13,color:'#a3a3a3',marginTop:6}}>Paid by {e.payerName} · split between {e.splits.length} people · {fmtDate(e.date)}</div></div><div style={{textAlign:'right',flexShrink:0}}><strong>{e.display}</strong></div></div>
       <div style={{marginTop:12}}>{e.splits.map((s:any)=>{const member = group.members.find((x:any)=>x.id===s.member_id); const pd = personDisplay(group, s.member_id, member?.name); const isMine = group.myMemberId && s.member_id===group.myMemberId; return (<div key={s.member_id} style={{...rowCard,display:'flex',alignItems:'center',gap:12,background:isMine?'#134e4a':'#1c1c1e'}}>
         <div style={{...avatar,background:memberDotColor(group, pd.memberId)}}>{initials(pd.name)}</div>
         <div style={{flex:1,minWidth:0,fontWeight:600,lineHeight:1.4}}>{pd.label}{member && !member.user_id ? <span style={noAccountChip}>No account yet</span> : null}</div>
@@ -1167,7 +1174,7 @@ function ExpenseDetailSheet({ group, expense: e, onClose, setConfirm, reload }: 
       </div>);})}</div>
       {sheetError && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:12,marginBottom:0}}>{sheetError}</p>}
       <div style={{display:'flex',gap:8,marginTop:12}}>
-        {!group.isArchived && <button style={btn} onClick={()=>setConfirm({title:'Delete expense?',message:`Delete '${e.description}' (${e.display})? This will also remove its splits. This cannot be undone.`,onError:(msg:string)=>setSheetError(msg),action:async()=>{const d = await api(`/api/groups/${group.id}/expenses/${e.id}`,'DELETE'); onClose(); reload(d);}})}>Delete expense</button>}
+        {!group.isArchived && <button style={{...btn,background:'#422006',borderColor:'#422006',color:'#f87171'}} onClick={()=>setConfirm({title:'Delete expense?',message:`Delete '${e.description}' (${e.display})? This will also remove its splits. This cannot be undone.`,onError:(msg:string)=>setSheetError(msg),action:async()=>{const d = await api(`/api/groups/${group.id}/expenses/${e.id}`,'DELETE'); onClose(); reload(d);}})}>Delete expense</button>}
         <button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button>
       </div>
     </div>

@@ -4,7 +4,7 @@ export const CURRENCIES = [
 ] as const;
 export type Currency = (typeof CURRENCIES)[number];
 const ZERO_DECIMAL = new Set(['JPY','KRW','VND']);
-export const CATEGORIES = ['Food & Drink','Transport','Accommodation','Activities','Shopping','Other','Uncategorized'] as const;
+export const CATEGORIES = ['Food & Drink','Transport','Accommodation','Activities','Shopping','Other'] as const;
 
 export function isZeroDecimal(c: string) { return ZERO_DECIMAL.has(c); }
 export function currencySymbol(c: string): string {

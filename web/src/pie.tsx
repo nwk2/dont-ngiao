@@ -10,14 +10,13 @@ import { fmt, CATEGORIES } from './api';
 export const CAT_COLORS: Record<string, string> = {
   // Gruvbox dark (approved 2026-11-04 for dark mode; light pastel is
   // a separate light-mode palette, not built yet): green, blue, purple,
-  // yellow, orange, aqua, grey. Fixed per category, same in pie and bar.
+  // yellow, orange, aqua. Fixed per category, same in pie and bar.
   'Food & Drink': '#b8bb26',
   'Transport': '#83a598',
   'Accommodation': '#d3869b',
   'Activities': '#fabd2f',
   'Shopping': '#fe8019',
   'Other': '#8ec07c',
-  'Uncategorized': '#928374',
 };
 function catColor(cat: string) { return CAT_COLORS[cat] || '#a3a3a3'; }
 function Legend({ entries, total, currency }: { entries: [string, number][]; total: number; currency: string }) {
@@ -83,7 +82,7 @@ export function DailyBar({ expenses, myMemberId, view, currency }: { expenses: a
     if (!amount || amount <= 0) continue;
     const day = String(e.date || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
-    const cat = e.category || 'Uncategorized';
+    const cat = e.category === 'Uncategorized' ? 'Other' : (e.category || 'Other');
     if (!byDay.has(day)) byDay.set(day, {});
     const row = byDay.get(day)!;
     row[cat] = (row[cat] || 0) + amount;
