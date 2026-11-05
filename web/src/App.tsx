@@ -866,8 +866,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         </div>
         {tappable && <span style={{color:'#a3a3a3',flexShrink:0}}>›</span>}
       </div>);})}</div>}
-      <p style={{fontSize:13,color:'#a3a3a3',lineHeight:1.45,margin:'8px 0 12px'}}>Email is optional — add a placeholder now and attach an email later to link their account.</p>
-      {!group.isArchived && <AddMember groupId={group.id} reload={reload} />}
+      {!group.isArchived && <div style={{marginTop:12}}><AddMember groupId={group.id} reload={reload} /></div>}
     </>}
     {detailMember && (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
       <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto'}}>
@@ -917,14 +916,24 @@ function activityTitle(a:any) {
   return map[a.type] || a.type;
 }
 function AddMember({ groupId, reload }: any) {
+  const [show, setShow] = useState(false);
   const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [addError, setAddError] = useState('');
-  return (<div style={homeCard}><h3 style={{marginTop:0}}>Add member</h3>
-    <input style={input} placeholder="Name" value={name} onChange={e=>setName(e.target.value)} />
-    <input style={input} placeholder="Email (optional)" value={email} onChange={e=>setEmail(e.target.value)} />
-    <p style={{fontSize:13,color:'#a3a3a3',marginTop:-6,marginBottom:10,lineHeight:1.4}}>Links an existing account, or a placeholder they can claim.</p>
-    <AsyncButton style={primary} onClick={async()=>{try{const d = await api(`/api/groups/${groupId}/members`,'POST',{name,email:email||null}); setName(''); setEmail(''); setAddError(''); reload(d);}catch(e:any){setAddError(e.message);}}}>Add member</AsyncButton>
-    {addError && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{addError}</p>}
-  </div>);
+  return (<>
+    <button style={{...btn,width:'100%',padding:'14px',fontSize:16}} onClick={()=>{setName(''); setEmail(''); setAddError(''); setShow(true);}}>+ Add member</button>
+    {show && (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+      <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto'}}>
+        <div style={{width:36,height:4,borderRadius:99,background:'#333',margin:'0 auto 12px'}} />
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h2 style={{margin:0}}>Add member</h2><button type="button" aria-label="Close" title="Close" onClick={()=>setShow(false)} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
+        <label style={{display:'block',marginTop:16}}>Name</label>
+        <input style={input} placeholder="Name" value={name} onChange={e=>setName(e.target.value)} />
+        <label>Email (optional)</label>
+        <input style={input} placeholder="Email (optional)" value={email} onChange={e=>setEmail(e.target.value)} />
+        <p style={{fontSize:13,color:'#a3a3a3',lineHeight:1.45,marginTop:0}}>Email is optional — add a placeholder now and attach an email later to link their account.</p>
+        {addError && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{addError}</p>}
+        <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={async()=>{setAddError(''); try{const d = await api(`/api/groups/${groupId}/members`,'POST',{name,email:email||null}); reload(d); setShow(false);}catch(e:any){setAddError(e.message);}}}>Add member</AsyncButton>
+      </div>
+    </div>)}
+  </>);
 }
 
 function ExpenseModal({ group, onClose, reload }: any) {
