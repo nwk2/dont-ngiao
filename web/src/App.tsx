@@ -97,13 +97,18 @@ function AsyncButton({ onClick, children, style, disabled, ...rest }: AsyncButto
 // other async buttons. Callers pass an action that throws on failure;
 // the GroupView wrapper routes that error: to the caller's onError
 // callback when one is supplied (row/card-local error, Chunk 4), else
-// SHEET DRAG-TO-DISMISS, 2026-11-06: detail sheets (expense, member)
-// dismiss on swipe-down, matching iOS sheet behaviour. Pointer events
-// on the handle zone (grabber + title row) only, so the scrollable
-// content still scrolls. Drag past 100px, or a fast flick, closes;
-// otherwise the sheet springs back. Form sheets (Add expense, Settle,
-// New group, Add member) intentionally have no drag dismissal — a
-// swipe there could discard half-entered input — and no grabber, so
+// SHEET DRAG-TO-DISMISS, 2026-11-06 (revised same night): detail sheets
+// (expense, member) dismiss on swipe-down, matching iOS sheet behaviour.
+// Pointer events on the handle zone (grabber + title row) only, so the
+// scrollable content still scrolls. Drag past 100px, or a fast flick,
+// closes; otherwise the sheet springs back. Move/up are tracked on the
+// window, not the handle element — the drag leaves the handle as soon as
+// it starts, so element-level handlers would miss it if pointer capture
+// failed (synthetic pointer ids can throw on capture). The handlers gate
+// on a ref, not on `dragging` state, so a drag still works even if React
+// hasn't re-rendered between down and move. Form sheets (Add expense,
+// Settle, New group, Add member) intentionally have no drag dismissal —
+// a swipe there could discard half-entered input — and no grabber, so
 // nothing promises it. Backdrop tap follows the same rule: detail
 // sheets only, via a target check on the backdrop (a tap inside the
 // sheet bubbles but is not the backdrop itself).
@@ -112,27 +117,39 @@ function useSheetDrag(onClose: () => void) {
   const [dragging, setDragging] = useState(false);
   const startY = useRef<number | null>(null);
   const startT = useRef(0);
+  const onPointerMove = (e: PointerEvent) => {
+    if (startY.current === null) return;
+    setDragY(Math.max(0, e.clientY - startY.current));
+  };
+  const onPointerUp = (e: PointerEvent) => {
+    if (startY.current === null) return;
+    const dy = Math.max(0, e.clientY - startY.current);
+    const dt = Date.now() - startT.current;
+    const flick = dt > 0 && dy / dt > 0.6;
+    window.removeEventListener('pointermove', onPointerMove);
+    window.removeEventListener('pointerup', onPointerUp);
+    window.removeEventListener('pointercancel', onPointerCancel);
+    setDragging(false); startY.current = null;
+    if (dy > 100 || flick) onClose(); else setDragY(0);
+  };
+  const onPointerCancel = () => {
+    if (startY.current === null) return;
+    window.removeEventListener('pointermove', onPointerMove);
+    window.removeEventListener('pointerup', onPointerUp);
+    window.removeEventListener('pointercancel', onPointerCancel);
+    setDragging(false); startY.current = null; setDragY(0);
+  };
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     if ((e.target as HTMLElement).closest('button')) return;
     startY.current = e.clientY; startT.current = Date.now();
-    setDragging(true);
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    setDragging(true); setDragY(0);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerCancel);
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* capture is best-effort; the window listeners track the drag either way */ }
   };
-  const onPointerMove = (e: React.PointerEvent) => {
-    if (!dragging || startY.current === null) return;
-    setDragY(Math.max(0, e.clientY - startY.current));
-  };
-  const onPointerUp = (e: React.PointerEvent) => {
-    if (!dragging || startY.current === null) return;
-    const dy = Math.max(0, e.clientY - startY.current);
-    const dt = Date.now() - startT.current;
-    const flick = dt > 0 && dy / dt > 0.6;
-    setDragging(false); startY.current = null;
-    if (dy > 100 || flick) onClose(); else setDragY(0);
-  };
-  const onPointerCancel = () => { setDragging(false); startY.current = null; setDragY(0); };
-  return { dragY, dragging, onPointerDown, onPointerMove, onPointerUp, onPointerCancel };
+  return { dragY, dragging, onPointerDown };
 }
 
 // to the global setError — and closes the sheet either way.
@@ -1075,8 +1092,8 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
     </>}
     {detailMember && (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) setDetailMember(null); }}>
       <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto',transform:memberDrag.dragY?`translateY(${memberDrag.dragY}px)`:undefined,transition:memberDrag.dragging?'none':'transform 0.2s ease-out'}}>
-        <div style={{width:36,height:4,borderRadius:99,background:'#333',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={memberDrag.onPointerDown} onPointerMove={memberDrag.onPointerMove} onPointerUp={memberDrag.onPointerUp} onPointerCancel={memberDrag.onPointerCancel} />
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={memberDrag.onPointerDown} onPointerMove={memberDrag.onPointerMove} onPointerUp={memberDrag.onPointerUp} onPointerCancel={memberDrag.onPointerCancel}><h2 style={{margin:0}}>Member</h2><button type="button" aria-label="Close" title="Close" onClick={()=>setDetailMember(null)} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
+        <div style={{width:36,height:4,borderRadius:99,background:'#333',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={memberDrag.onPointerDown} />
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={memberDrag.onPointerDown}><h2 style={{margin:0}}>Member</h2><button type="button" aria-label="Close" title="Close" onClick={()=>setDetailMember(null)} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
         <div style={{display:'flex',alignItems:'center',gap:12,marginTop:16}}>
           <div style={{...avatar,background:memberDotColor(group, detailMember.id)}}>{initials(detailMember.name)}</div>
           <div style={{flex:1,minWidth:0}}>
@@ -1223,8 +1240,8 @@ function ExpenseDetailSheet({ group, expense: e, onClose, setConfirm, reload }: 
   const drag = useSheetDrag(onClose);
   return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
     <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'80vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
-      <div style={{width:36,height:4,borderRadius:99,background:'#333',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} onPointerMove={drag.onPointerMove} onPointerUp={drag.onPointerUp} onPointerCancel={drag.onPointerCancel} />
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} onPointerMove={drag.onPointerMove} onPointerUp={drag.onPointerUp} onPointerCancel={drag.onPointerCancel}><div><h2 style={{marginTop:0,marginBottom:4}}>{e.description}</h2><div><span style={{fontSize:12,background:'#2a2a2a',padding:'2px 6px',borderRadius:99}}>{e.category}</span></div><div style={{fontSize:13,color:'#a3a3a3',marginTop:6}}>Paid by {e.payerName} · split between {e.splits.length} people · {fmtDate(e.date)}</div></div><div style={{display:'flex',alignItems:'flex-start',gap:8,flexShrink:0}}><div style={{textAlign:'right'}}><strong>{e.display}</strong></div><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div></div>
+      <div style={{width:36,height:4,borderRadius:99,background:'#333',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><div><h2 style={{marginTop:0,marginBottom:4}}>{e.description}</h2><div><span style={{fontSize:12,background:'#2a2a2a',padding:'2px 6px',borderRadius:99}}>{e.category}</span></div><div style={{fontSize:13,color:'#a3a3a3',marginTop:6}}>Paid by {e.payerName} · split between {e.splits.length} people · {fmtDate(e.date)}</div></div><div style={{display:'flex',alignItems:'flex-start',gap:8,flexShrink:0}}><div style={{textAlign:'right'}}><strong>{e.display}</strong></div><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div></div>
       <div style={{marginTop:12}}>{e.splits.map((s:any)=>{const member = group.members.find((x:any)=>x.id===s.member_id); const pd = personDisplay(group, s.member_id, member?.name); const isMine = group.myMemberId && s.member_id===group.myMemberId; return (<div key={s.member_id} style={{...rowCard,display:'flex',alignItems:'center',gap:12,background:isMine?'#134e4a':'#1c1c1e'}}>
         <div style={{...avatar,background:memberDotColor(group, pd.memberId)}}>{initials(pd.name)}</div>
         <div style={{flex:1,minWidth:0,fontWeight:600,lineHeight:1.4}}>{pd.label}{member && !member.user_id ? <span style={noAccountChip}>No account yet</span> : null}</div>
