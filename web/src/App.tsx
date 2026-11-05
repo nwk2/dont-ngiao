@@ -1173,6 +1173,9 @@ function ExpenseModal({ group, onClose, reload }: any) {
   // - amount header: fixed currency symbol prefix (not editable, symbol
   //   changes with currency) + numeric input only, select-all on focus,
   //   so typing replaces the amount and never clears the symbol.
+  //   The input is sized to its content (ch) so the symbol + digits
+  //   centre as one group — a fixed-width input centres the digits
+  //   alone and leaves the symbol hanging left of centre (2026-11-06).
   // - tap the amount header to pick currency (19, not prototype's 4).
   // - Split and Date are tappable summary cards opening their editors
   //   inside the sheet (split editor + calendar), not display-only.
@@ -1193,7 +1196,7 @@ function ExpenseModal({ group, onClose, reload }: any) {
       <div style={{width:36,height:4,borderRadius:99,background:'#333',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><h2 style={{margin:0}}>Add expense</h2><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
       <button type="button" onClick={()=>setShowCurrency(v=>!v)} style={{display:'block',width:'100%',background:'transparent',border:'none',padding:'12px 0 4px',cursor:'pointer'}}>
-        <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><span style={{fontSize:36,fontWeight:700,lineHeight:1}}>{sym(currency)}</span><input style={{width:170,background:'transparent',border:'none',color:'#fff',fontSize:36,fontWeight:700,lineHeight:1,padding:0,textAlign:'center',outline:'none'}} inputMode="decimal" placeholder="0.00" value={amount} onChange={e=>setAmount(e.target.value)} onFocus={e=>e.target.select()} onClick={e=>e.stopPropagation()} aria-label="Amount" /></div>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><span style={{fontSize:36,fontWeight:700,lineHeight:1}}>{sym(currency)}</span><input style={{width:`${Math.max((amount || '0.00').length, 1) + 1}ch`,background:'transparent',border:'none',color:'#fff',fontSize:36,fontWeight:700,lineHeight:1,padding:0,textAlign:'center',outline:'none'}} inputMode="decimal" placeholder="0.00" value={amount} onChange={e=>setAmount(e.target.value)} onFocus={e=>e.target.select()} onClick={e=>e.stopPropagation()} aria-label="Amount" /></div>
         <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,fontSize:13,color:'#a3a3a3',marginTop:8}}><span style={{border:'1px solid #333',borderRadius:999,padding:'2px 10px',color:'#f5f5f5',fontWeight:600}}>{currency} ▾</span></div>
       </button>
       {showCurrency && <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:8}}>{CURRENCIES.map(c=><button key={c} type="button" style={c===currency?catControlActive:catControl} onClick={()=>{setCurrency(c); setShowCurrency(false);}}>{c}</button>)}</div>}
