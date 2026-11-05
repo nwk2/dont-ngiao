@@ -469,7 +469,7 @@ function CreateGroupModal({ onClose, onDone }: any) {
 // be the joke landing wrong). Blinks on a ~3-5s timer. aria-hidden:
 // decoration only, never a security claim — the password field itself
 // is what masks the password.
-function AuthBear({ focus, value, cover }: any) {
+function useBlink() {
   const [blink, setBlink] = useState(false);
   useEffect(() => {
     let alive = true; let t1: any; let t2: any;
@@ -477,6 +477,10 @@ function AuthBear({ focus, value, cover }: any) {
     loop();
     return () => { alive = false; clearTimeout(t1); clearTimeout(t2); };
   }, []);
+  return blink;
+}
+function AuthBear({ focus, value, cover }: any) {
+  const blink = useBlink();
   const len = (value || '').length;
   const dx = focus ? Math.min(len, 16) * 0.2 - 1.6 : 0;
   const dy = focus ? 3 : 0;
@@ -510,13 +514,57 @@ function AuthBear({ focus, value, cover }: any) {
   </div>);
 }
 
+// Auth corgi (2026-11-05, comparison pick): same behaviour as AuthBear
+// (focus-driven pupils, blinking, paws over eyes on hidden password),
+// different face — Login shows the corgi, Register keeps the bear, so
+// Wai can compare them by toggling the pill. Corgi markers: tall pointy
+// ears, tan face with a white blaze, white muzzle, tongue out. Paws are
+// cream (corgi paws), not head-tan, so they read as paws, not face.
+function AuthCorgi({ focus, value, cover }: any) {
+  const blink = useBlink();
+  const len = (value || '').length;
+  const dx = focus ? Math.min(len, 16) * 0.2 - 1.6 : 0;
+  const dy = focus ? 3 : 0;
+  const eyeRy = blink ? 1 : 9;
+  const pawL = cover ? 'translate(0 0)' : 'translate(-20 20)';
+  const pawR = cover ? 'translate(0 0)' : 'translate(20 20)';
+  return (<div aria-hidden="true" style={{display:'flex',justifyContent:'center',marginBottom:8}}>
+    <svg width="88" height="88" viewBox="0 0 120 120">
+      <path d="M22 44 L30 6 L54 32 Z" fill="#d99a5b" stroke="#d99a5b" strokeWidth="4" strokeLinejoin="round" />
+      <path d="M98 44 L90 6 L66 32 Z" fill="#d99a5b" stroke="#d99a5b" strokeWidth="4" strokeLinejoin="round" />
+      <path d="M29 36 L33 16 L46 29 Z" fill="#f3c6a5" />
+      <path d="M91 36 L87 16 L74 29 Z" fill="#f3c6a5" />
+      <ellipse cx="60" cy="68" rx="44" ry="38" fill="#d99a5b" />
+      <path d="M60 32 L57 58 L60 70 L63 58 Z" fill="#fff8ec" />
+      <ellipse cx="60" cy="84" rx="20" ry="13" fill="#fff8ec" />
+      <ellipse cx="60" cy="98" rx="7" ry="9" fill="#f48fb1" />
+      <path d="M60 96 v6" stroke="#e57373" strokeWidth="1.5" strokeLinecap="round" />
+      <ellipse cx="60" cy="78" rx="7" ry="5" fill="#3e2723" />
+      <path d="M60 83 v3 M60 86 Q52 92 46 89 M60 86 Q68 92 74 89" fill="none" stroke="#3e2723" strokeWidth="2" strokeLinecap="round" />
+      <g>
+        <ellipse cx="44" cy="58" rx="9" ry={eyeRy} fill="#fff" />
+        <ellipse cx="76" cy="58" rx="9" ry={eyeRy} fill="#fff" />
+        {!blink && (<><circle cx={44 + dx} cy={58 + dy} r="4.5" fill="#1c1c1e" /><circle cx={76 + dx} cy={58 + dy} r="4.5" fill="#1c1c1e" /></>)}
+      </g>
+      <g transform={pawL} style={{transition:'transform 0.3s ease'}}>
+        <ellipse cx="44" cy="58" rx="15" ry="12" fill="#f5e6d3" />
+        <path d="M36 56 v4 M44 54 v4 M52 56 v4" stroke="#c9a88a" strokeWidth="1.5" strokeLinecap="round" />
+      </g>
+      <g transform={pawR} style={{transition:'transform 0.3s ease'}}>
+        <ellipse cx="76" cy="58" rx="15" ry="12" fill="#f5e6d3" />
+        <path d="M68 56 v4 M76 54 v4 M84 56 v4" stroke="#c9a88a" strokeWidth="1.5" strokeLinecap="round" />
+      </g>
+    </svg>
+  </div>);
+}
+
 function Auth({ onAuth, error, loading }: any) {
   const [mode, setMode] = useState<'login'|'register'>('login');
   const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [focus, setFocus] = useState<string|null>(null);
   const focusValue = focus==='name' ? name : focus==='email' ? email : focus==='password' ? password : '';
-  return (<div style={S}><AuthBear focus={focus} value={focusValue} cover={focus==='password' && !showPassword} /><h1>Don't Ngiao</h1><p style={{color:'#a3a3a3',marginTop:0}}>Mai ngiao, mai drama.</p>
+  return (<div style={S}>{mode==='login' ? <AuthCorgi focus={focus} value={focusValue} cover={focus==='password' && !showPassword} /> : <AuthBear focus={focus} value={focusValue} cover={focus==='password' && !showPassword} />}<h1>Don't Ngiao</h1><p style={{color:'#a3a3a3',marginTop:0}}>Mai ngiao, mai drama.</p>
     <div style={{...tabTrack,marginBottom:16}}><button style={mode==='login'?tabPillActive:tabPill} onClick={()=>setMode('login')}>Log in</button><button style={mode==='register'?tabPillActive:tabPill} onClick={()=>setMode('register')}>Register</button></div>
     <div style={homeCard}>
     {error && <p style={{color:'#f87171',marginTop:0}}>{error}</p>}
