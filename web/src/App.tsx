@@ -685,9 +685,16 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         <button type="button" aria-label="Group settings" title="Group settings" onClick={()=>setShowSettings(true)} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg></button>
       </span>
     </div>
-    <h1 style={{marginBottom:4}}>{group.name}</h1>
+    <h1 style={{marginBottom:2}}>{group.name}</h1>
     {group.isArchived && <p style={{background:'#422006',padding:8,borderRadius:8}}>This group is archived. Restore it from Settings or You → Groups → Archive Groups to edit it again.</p>}
-    <p style={{color:'#a3a3a3',marginTop:0,lineHeight:1.4}}>Default currency: {group.defaultCurrency} · {group.members.length} members</p>
+    {/* Sub-header as a metadata row, not a sentence (2026-11-05):
+    left = default currency, right = member count, both muted 13px.
+    No avatar stack (Wai's choice) and no currency pill — pills were
+    just removed from Balances for the same repetition reason. */}
+    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,color:'#a3a3a3',fontSize:13,lineHeight:1.4,marginTop:0,marginBottom:16}}>
+      <span>Default: {group.defaultCurrency}</span>
+      <span style={{whiteSpace:'nowrap'}}>{group.members.length} members</span>
+    </div>
     {error && <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:12}}><span style={{color:'#f87171'}}>{error}</span><button style={btn} onClick={()=>reload()}>Retry</button></div>}
     <div style={tabTrack}>
       {(['expenses','balances','members','activity'] as const).map(t=>(<button key={t} onClick={()=>changeTab(t)} style={{flex:1,padding:'10px 4px',fontSize:14,color:tab===t?'#0f172a':'#a3a3a3',background:tab===t?'#fff':'transparent',border:'none',borderRadius:999,fontWeight:tab===t?600:400,textTransform:'capitalize'}}>{t}</button>))}
