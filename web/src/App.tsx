@@ -564,11 +564,16 @@ function Auth({ onAuth, error, loading }: any) {
   const [showPassword, setShowPassword] = useState(false);
   const [focus, setFocus] = useState<string|null>(null);
   const focusValue = focus==='name' ? name : focus==='email' ? email : focus==='password' ? password : '';
-  return (<div style={S}>{mode==='login' ? <AuthCorgi focus={focus} value={focusValue} cover={focus==='password' && !showPassword} /> : <AuthBear focus={focus} value={focusValue} cover={focus==='password' && !showPassword} />}<h1>Don't Ngiao</h1><p style={{color:'#a3a3a3',marginTop:0}}>Mai ngiao, mai drama.</p>
+  // Pet placement 2026-11-05: inside the form card, immediately above the
+  // Email label (Register: after Name, before Email; Login: first in card),
+  // not above the page title — so the face sits with the fields it watches.
+  const pet = mode==='login' ? <AuthCorgi focus={focus} value={focusValue} cover={focus==='password' && !showPassword} /> : <AuthBear focus={focus} value={focusValue} cover={focus==='password' && !showPassword} />;
+  return (<div style={S}><h1>Don't Ngiao</h1><p style={{color:'#a3a3a3',marginTop:0}}>Mai ngiao, mai drama.</p>
     <div style={{...tabTrack,marginBottom:16}}><button style={mode==='login'?tabPillActive:tabPill} onClick={()=>setMode('login')}>Log in</button><button style={mode==='register'?tabPillActive:tabPill} onClick={()=>setMode('register')}>Register</button></div>
     <div style={homeCard}>
     {error && <p style={{color:'#f87171',marginTop:0}}>{error}</p>}
     {mode==='register' && <><label>Name</label><input style={input} value={name} onChange={e=>setName(e.target.value)} onFocus={()=>setFocus('name')} onBlur={()=>setFocus(null)} /></>}
+    {pet}
     <label>Email</label><input style={input} value={email} onChange={e=>setEmail(e.target.value)} onFocus={()=>setFocus('email')} onBlur={()=>setFocus(null)} />
     <label>Password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={showPassword ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={password} onChange={e=>setPassword(e.target.value)} onFocus={()=>setFocus('password')} onBlur={()=>setFocus(null)} /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onClick={()=>setShowPassword(v=>!v)}>{showPassword ? '🙈' : '👁️'}</button></div>
     <button style={{...primary, width:'100%', padding:'14px', fontSize:16, opacity: loading ? 0.6 : 1, cursor: loading ? 'not-allowed' : 'pointer'}} disabled={loading} onClick={()=>onAuth(mode,name,email,password)}>{loading && <span className="btn-spinner" aria-hidden="true" />}{loading ? (mode==='login' ? 'Logging in…' : 'Creating account…') : (mode==='login' ? 'Log in' : 'Create account')}</button>
