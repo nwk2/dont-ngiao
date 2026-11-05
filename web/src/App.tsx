@@ -397,10 +397,6 @@ function Home({ user, setUser, onLogout, groups, loadGroups, loadGroup, error, s
         {my.length>0 && <div style={{marginTop:8}}>{groupBalancesByVerb(my).map((g:any,gi:number)=>g.items.map((b:any,i:number)=>(<div key={b.currency} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,fontSize:14,color:b.balance>0?'#5eead4':b.balance<0?'#f87171':'#a3a3a3',...(i===0 && gi>0 ? {borderTop:balHairline,paddingTop:8,marginTop:8} : {})}}><span>{i===0 ? g.verb : ''}</span><span style={{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'}}>{fmt(Math.abs(b.balance),b.currency)}</span></div>)))}</div>}
       </div>);
     })}
-    <div style={{...homeCard,marginTop:20}}>
-      <h3 style={{marginTop:0}}>How settling works here</h3>
-      <p style={{fontSize:13,color:'#a3a3a3',marginBottom:0}}>Balances are per currency and never converted. Recording a payment never moves real money — it just records that money changed hands. Settle from a group's Balances tab, for one currency at a time.</p>
-    </div>
     {showCreate && <CreateGroupModal onClose={()=>setShowCreate(false)} onDone={(d:any)=>{setShowCreate(false); if (d?.id) loadGroup(d.id); else loadGroups();}} />}
   </div>);
 }
@@ -995,6 +991,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         </div>);
       })}</div>}
       <p style={{fontSize:13,color:'#a3a3a3',lineHeight:1.45,margin:'8px 0 0'}}>Delete shows only on payments you're part of — as the person who paid or the person who was paid.</p>
+      <p style={{fontSize:13,color:'#a3a3a3',lineHeight:1.45,margin:'16px 0 0'}}>Balances are per currency and never converted. Recording a payment never moves real money — it just records that money changed hands. Settle up above, one currency at a time.</p>
     </>}
     {tab==='members' && <>
       {group.members.length>0 && <div style={balCard}>{group.members.map((m:any,mi:number,arr:any[])=>{
