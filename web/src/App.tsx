@@ -336,6 +336,13 @@ function personDisplay(group: any, memberId: string | null | undefined, fallback
 function Home({ user, setUser, onLogout, groups, loadGroups, loadGroup, error, setError }: any) {
   const [showCreate, setShowCreate] = useState(false);
   const [showYou, setShowYou] = useState(false);
+  // BUG FIX, 2026-11-05: YouView used to render inline at the BOTTOM of
+  // Home ({showYou && <YouView/>} after all Home content), so tapping
+  // the avatar appended a second page below Home in the same scroll —
+  // Home, then You, then scrolling back to Home. It now replaces Home
+  // via an early return, like App replaces Home with GroupView and like
+  // YouView replaces itself with the archived view.
+  if (showYou) return <YouView user={user} setUser={setUser} onLogout={onLogout} groups={groups} loadGroups={loadGroups} loadGroup={loadGroup} onBack={()=>setShowYou(false)} setError={setError} />;
     const totals: any[] = groups?.totals || [];
   return (<div style={S}>
     <div style={{marginBottom:16}}>
@@ -380,7 +387,6 @@ function Home({ user, setUser, onLogout, groups, loadGroups, loadGroup, error, s
       <p style={{fontSize:13,color:'#a3a3a3',marginBottom:0}}>Balances are per currency and never converted. Recording a payment never moves real money — it just records that money changed hands. Settle from a group's Balances tab, for one currency at a time.</p>
     </div>
     {showCreate && <CreateGroupModal onClose={()=>setShowCreate(false)} onDone={()=>{setShowCreate(false); loadGroups();}} />}
-    {showYou && <YouView user={user} setUser={setUser} onLogout={onLogout} groups={groups} loadGroups={loadGroups} loadGroup={loadGroup} onBack={()=>setShowYou(false)} setError={setError} />}
   </div>);
 }
 
