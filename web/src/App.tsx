@@ -91,8 +91,9 @@ function AsyncButton({ onClick, children, style, disabled, ...rest }: AsyncButto
 
 // Reusable delete confirmation, following the SettleModal bottom-sheet
 // pattern (fixed overlay, dark backdrop, sheet anchored to the bottom).
-// The SettleModal has no Escape/backdrop dismissal, so this sheet is
-// dismissed via Cancel only — no new dismissal mechanism is invented here.
+// Every sheet dismisses the same way (2026-11-06): backdrop tap and
+// swipe-down via useSheetDrag, plus its own X/Cancel. Backdrop/swipe
+// here just means Cancel — dismissing a confirm never confirms it.
 // The confirm button is red and uses AsyncButton with a loader, like
 // other async buttons. Callers pass an action that throws on failure;
 // the GroupView wrapper routes that error: to the caller's onError
@@ -154,9 +155,11 @@ function useSheetDrag(onClose: () => void) {
 
 // to the global setError — and closes the sheet either way.
 function ConfirmSheet({ title, message, confirmLabel, onConfirm, onCancel }: any) {
-  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
-    <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640}}>
-      <h2 style={{marginTop:0}}>{title}</h2>
+  const drag = useSheetDrag(onCancel);
+  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) onCancel(); }}>
+    <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
+      <div style={{width:36,height:4,borderRadius:99,background:'#333',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
+      <h2 style={{marginTop:0,touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}>{title}</h2>
       <p style={{color:'#a3a3a3',lineHeight:1.45}}>{message}</p>
       <div style={{display:'flex',gap:8}}>
         <AsyncButton style={{...btn,background:'#422006',color:'#f87171',borderColor:'#422006',fontWeight:600}} onClick={onConfirm}>{confirmLabel || 'Delete'}</AsyncButton>
@@ -513,9 +516,11 @@ function CreateGroupModal({ onClose, onDone }: any) {
   // view, so the parent's error rendered behind it and a failed Create
   // looked like "nothing happens" — the sheet just stayed open.
   const [createError, setCreateError] = useState('');
-  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
-    <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto'}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h2 style={{margin:0}}>New group</h2><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
+  const drag = useSheetDrag(onClose);
+  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
+    <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
+      <div style={{width:36,height:4,borderRadius:99,background:'#333',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><h2 style={{margin:0}}>New group</h2><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
       <label>Group name</label><input style={input} placeholder="e.g. Bali Trip 🌴" value={name} onChange={e=>setName(e.target.value)} />
       <button type="button" onClick={()=>setShowCurrency(v=>!v)} style={{width:'100%',textAlign:'left',background:'#242424',border:'1px solid #333',borderRadius:16,padding:14,marginBottom:12,color:'#fff',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center'}}><span><span style={{display:'block',fontSize:12,color:'#a3a3a3'}}>Default currency</span><span style={{display:'block',marginTop:2}}>{cur}</span></span><span style={{color:'#a3a3a3'}}>›</span></button>
       {showCurrency && <div style={{display:'flex',flexWrap:'wrap',gap:8,marginBottom:12}}>{CURRENCIES.map(c=><button key={c} type="button" style={c===cur?catControlActive:catControl} onClick={()=>{setCur(c); setShowCurrency(false);}}>{c}</button>)}</div>}
@@ -1140,11 +1145,13 @@ function activityTitle(a:any) {
 function AddMember({ groupId, reload }: any) {
   const [show, setShow] = useState(false);
   const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [addError, setAddError] = useState('');
+  const drag = useSheetDrag(()=>setShow(false));
   return (<>
     <button style={{...btn,width:'100%',padding:'14px',fontSize:16}} onClick={()=>{setName(''); setEmail(''); setAddError(''); setShow(true);}}>+ Add member</button>
-    {show && (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
-      <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto'}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h2 style={{margin:0}}>Add member</h2><button type="button" aria-label="Close" title="Close" onClick={()=>setShow(false)} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
+    {show && (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) setShow(false); }}>
+      <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
+        <div style={{width:36,height:4,borderRadius:99,background:'#333',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><h2 style={{margin:0}}>Add member</h2><button type="button" aria-label="Close" title="Close" onClick={()=>setShow(false)} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
         <label style={{display:'block',marginTop:16}}>Name</label>
         <input style={input} placeholder="Name" value={name} onChange={e=>setName(e.target.value)} />
         <label>Email (optional)</label>
@@ -1178,15 +1185,16 @@ function ExpenseModal({ group, onClose, reload }: any) {
   const [percents, setPercents] = useState<Record<string,string>>({}); const [exact, setExact] = useState<Record<string,string>>({});
   const [showCurrency, setShowCurrency] = useState(false); const [showSplit, setShowSplit] = useState(false); const [showDate, setShowDate] = useState(false);
   const toggle = (id:string)=> setSelected(s=> s.includes(id) ? s.filter(x=>x!==id) : [...s, id]);
-  const payerName = group.members.find((m:any)=>m.id===payer)?.name || '';
   const splitLabel = splitType==='equal' ? 'Equally' : splitType==='exact' ? 'Exact amounts' : 'Percentages';
   const sym = (cur:string) => { const m:any = {SGD:'S$',USD:'$',EUR:'€',GBP:'£',AUD:'A$',CAD:'C$',JPY:'¥',KRW:'₩',VND:'₫',HKD:'HK$',TWD:'NT$',CNY:'¥',INR:'₹',MYR:'RM',THB:'฿',IDR:'Rp',PHP:'₱',NZD:'NZ$',CHF:'CHF'}; return m[cur] || cur; };
-  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
-    <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto'}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h2 style={{margin:0}}>Add expense</h2><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
+  const drag = useSheetDrag(onClose);
+  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
+    <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
+      <div style={{width:36,height:4,borderRadius:99,background:'#333',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><h2 style={{margin:0}}>Add expense</h2><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
       <button type="button" onClick={()=>setShowCurrency(v=>!v)} style={{display:'block',width:'100%',background:'transparent',border:'none',padding:'12px 0 4px',cursor:'pointer'}}>
-        <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><span style={{fontSize:36,fontWeight:700,lineHeight:1}}>{sym(currency)}</span><input style={{width:170,background:'transparent',border:'none',color:'#fff',fontSize:36,fontWeight:700,lineHeight:1,padding:0,textAlign:'left',outline:'none'}} inputMode="decimal" placeholder="0.00" value={amount} onChange={e=>setAmount(e.target.value)} onFocus={e=>e.target.select()} onClick={e=>e.stopPropagation()} aria-label="Amount" /></div>
-        <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,fontSize:13,color:'#a3a3a3',marginTop:8}}><span style={{border:'1px solid #333',borderRadius:999,padding:'2px 10px',color:'#f5f5f5',fontWeight:600}}>{currency} ▾</span><span>{group.name} · paid by {payerName || 'you'}</span></div>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><span style={{fontSize:36,fontWeight:700,lineHeight:1}}>{sym(currency)}</span><input style={{width:170,background:'transparent',border:'none',color:'#fff',fontSize:36,fontWeight:700,lineHeight:1,padding:0,textAlign:'center',outline:'none'}} inputMode="decimal" placeholder="0.00" value={amount} onChange={e=>setAmount(e.target.value)} onFocus={e=>e.target.select()} onClick={e=>e.stopPropagation()} aria-label="Amount" /></div>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,fontSize:13,color:'#a3a3a3',marginTop:8}}><span style={{border:'1px solid #333',borderRadius:999,padding:'2px 10px',color:'#f5f5f5',fontWeight:600}}>{currency} ▾</span></div>
       </button>
       {showCurrency && <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:8}}>{CURRENCIES.map(c=><button key={c} type="button" style={c===currency?catControlActive:catControl} onClick={()=>{setCurrency(c); setShowCurrency(false);}}>{c}</button>)}</div>}
       <label>Description</label><input style={input} placeholder="What was it for?" value={description} onChange={e=>setDescription(e.target.value)} />
@@ -1241,7 +1249,7 @@ function ExpenseDetailSheet({ group, expense: e, onClose, setConfirm, reload }: 
   return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
     <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'80vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
       <div style={{width:36,height:4,borderRadius:99,background:'#333',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><div><h2 style={{marginTop:0,marginBottom:4}}>{e.description}</h2><div><span style={{fontSize:12,background:'#2a2a2a',padding:'2px 6px',borderRadius:99}}>{e.category}</span></div><div style={{fontSize:13,color:'#a3a3a3',marginTop:6}}>Paid by {e.payerName} · split between {e.splits.length} people · {fmtDate(e.date)}</div></div><div style={{display:'flex',alignItems:'flex-start',gap:8,flexShrink:0}}><div style={{textAlign:'right'}}><strong>{e.display}</strong></div><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div></div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><div><h2 style={{marginTop:0,marginBottom:4}}>{e.description}</h2><div><span style={{fontSize:12,background:'#2a2a2a',padding:'2px 6px',borderRadius:99}}>{e.category}</span></div><div style={{fontSize:13,color:'#a3a3a3',marginTop:6}}>Paid by {e.payerName} · split between {e.splits.length} people · {fmtDate(e.date)}</div></div><div style={{display:'flex',alignItems:'center',gap:12,flexShrink:0}}><div style={{textAlign:'right'}}><strong style={{fontSize:20}}>{e.display}</strong></div><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div></div>
       <div style={{marginTop:12}}>{e.splits.map((s:any)=>{const member = group.members.find((x:any)=>x.id===s.member_id); const pd = personDisplay(group, s.member_id, member?.name); const isMine = group.myMemberId && s.member_id===group.myMemberId; return (<div key={s.member_id} style={{...rowCard,display:'flex',alignItems:'center',gap:12,background:isMine?'#134e4a':'#1c1c1e'}}>
         <div style={{...avatar,background:memberDotColor(group, pd.memberId)}}>{initials(pd.name)}</div>
         <div style={{flex:1,minWidth:0,fontWeight:600,lineHeight:1.4}}>{pd.label}{member && !member.user_id ? <span style={noAccountChip}>No account yet</span> : null}</div>
@@ -1257,9 +1265,11 @@ function SettleModal({ group, suggestion, onClose, reload, setError }: any) {
   const [date, setDate] = useState(todayIso());
   const minor = toMinor(amount, suggestion.currency);
   const remaining = minor===null ? null : suggestion.amountMinor - minor;
-  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
-    <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640}}>
-      <h2 style={{marginTop:0}}>Settle</h2><p>{suggestion.fromName} → {suggestion.toName} · {suggestion.currency}</p>
+  const drag = useSheetDrag(onClose);
+  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
+    <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
+      <div style={{width:36,height:4,borderRadius:99,background:'#333',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
+      <h2 style={{marginTop:0,touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}>Settle</h2><p>{suggestion.fromName} → {suggestion.toName} · {suggestion.currency}</p>
       <p style={{color:'#a3a3a3'}}>Recording a payment never moves real money — it just records that money changed hands.</p>
       <label>Amount ({suggestion.currency})</label><input style={input} value={amount} onChange={e=>setAmount(e.target.value)} />
       {remaining!==null && remaining>0 && <p style={{color:'#fbbf24'}}>Partial payment: {fmt(remaining, suggestion.currency)} will remain outstanding.</p>}
