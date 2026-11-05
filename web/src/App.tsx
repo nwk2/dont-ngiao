@@ -1113,14 +1113,26 @@ function ExpenseModal({ group, onClose, reload }: any) {
       {showCurrency && <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:8}}>{CURRENCIES.map(c=><button key={c} type="button" style={c===currency?catControlActive:catControl} onClick={()=>{setCurrency(c); setShowCurrency(false);}}>{c}</button>)}</div>}
       <label>Description</label><input style={input} placeholder="What was it for?" value={description} onChange={e=>setDescription(e.target.value)} />
       <div style={{marginBottom:10}}><div style={{fontSize:13,color:'#a3a3a3',marginBottom:6}}>Category</div><div style={{display:'flex',flexWrap:'wrap',gap:8}}>{CATEGORIES.map(c=><button key={c} type="button" style={c===category?catControlActive:catControl} onClick={()=>setCategory(c)}>{c}</button>)}</div></div>
-      <button type="button" onClick={()=>setShowSplit(v=>!v)} style={{width:'100%',textAlign:'left',background:'#242424',border:'1px solid #333',borderRadius:16,padding:14,marginBottom:12,color:'#fff',cursor:'pointer'}}><div style={{fontSize:12,color:'#a3a3a3'}}>Split</div><div style={{marginTop:2}}>{splitLabel} · {selected.length} people</div></button>
-      {showSplit && <div style={{marginBottom:12}}><label>Split</label><select style={input} value={splitType} onChange={e=>setSplitType(e.target.value as any)}><option value="equal">Equal</option><option value="exact">Exact amounts</option><option value="percent">Percentages</option></select>
-      {group.members.map((m:any)=>(<label key={m.id} style={{display:'block',marginBottom:6}}><input type="checkbox" checked={selected.includes(m.id)} onChange={()=>toggle(m.id)} /> {m.name}
-        {selected.includes(m.id) && splitType==='percent' && <input style={{...input,width:120,marginLeft:8}} placeholder="%" value={percents[m.id]||''} onChange={e=>setPercents({...percents,[m.id]:e.target.value})} />}
-        {selected.includes(m.id) && splitType==='exact' && <input style={{...input,width:140,marginLeft:8}} placeholder={currency} value={exact[m.id]||''} onChange={e=>setExact({...exact,[m.id]:e.target.value})} />}
-      </label>))}</div>}
-      <button type="button" onClick={()=>setShowDate(v=>!v)} style={{width:'100%',textAlign:'left',background:'#242424',border:'1px solid #333',borderRadius:16,padding:14,marginBottom:12,color:'#fff',cursor:'pointer'}}><div style={{fontSize:12,color:'#a3a3a3'}}>Date</div><div style={{marginTop:2}}>{date===todayIso() ? `Today · ${fmtDate(date)}` : fmtDate(date)}</div></button>
-      {showDate && <div style={{marginBottom:12}}><DateField id="exp-date" value={date} onChange={setDate} /></div>}
+      <div style={{background:'#242424',border:'1px solid #333',borderRadius:16,marginBottom:12}}>
+        <button type="button" onClick={()=>setShowSplit(v=>!v)} style={{width:'100%',textAlign:'left',background:'transparent',border:'none',padding:14,color:'#fff',cursor:'pointer'}}><div style={{fontSize:12,color:'#a3a3a3'}}>Split</div><div style={{marginTop:2}}>{splitLabel} · {selected.length} people</div></button>
+        {showSplit && <div style={{borderTop:balHairline,padding:14}}>
+          <select style={{...input,marginTop:0}} value={splitType} onChange={e=>setSplitType(e.target.value as any)}><option value="equal">Equal</option><option value="exact">Exact amounts</option><option value="percent">Percentages</option></select>
+          {group.members.map((m:any,mi:number)=>{
+            const isSel = selected.includes(m.id);
+            return (<button key={m.id} type="button" onClick={()=>toggle(m.id)} style={{display:'flex',alignItems:'center',gap:12,width:'100%',background:'transparent',border:'none',borderTop:mi===0?'none':balHairline,padding:'12px 0',color:'#fff',cursor:'pointer',textAlign:'left'}}>
+              <span style={{...avatar,width:36,height:36,fontSize:14,background:memberDotColor(group,m.id)}}>{initials(m.name)}</span>
+              <span style={{flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.name}</span>
+              {isSel && splitType==='percent' && <input style={{...input,width:80,margin:0,padding:'6px 8px',fontSize:14}} placeholder="%" value={percents[m.id]||''} onChange={e=>setPercents({...percents,[m.id]:e.target.value})} onClick={e=>e.stopPropagation()} aria-label={`Percent for ${m.name}`} />}
+              {isSel && splitType==='exact' && <input style={{...input,width:100,margin:0,padding:'6px 8px',fontSize:14}} placeholder={currency} value={exact[m.id]||''} onChange={e=>setExact({...exact,[m.id]:e.target.value})} onClick={e=>e.stopPropagation()} aria-label={`Exact amount for ${m.name}`} />}
+              <span aria-hidden="true" style={{width:24,height:24,borderRadius:'50%',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',background:isSel?'#2dd4bf':'transparent',border:isSel?'none':'1px solid #555'}}>{isSel && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0f172a" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>}</span>
+            </button>);
+          })}
+        </div>}
+      </div>
+      <div style={{background:'#242424',border:'1px solid #333',borderRadius:16,marginBottom:12}}>
+        <button type="button" onClick={()=>setShowDate(v=>!v)} style={{width:'100%',textAlign:'left',background:'transparent',border:'none',padding:14,color:'#fff',cursor:'pointer'}}><div style={{fontSize:12,color:'#a3a3a3'}}>Date</div><div style={{marginTop:2}}>{date===todayIso() ? `Today · ${fmtDate(date)}` : fmtDate(date)}</div></button>
+        {showDate && <div style={{borderTop:balHairline,padding:14}}><DateField id="exp-date" value={date} onChange={setDate} /></div>}
+      </div>
       <label>Paid by</label><select style={input} value={payer} onChange={e=>setPayer(e.target.value)}>{group.members.map((m:any)=><option key={m.id} value={m.id}>{m.name}</option>)}</select>
       {modalError && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:12,marginBottom:0}}>{modalError}</p>}
       <AsyncButton style={{...primary, width:'100%', padding:'14px', fontSize:16, marginTop:8}} onClick={async()=>{
