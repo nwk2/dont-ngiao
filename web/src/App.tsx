@@ -458,17 +458,71 @@ function CreateGroupModal({ onClose, onDone }: any) {
   </div>);
 }
 
+
+// Auth bear (2026-11-05, Wai's pick: full bear with paws): a decorative
+// SVG bear above the Auth form, Remembear-style. Pure React + inline
+// SVG, no library. Behaviour is focus-driven (mobile has no mouse to
+// follow): pupils look down toward the focused field and drift slightly
+// with its length; paws slide up over the eyes when the password field
+// is focused AND the password is hidden (if the user tapped Show, the
+// paws stay down — covering eyes while the password is visible would
+// be the joke landing wrong). Blinks on a ~3-5s timer. aria-hidden:
+// decoration only, never a security claim — the password field itself
+// is what masks the password.
+function AuthBear({ focus, value, cover }: any) {
+  const [blink, setBlink] = useState(false);
+  useEffect(() => {
+    let alive = true; let t1: any; let t2: any;
+    const loop = () => { t1 = setTimeout(() => { if (!alive) return; setBlink(true); t2 = setTimeout(() => { if (!alive) return; setBlink(false); loop(); }, 150); }, 2800 + Math.random() * 2200); };
+    loop();
+    return () => { alive = false; clearTimeout(t1); clearTimeout(t2); };
+  }, []);
+  const len = (value || '').length;
+  const dx = focus ? Math.min(len, 16) * 0.2 - 1.6 : 0;
+  const dy = focus ? 3 : 0;
+  const eyeRy = blink ? 1 : 9;
+  // Idle paws rest low and out to the sides (cheeks), not over the snout:
+  // left paw (-20, +20), right paw (+20, +20); covering is (0, 0) for both.
+  const pawL = cover ? 'translate(0 0)' : 'translate(-20 20)';
+  const pawR = cover ? 'translate(0 0)' : 'translate(20 20)';
+  return (<div aria-hidden="true" style={{display:'flex',justifyContent:'center',marginBottom:8}}>
+    <svg width="88" height="88" viewBox="0 0 120 120">
+      <circle cx="28" cy="30" r="16" fill="#8d6b4f" /><circle cx="28" cy="30" r="8" fill="#c9a88a" />
+      <circle cx="92" cy="30" r="16" fill="#8d6b4f" /><circle cx="92" cy="30" r="8" fill="#c9a88a" />
+      <circle cx="60" cy="66" r="44" fill="#8d6b4f" />
+      <ellipse cx="60" cy="82" rx="19" ry="14" fill="#e8dcc8" />
+      <ellipse cx="60" cy="76" rx="7" ry="5" fill="#3e2723" />
+      <path d="M60 81 v4 M60 85 Q52 92 44 88 M60 85 Q68 92 76 88" fill="none" stroke="#3e2723" strokeWidth="2" strokeLinecap="round" />
+      <g>
+        <ellipse cx="44" cy="58" rx="9" ry={eyeRy} fill="#fff" />
+        <ellipse cx="76" cy="58" rx="9" ry={eyeRy} fill="#fff" />
+        {!blink && (<><circle cx={44 + dx} cy={58 + dy} r="4.5" fill="#1c1c1e" /><circle cx={76 + dx} cy={58 + dy} r="4.5" fill="#1c1c1e" /></>)}
+      </g>
+      <g transform={pawL} style={{transition:'transform 0.3s ease'}}>
+        <ellipse cx="44" cy="58" rx="15" ry="12" fill="#8d6b4f" />
+        <path d="M36 56 v4 M44 54 v4 M52 56 v4" stroke="#6d4c41" strokeWidth="1.5" strokeLinecap="round" />
+      </g>
+      <g transform={pawR} style={{transition:'transform 0.3s ease'}}>
+        <ellipse cx="76" cy="58" rx="15" ry="12" fill="#8d6b4f" />
+        <path d="M68 56 v4 M76 54 v4 M84 56 v4" stroke="#6d4c41" strokeWidth="1.5" strokeLinecap="round" />
+      </g>
+    </svg>
+  </div>);
+}
+
 function Auth({ onAuth, error, loading }: any) {
   const [mode, setMode] = useState<'login'|'register'>('login');
   const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  return (<div style={S}><h1>Don't Ngiao</h1><p style={{color:'#a3a3a3',marginTop:0}}>Mai ngiao, mai drama.</p>
+  const [focus, setFocus] = useState<string|null>(null);
+  const focusValue = focus==='name' ? name : focus==='email' ? email : focus==='password' ? password : '';
+  return (<div style={S}><AuthBear focus={focus} value={focusValue} cover={focus==='password' && !showPassword} /><h1>Don't Ngiao</h1><p style={{color:'#a3a3a3',marginTop:0}}>Mai ngiao, mai drama.</p>
     <div style={{...tabTrack,marginBottom:16}}><button style={mode==='login'?tabPillActive:tabPill} onClick={()=>setMode('login')}>Log in</button><button style={mode==='register'?tabPillActive:tabPill} onClick={()=>setMode('register')}>Register</button></div>
     <div style={homeCard}>
     {error && <p style={{color:'#f87171',marginTop:0}}>{error}</p>}
-    {mode==='register' && <><label>Name</label><input style={input} value={name} onChange={e=>setName(e.target.value)} /></>}
-    <label>Email</label><input style={input} value={email} onChange={e=>setEmail(e.target.value)} />
-    <label>Password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={showPassword ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={password} onChange={e=>setPassword(e.target.value)} /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onClick={()=>setShowPassword(v=>!v)}>{showPassword ? '🙈' : '👁️'}</button></div>
+    {mode==='register' && <><label>Name</label><input style={input} value={name} onChange={e=>setName(e.target.value)} onFocus={()=>setFocus('name')} onBlur={()=>setFocus(null)} /></>}
+    <label>Email</label><input style={input} value={email} onChange={e=>setEmail(e.target.value)} onFocus={()=>setFocus('email')} onBlur={()=>setFocus(null)} />
+    <label>Password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={showPassword ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={password} onChange={e=>setPassword(e.target.value)} onFocus={()=>setFocus('password')} onBlur={()=>setFocus(null)} /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onClick={()=>setShowPassword(v=>!v)}>{showPassword ? '🙈' : '👁️'}</button></div>
     <button style={{...primary, width:'100%', padding:'14px', fontSize:16, opacity: loading ? 0.6 : 1, cursor: loading ? 'not-allowed' : 'pointer'}} disabled={loading} onClick={()=>onAuth(mode,name,email,password)}>{loading && <span className="btn-spinner" aria-hidden="true" />}{loading ? (mode==='login' ? 'Logging in…' : 'Creating account…') : (mode==='login' ? 'Log in' : 'Create account')}</button>
     </div>
     <p style={{color:'#a3a3a3',fontSize:13}}>Forgot your password? Ask the admin for a reset link.</p>
