@@ -701,15 +701,23 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
     </div>
     {tab==='expenses' && <>
       <div style={card}><h3 style={{marginTop:0}}>Spend by category</h3>
-        {/* Chart controls, 2026-11-04: Pie/Bar buttons REMOVED — the carousel
-        is swipeable, so they were redundant (and in the screenshot they
-        wrapped Bar onto a second row). The dots below the chart stay as
-        the chart indicator (and still tap to switch). Currency is a
-        separate dimension from Group/Mine, so it sits on the right:
-        Group+Mine grouped on the left, the select pushed right with
-        marginLeft:auto (so it stays right even if it wraps). */}
-        <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}><div style={{display:'flex',gap:8}}><button style={catView==='group'?catControlActive:catControl} onClick={()=>setCatView('group')}>Group</button><button style={catView==='mine'?catControlActive:catControl} onClick={()=>setCatView('mine')}>Mine</button></div>
-        {currencies.length>1 && <select style={{...catControl,marginLeft:'auto'}} value={cur} onChange={e=>setCatCur(e.target.value)}>{currencies.map(c=><option key={c}>{c}</option>)}</select>}</div>
+        {/* Chart controls, 2026-11-05: Group/Mine now use the same segmented
+        pill language as the group tabs and Auth tabs (dark track, white
+        active pill) instead of the old separate teal rectangles — the
+        old catControl rectangles were a second segment language on the
+        same screen. Currency stays a native picker (tap opens the iOS
+        picker list, same data/fallback as before, hidden when only one
+        currency), but restyled as quiet text 'SGD ▾' on the right, not
+        a rectangle button: Group/Mine is binary (segment fits), currency
+        is N-ary (picker fits). appearance:none + custom chevron, so the
+        native select arrows don't double up with the chevron. */}
+        <div style={{display:'flex',gap:8,alignItems:'center',justifyContent:'space-between',flexWrap:'wrap'}}>
+          <div style={{display:'flex',background:'#242424',borderRadius:999,padding:3,flexShrink:0}}>
+            <button style={catView==='group'?{...tabPillActive,flex:'none',padding:'8px 16px'}:{...tabPill,flex:'none',padding:'8px 16px'}} onClick={()=>setCatView('group')}>Group</button>
+            <button style={catView==='mine'?{...tabPillActive,flex:'none',padding:'8px 16px'}:{...tabPill,flex:'none',padding:'8px 16px'}} onClick={()=>setCatView('mine')}>Mine</button>
+          </div>
+          {currencies.length>1 && <span style={{display:'flex',alignItems:'center',gap:4,marginLeft:'auto'}}><select aria-label="Chart currency" style={{background:'transparent',border:'none',color:'#fff',fontSize:14,padding:'8px 0',appearance:'none',cursor:'pointer',outline:'none'}} value={cur} onChange={e=>setCatCur(e.target.value)}>{currencies.map(c=><option key={c}>{c}</option>)}</select><span aria-hidden="true" style={{color:'#a3a3a3',pointerEvents:'none'}}>▾</span></span>}
+        </div>
         {/* Carousel, swipe (and dots): both panels stay mounted in a
         200%-wide flex track, so tapping a dot slides the track, and a
         horizontal swipe on the chart does the same (left: pie -> bar,
@@ -728,7 +736,11 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
           <button type="button" aria-label="Show pie chart" style={{width:8,height:8,borderRadius:'50%',border:'none',padding:0,cursor:'pointer',background:catChart==='pie' ? '#2dd4bf' : '#333'}} onClick={()=>setCatChart('pie')} />
           <button type="button" aria-label="Show bar chart" style={{width:8,height:8,borderRadius:'50%',border:'none',padding:0,cursor:'pointer',background:catChart==='bar' ? '#2dd4bf' : '#333'}} onClick={()=>setCatChart('bar')} />
         </div>
-        <p style={{fontSize:12,color:'#a3a3a3'}}>{catView==='mine' ? 'Mine = your split shares only. Other members\' individual breakdowns are never sent to you.' : 'Group = total spend for the whole group.'} Pie = overall breakdown. Bar = spend per day, stacked by category, fitted to the screen width. Per currency only, never converted. Swipe the chart to switch.</p>
+        {/* Chart explanation paragraph REMOVED 2026-11-05: it restated
+        what was already visible (Group/Mine labels, dots, currency
+        picker). Only the non-obvious Mine distinction is kept, shortened
+        to one clause — Group needs no explanation at all. */}
+        {catView==='mine' && <p style={{fontSize:12,color:'#a3a3a3'}}>Mine = your shares only.</p>}
       </div>
       {group.expenses.length===0 && <p>No expenses yet.</p>}
       {group.expenses.length>0 && <div style={balCard}>{group.expenses.map((e:any,ei:number,arr:any[])=>{const mySplit = group.myMemberId ? e.splits.find((s:any)=>s.member_id===group.myMemberId) : null; return (<div key={e.id} style={{...balRow,cursor:'pointer',borderBottom:ei===arr.length-1?'none':balHairline}} onClick={()=>setDetailExpense(e)}>
