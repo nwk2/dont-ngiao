@@ -8,13 +8,16 @@ import { fmt, CATEGORIES } from './api';
 // dark-theme-friendly palette (same family as the settle colour dots,
 // different mapping — categories and members are different domains).
 export const CAT_COLORS: Record<string, string> = {
-  'Food & Drink': '#5eead4',
-  'Transport': '#93c5fd',
-  'Accommodation': '#fda4af',
-  'Activities': '#fcd34d',
-  'Shopping': '#a5b4fc',
-  'Other': '#86efac',
-  'Uncategorized': '#a3a3a3',
+  // Gruvbox dark (approved 2026-11-04 for dark mode; light pastel is
+  // a separate light-mode palette, not built yet): green, blue, purple,
+  // yellow, orange, aqua, grey. Fixed per category, same in pie and bar.
+  'Food & Drink': '#b8bb26',
+  'Transport': '#83a598',
+  'Accommodation': '#d3869b',
+  'Activities': '#fabd2f',
+  'Shopping': '#fe8019',
+  'Other': '#8ec07c',
+  'Uncategorized': '#928374',
 };
 function catColor(cat: string) { return CAT_COLORS[cat] || '#a3a3a3'; }
 function Legend({ entries, total, currency }: { entries: [string, number][]; total: number; currency: string }) {

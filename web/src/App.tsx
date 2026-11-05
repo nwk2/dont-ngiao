@@ -23,11 +23,11 @@ const balHairline = '1px solid #2e2e2e';
 // their current cards until their own chunks. Logic unchanged everywhere:
 // Home group list, archived Restore/Open, account menu, Edit name,
 // group header, changeTab behaviour, tab keys.
-const EXP_CAT_COLORS: Record<string,string> = { 'Food & Drink':'#5eead4', 'Transport':'#93c5fd', 'Accommodation':'#fda4af', 'Activities':'#fcd34d', 'Shopping':'#a5b4fc', 'Other':'#86efac', 'Uncategorized':'#a3a3a3' };
+const EXP_CAT_COLORS: Record<string,string> = { 'Food & Drink':'#b8bb26', 'Transport':'#83a598', 'Accommodation':'#d3869b', 'Activities':'#fabd2f', 'Shopping':'#fe8019', 'Other':'#8ec07c', 'Uncategorized':'#928374' };
 function catIcon(cat: string) {
   // Feather-style line SVGs, white stroke on a coloured chip, matching the
-  // approved prototype Expenses icon chips. Colours mirror pie.tsx for
-  // now; the chart recolour chunk will move both to gruvbox dark.
+  // approved prototype Expenses icon chips. Colours mirror pie.tsx
+  // (gruvbox dark since this chunk).
   const common = { width:18, height:18, viewBox:'0 0 24 24', fill:'none', stroke:'#fff', strokeWidth:2, strokeLinecap:'round' as const, strokeLinejoin:'round' as const };
   const paths: Record<string, React.ReactNode> = {
     'Food & Drink': (<><path d="M18 8h1a4 4 0 0 1 0 8h-1" /><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z" /><line x1="6" y1="1" x2="6" y2="4" /><line x1="10" y1="1" x2="10" y2="4" /><line x1="14" y1="1" x2="14" y2="4" /></>),
