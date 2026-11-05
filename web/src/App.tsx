@@ -736,10 +736,16 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
       {(() => {
         const mine = group.balances.filter((b:any)=>b.memberId===group.myMemberId);
         if (!mine.length) return null;
+        // Currency pills are hidden when the group has exactly one balance
+        // currency (2026-11-05): the amount already carries its symbol
+        // (S$, ¥, ...) and the group header states the default currency,
+        // so a single-currency pill just repeats itself down the tab.
+        // Multi-currency groups keep the pills — USD and SGD both show $.
+        const singleCurrency = new Set(group.balances.map((b:any)=>b.currency)).size===1;
         return (<div style={balCard}>
           <div style={{padding:'14px 14px 6px',fontSize:12,letterSpacing:1,color:'#a3a3a3',fontWeight:600}}>YOUR POSITION IN THIS GROUP</div>
           {mine.map((b:any,i:number)=>(<div key={b.currency} style={{...balRow,justifyContent:'space-between',borderBottom:i===mine.length-1?'none':balHairline}}>
-            <div style={{display:'flex',alignItems:'center',gap:8}}><span>{b.balance>0?'You are owed':b.balance<0?'You owe':'Settled'}</span><span style={currencyChip}>{b.currency}</span></div>
+            <div style={{display:'flex',alignItems:'center',gap:8}}><span>{b.balance>0?'You are owed':b.balance<0?'You owe':'Settled'}</span>{!singleCurrency && <span style={currencyChip}>{b.currency}</span>}</div>
             <strong style={{color:b.balance>0?'#2dd4bf':b.balance<0?'#f5f5f5':'#a3a3a3',fontSize:16,whiteSpace:'nowrap'}}>{b.balance===0?'Settled':fmt(Math.abs(b.balance), b.currency)}</strong>
           </div>))}
         </div>);
@@ -750,8 +756,8 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         return balCurrencies.map((cur, ci) => {
           const spent = group.expenses.filter((e:any)=>e.currency===cur).reduce((sum:number,e:any)=>sum+e.amount_minor, 0);
           return (<div key={cur}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,margin:`${ci===0?0:16}px 0 8px`}}>
-              <span style={currencyChip}>{cur}</span>
+            <div style={{display:'flex',alignItems:'center',justifyContent:balCurrencies.length===1?'flex-end':'space-between',gap:8,margin:`${ci===0?0:16}px 0 8px`}}>
+              {balCurrencies.length>1 && <span style={currencyChip}>{cur}</span>}
               <span style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4,whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'}}>spent {fmt(spent, cur)}</span>
             </div>
             <div style={balCard}>{group.balances.filter((b:any)=>b.currency===cur).map((b:any,bi:number,arr:any[])=>{
@@ -789,7 +795,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
           same sequential colour and also show the creditor. */}
           <div style={{display:'flex',alignItems:'center',flexShrink:0}}><span style={{...avatar,width:28,height:28,fontSize:12,background:memberDotColor(group, from.memberId)}}>{initials(from.name)}</span><span style={{...avatar,width:28,height:28,fontSize:12,marginLeft:-10,border:'2px solid #1c1c1e',background:memberDotColor(group, to.memberId)}}>{initials(to.name)}</span></div>
           <div style={{flex:1,minWidth:0,lineHeight:1.4}}>
-            <div>{from.label} <span style={{color:'#a3a3a3'}}>owes</span> {to.label}</div>
+            <div>{from.label} <span style={{color:'#a3a3a3'}}>{from.memberId===group.myMemberId?'owe':'owes'}</span> {to.memberId===group.myMemberId?'you':to.label}</div>
             <div style={{marginTop:4}}><strong>{s.display}</strong></div>
           </div>
           {!group.isArchived && <button style={{...primary,flexShrink:0,background:canSettle?'#2dd4bf':'#1f4d4a',borderColor:canSettle?'#2dd4bf':'#1f4d4a',color:canSettle?'#0f172a':'#0f172a',cursor:canSettle?'pointer':'not-allowed'}} disabled={!canSettle} onClick={()=>setSettle(s)}>Settle</button>}
@@ -803,7 +809,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         return (<div key={p.id} style={{...balRow,justifyContent:'space-between',borderBottom:pi===group.payments.length-1?'none':balHairline}}>
           <div style={{display:'flex',alignItems:'center',flexShrink:0}}><span style={{...avatar,width:28,height:28,fontSize:12,background:memberDotColor(group, from.memberId)}}>{initials(from.name)}</span><span style={{...avatar,width:28,height:28,fontSize:12,marginLeft:-10,border:'2px solid #1c1c1e',background:memberDotColor(group, to.memberId)}}>{initials(to.name)}</span></div>
           <div style={{flex:1,minWidth:0,lineHeight:1.4}}>
-            <div>{from.label} <span style={{color:'#a3a3a3'}}>paid</span> {to.label}</div>
+            <div>{from.label} <span style={{color:'#a3a3a3'}}>paid</span> {to.memberId===group.myMemberId?'you':to.label}</div>
             <div style={{fontSize:13,lineHeight:1.4,marginTop:4}}><strong>{p.display}</strong> <span style={{color:'#a3a3a3'}}>· {fmtDate(p.date).replace(/ \d{4}$/,'')}</span></div>
             {paymentErrors[p.id] && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:4,marginBottom:0}}>{paymentErrors[p.id]}</p>}
           </div>
