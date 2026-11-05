@@ -479,16 +479,44 @@ function useBlink() {
   }, []);
   return blink;
 }
-function AuthBear({ focus, value, cover }: any) {
+
+// Shared password overlays (2026-11-05, Wai's revision — the old paws
+// were head-coloured, so they were invisible against the head):
+// - binocular: password focused + HIDDEN — pet tries to peek at a
+//   masked password. Dark rings + glass lenses + grips, over the eyes.
+// - cover: password focused + SHOWN — pet covers its eyes because the
+//   password is now actually visible. Contrasting paw colour + finger
+//   bumps + toe lines, so it reads as hands, not face. Both fade in/out
+//   (opacity, not unmount) so the switch is smooth; neither shows when
+//   the password field is not focused.
+function PetBinocular({ show }: any) {
+  return (<g opacity={show ? 1 : 0} style={{transition:'opacity 0.25s ease'}}>
+    <rect x="57" y="52" width="6" height="8" fill="#333" />
+    <circle cx="44" cy="58" r="15" fill="#242424" stroke="#666" strokeWidth="2" />
+    <circle cx="76" cy="58" r="15" fill="#242424" stroke="#666" strokeWidth="2" />
+    <circle cx="44" cy="58" r="9" fill="#0f172a" /><circle cx="76" cy="58" r="9" fill="#0f172a" />
+    <circle cx="41" cy="55" r="2.5" fill="#fff" opacity="0.6" /><circle cx="73" cy="55" r="2.5" fill="#fff" opacity="0.6" />
+    <rect x="38" y="71" width="12" height="10" rx="3" fill="#242424" /><rect x="70" y="71" width="12" height="10" rx="3" fill="#242424" />
+  </g>);
+}
+function PetCover({ show, fill, line }: any) {
+  return (<g opacity={show ? 1 : 0} style={{transition:'opacity 0.25s ease'}}>
+    <circle cx="36" cy="47" r="4.5" fill={fill} /><circle cx="44" cy="45" r="4.5" fill={fill} /><circle cx="52" cy="47" r="4.5" fill={fill} />
+    <circle cx="68" cy="47" r="4.5" fill={fill} /><circle cx="76" cy="45" r="4.5" fill={fill} /><circle cx="84" cy="47" r="4.5" fill={fill} />
+    <ellipse cx="44" cy="58" rx="17" ry="14" fill={fill} stroke="#3e2723" strokeWidth="1" />
+    <ellipse cx="76" cy="58" rx="17" ry="14" fill={fill} stroke="#3e2723" strokeWidth="1" />
+    <path d="M36 54 v6 M44 52 v6 M52 54 v6 M68 54 v6 M76 52 v6 M84 54 v6" stroke={line} strokeWidth="1.5" strokeLinecap="round" />
+  </g>);
+}
+function AuthBear({ focus, value, showPassword }: any) {
   const blink = useBlink();
   const len = (value || '').length;
   const dx = focus ? Math.min(len, 16) * 0.2 - 1.6 : 0;
   const dy = focus ? 3 : 0;
   const eyeRy = blink ? 1 : 9;
-  // Idle paws rest low and out to the sides (cheeks), not over the snout:
-  // left paw (-20, +20), right paw (+20, +20); covering is (0, 0) for both.
-  const pawL = cover ? 'translate(0 0)' : 'translate(-20 20)';
-  const pawR = cover ? 'translate(0 0)' : 'translate(20 20)';
+  const pw = focus === 'password';
+  const binocular = pw && !showPassword;
+  const cover = pw && showPassword;
   return (<div aria-hidden="true" style={{display:'flex',justifyContent:'center',marginBottom:8}}>
     <svg width="88" height="88" viewBox="0 0 120 120">
       <circle cx="28" cy="30" r="16" fill="#8d6b4f" /><circle cx="28" cy="30" r="8" fill="#c9a88a" />
@@ -502,32 +530,27 @@ function AuthBear({ focus, value, cover }: any) {
         <ellipse cx="76" cy="58" rx="9" ry={eyeRy} fill="#fff" />
         {!blink && (<><circle cx={44 + dx} cy={58 + dy} r="4.5" fill="#1c1c1e" /><circle cx={76 + dx} cy={58 + dy} r="4.5" fill="#1c1c1e" /></>)}
       </g>
-      <g transform={pawL} style={{transition:'transform 0.3s ease'}}>
-        <ellipse cx="44" cy="58" rx="15" ry="12" fill="#8d6b4f" />
-        <path d="M36 56 v4 M44 54 v4 M52 56 v4" stroke="#6d4c41" strokeWidth="1.5" strokeLinecap="round" />
-      </g>
-      <g transform={pawR} style={{transition:'transform 0.3s ease'}}>
-        <ellipse cx="76" cy="58" rx="15" ry="12" fill="#8d6b4f" />
-        <path d="M68 56 v4 M76 54 v4 M84 56 v4" stroke="#6d4c41" strokeWidth="1.5" strokeLinecap="round" />
-      </g>
+      <PetBinocular show={binocular} />
+      <PetCover show={cover} fill="#5d4037" line="#8d6b4f" />
     </svg>
   </div>);
 }
 
 // Auth corgi (2026-11-05, comparison pick): same behaviour as AuthBear
-// (focus-driven pupils, blinking, paws over eyes on hidden password),
-// different face — Login shows the corgi, Register keeps the bear, so
-// Wai can compare them by toggling the pill. Corgi markers: tall pointy
-// ears, tan face with a white blaze, white muzzle, tongue out. Paws are
-// cream (corgi paws), not head-tan, so they read as paws, not face.
-function AuthCorgi({ focus, value, cover }: any) {
+// (focus-driven pupils, blinking, binocular on hidden password, cover
+// on shown password), different face — Login shows the corgi, Register
+// keeps the bear, so Wai can compare them by toggling the pill. Corgi
+// markers: tall pointy ears, tan face with a white blaze, white muzzle,
+// tongue out. Cover paws are white (contrast vs tan face).
+function AuthCorgi({ focus, value, showPassword }: any) {
   const blink = useBlink();
   const len = (value || '').length;
   const dx = focus ? Math.min(len, 16) * 0.2 - 1.6 : 0;
   const dy = focus ? 3 : 0;
   const eyeRy = blink ? 1 : 9;
-  const pawL = cover ? 'translate(0 0)' : 'translate(-20 20)';
-  const pawR = cover ? 'translate(0 0)' : 'translate(20 20)';
+  const pw = focus === 'password';
+  const binocular = pw && !showPassword;
+  const cover = pw && showPassword;
   return (<div aria-hidden="true" style={{display:'flex',justifyContent:'center',marginBottom:8}}>
     <svg width="88" height="88" viewBox="0 0 120 120">
       <path d="M22 44 L30 6 L54 32 Z" fill="#d99a5b" stroke="#d99a5b" strokeWidth="4" strokeLinejoin="round" />
@@ -546,14 +569,8 @@ function AuthCorgi({ focus, value, cover }: any) {
         <ellipse cx="76" cy="58" rx="9" ry={eyeRy} fill="#fff" />
         {!blink && (<><circle cx={44 + dx} cy={58 + dy} r="4.5" fill="#1c1c1e" /><circle cx={76 + dx} cy={58 + dy} r="4.5" fill="#1c1c1e" /></>)}
       </g>
-      <g transform={pawL} style={{transition:'transform 0.3s ease'}}>
-        <ellipse cx="44" cy="58" rx="15" ry="12" fill="#f5e6d3" />
-        <path d="M36 56 v4 M44 54 v4 M52 56 v4" stroke="#c9a88a" strokeWidth="1.5" strokeLinecap="round" />
-      </g>
-      <g transform={pawR} style={{transition:'transform 0.3s ease'}}>
-        <ellipse cx="76" cy="58" rx="15" ry="12" fill="#f5e6d3" />
-        <path d="M68 56 v4 M76 54 v4 M84 56 v4" stroke="#c9a88a" strokeWidth="1.5" strokeLinecap="round" />
-      </g>
+      <PetBinocular show={binocular} />
+      <PetCover show={cover} fill="#ffffff" line="#c9a88a" />
     </svg>
   </div>);
 }
@@ -567,7 +584,7 @@ function Auth({ onAuth, error, loading }: any) {
   // Pet placement 2026-11-05: inside the form card, immediately above the
   // Email label (Register: after Name, before Email; Login: first in card),
   // not above the page title — so the face sits with the fields it watches.
-  const pet = mode==='login' ? <AuthCorgi focus={focus} value={focusValue} cover={focus==='password' && !showPassword} /> : <AuthBear focus={focus} value={focusValue} cover={focus==='password' && !showPassword} />;
+  const pet = mode==='login' ? <AuthCorgi focus={focus} value={focusValue} showPassword={showPassword} /> : <AuthBear focus={focus} value={focusValue} showPassword={showPassword} />;
   return (<div style={S}><h1>Don't Ngiao</h1><p style={{color:'#a3a3a3',marginTop:0}}>Mai ngiao, mai drama.</p>
     <div style={{...tabTrack,marginBottom:16}}><button style={mode==='login'?tabPillActive:tabPill} onClick={()=>setMode('login')}>Log in</button><button style={mode==='register'?tabPillActive:tabPill} onClick={()=>setMode('register')}>Register</button></div>
     <div style={homeCard}>
