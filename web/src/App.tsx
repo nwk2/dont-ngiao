@@ -591,6 +591,15 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
   const [detailMember, setDetailMember] = useState<any>(null);
   const [emailDraft, setEmailDraft] = useState('');
   const [memberSheetError, setMemberSheetError] = useState('');
+  // HYBRID REMOVE RULE (mirror of the worker guard, 2026-11-05):
+  // placeholder -> anyone; account member -> creator only; creator ->
+  // nobody. Tappable iff the sheet would have an action: Edit email
+  // (placeholders) or Remove (per this rule). Own row never tappable.
+  // If createdByUserId is missing (legacy group), fall back to the old
+  // peer behaviour so the UI never hides a Remove the server allows.
+  const creatorMemberId = group.createdByUserId ? (group.members.find((m:any)=>m.user_id===group.createdByUserId)?.id || null) : null;
+  const isGroupCreator = !!group.createdByUserId && group.myMemberId === creatorMemberId;
+  const canRemoveMember = (m:any) => !group.isArchived && m.id !== group.myMemberId && (!m.user_id || !group.createdByUserId || isGroupCreator);
   const [catView, setCatView] = useState<'group'|'mine'>('group');
   const [catChart, setCatChart] = useState<'pie'|'bar'>('pie');
   // Activity pagination, 50/page: group.activity is the first page from
@@ -847,11 +856,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
     </>}
     {tab==='members' && <>
       {group.members.length>0 && <div style={balCard}>{group.members.map((m:any,mi:number,arr:any[])=>{
-        // Tappable iff the sheet would have an action: not archived, and
-        // not your own row (self-removal is Settings -> Leave, 2026-11-04).
-        // Account members other than you get Remove in the sheet;
-        // placeholders get Edit email + Remove. Own/archived rows: plain.
-        const tappable = !group.isArchived && m.id !== group.myMemberId;
+        const tappable = canRemoveMember(m);
         return (<div key={m.id} style={{...balRow,borderBottom:mi===arr.length-1?'none':balHairline,cursor:tappable?'pointer':'default'}} onClick={tappable?()=>{setDetailMember(m); setEmailDraft(m.email || ''); setMemberSheetError('');}:undefined}>
         <div style={{...avatar,background:memberDotColor(group, m.id)}}>{initials(m.name)}</div>
         <div style={{flex:1,minWidth:0}}>
@@ -885,12 +890,12 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
           {memberSheetError && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{memberSheetError}</p>}
           <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={async()=>{setMemberSheetError(''); try{const d = await api(`/api/groups/${group.id}/members/${detailMember.id}`,'PATCH',{email:emailDraft}); setDetailMember(null); reload(d);}catch(er:any){setMemberSheetError(er.message);}}}>Save email</AsyncButton>
         </>}
-        {/* Remove: other members only, as before. Confirm button is now
-        labelled 'Remove', not the ConfirmSheet default 'Delete' — the
-        action is called Remove everywhere else in this flow. */}
-        <div style={{marginTop:20}}>
+        {/* Remove: per the hybrid rule (see GroupView helpers). Confirm
+        button is labelled 'Remove', not the ConfirmSheet default
+        'Delete' — the action is called Remove everywhere else here. */}
+        {canRemoveMember(detailMember) && <div style={{marginTop:20}}>
           <AsyncButton style={{...btn,width:'100%',padding:'14px',fontSize:16,background:'#422006',borderColor:'#422006',color:'#f87171'}} onClick={()=>{setDetailMember(null); setConfirm({title:'Remove member?',message:`Remove ${detailMember.name} from this group? This cannot be undone.`,confirmLabel:'Remove',onError:(msg:string)=>setMemberErrors(prev=>({...prev,[detailMember.id]:msg})),action:async()=>{const d = await api(`/api/groups/${group.id}/members/${detailMember.id}`,'DELETE'); reload(d);}});}}>Remove member</AsyncButton>
-        </div>
+        </div>}
       </div>
     </div>)}
     {tab==='activity' && <>

@@ -330,7 +330,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         const spentMap: Record<string, number> = {};
         for (const e of detail.expenses || []) spentMap[e.currency] = (spentMap[e.currency] || 0) + e.amount_minor;
         const item = {
-          id: g.id, name: g.name, icon: g.icon || null, defaultCurrency: g.default_currency, isArchived: !!g.is_archived, balances: detail.balances,
+          id: g.id, name: g.name, icon: g.icon || null, defaultCurrency: g.default_currency, isArchived: !!g.is_archived, createdByUserId: g.created_by_user_id || null, balances: detail.balances,
           memberCount: (detail.members || []).length, expenseCount: (detail.expenses || []).length,
           spent: Object.entries(spentMap).map(([currency, amount]) => ({ currency, amount })),
           myBalances: myBalances.map((b: any) => ({ currency: b.currency, balance: b.balance })),
@@ -437,6 +437,17 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         await env.DB.prepare('DELETE FROM group_members WHERE id=?').bind(member.id).run();
         await logActivity(env, groupId, user.name, 'member_left', null, null, user.name);
         const remaining = await env.DB.prepare('SELECT COUNT(*) AS c FROM group_members WHERE group_id=?').bind(groupId).first<Row>();
+        // CREATOR TRANSFER, 2026-11-05: if the leaver was the creator and
+        // members remain, creator passes to the earliest remaining
+        // ACCOUNT member (created_at, then id for ties). Placeholders
+        // cannot be creator (no user_id). If no account member remains,
+        // created_by_user_id becomes NULL, and the hybrid rule falls back
+        // to the old peer behaviour for account members (there are none
+        // left to protect, and placeholders are removable by anyone).
+        if (Number(remaining?.c || 0) > 0 && g.created_by_user_id && user.id === g.created_by_user_id) {
+          const next = await env.DB.prepare('SELECT user_id FROM group_members WHERE group_id=? AND user_id IS NOT NULL ORDER BY created_at ASC, id ASC LIMIT 1').bind(groupId).first<Row>();
+          await env.DB.prepare('UPDATE groups SET created_by_user_id=? WHERE id=?').bind(next?.user_id || null, groupId).run();
+        }
         if (Number(remaining?.c || 0) === 0) {
           const exps = await env.DB.prepare('SELECT COUNT(*) AS c FROM expenses WHERE group_id=?').bind(groupId).first<Row>();
           const pays = await env.DB.prepare('SELECT COUNT(*) AS c FROM payments WHERE group_id=?').bind(groupId).first<Row>();
@@ -491,6 +502,18 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         if (targetId === member.id) return err('Use Leave group in Settings to remove yourself from a group', 400, origin);
         const target = await env.DB.prepare('SELECT * FROM group_members WHERE id=? AND group_id=?').bind(targetId, groupId).first<Row>();
         if (!target) return err('Member not found', 404, origin);
+        // HYBRID REMOVE RULE, 2026-11-05 (Wai): placeholders (user_id
+        // NULL) may be removed by any member; account members may be
+        // removed only by the group creator; the creator may never be
+        // removed by anyone (creator leaves via Leave, which transfers
+        // creator to the earliest remaining account member, below).
+        // This is IN ADDITION to, not instead of, the expense/payment/
+        // balance guards below — a member with any expense, payment or
+        // non-zero balance cannot be removed by anyone, creator included.
+        if (target.user_id) {
+          if (g.created_by_user_id && target.user_id === g.created_by_user_id) return err('The group creator cannot be removed', 403, origin);
+          if (g.created_by_user_id && user.id !== g.created_by_user_id) return err('Only the group creator can remove account members', 403, origin);
+        }
         if (await hasAnyExpense(env, groupId, targetId)) return err('Member has expenses and cannot be removed', 403, origin);
         const payCount = await env.DB.prepare('SELECT COUNT(*) AS c FROM payments WHERE group_id=? AND (from_member_id=? OR to_member_id=?)').bind(groupId, targetId, targetId).first<Row>();
         if (Number(payCount?.c || 0) > 0) return err('Member has payments and cannot be removed', 403, origin);
