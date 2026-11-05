@@ -424,7 +424,9 @@ function YouView({ user, setUser, onLogout, groups, loadGroups, loadGroup, onBac
       <button style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center',opacity:0.5,cursor:'not-allowed'}} disabled><span>Change password</span><span style={{fontSize:12,color:'#a3a3a3',border:'1px solid #333',borderRadius:999,padding:'2px 8px'}}>Coming soon</span></button>
     </div>
     <h3 style={{marginBottom:8}}>Groups</h3>
-    <button style={{...homeCard,border:'none',width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'pointer',color:'#fff'}} onClick={()=>setShowArchived(true)}><span>Archive Groups</span><span style={{color:'#a3a3a3'}}>{archived.length===0 ? 'No archived groups' : `${archived.length} archived · ${archived[0].name}`} ›</span></button>
+    <div style={{...homeCard,display:'flex',flexDirection:'column',gap:8}}>
+      <button style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}} onClick={()=>setShowArchived(true)}><span>Archive Groups</span><span style={{color:'#a3a3a3'}}>{archived.length===0 ? 'No archived groups' : `${archived.length} archived · ${archived[0].name}`} ›</span></button>
+    </div>
     <div style={{marginTop:20}}><AsyncButton style={{...btn,width:'100%',padding:'14px',fontSize:16,background:'#422006',borderColor:'#422006',color:'#f87171'}} onClick={async()=>{await api('/api/auth/logout','POST'); onLogout();}}>Log out</AsyncButton></div>
     {editingName && (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
       <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640}}>
