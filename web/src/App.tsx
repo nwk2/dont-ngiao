@@ -131,14 +131,15 @@ function ConfirmSheet({ title, message, confirmLabel, onConfirm, onCancel }: any
 // group content, and the API still enforces membership on restore, so a
 // stale or forged id simply fails to load and falls back to Home.
 const LAST_GROUP_KEY = 'dont-ngiao-last-group';
-const VALID_TABS = ['expenses','balances','members','activity'] as const;
+const VALID_TABS = ['expenses','balances','members','log'] as const;
 function readSavedGroup(): { groupId: string; tab: typeof VALID_TABS[number] } | null {
   try {
     const raw = localStorage.getItem(LAST_GROUP_KEY);
     if (!raw) return null;
     const p = JSON.parse(raw);
     if (typeof p?.groupId !== 'string' || !p.groupId) return null;
-    return { groupId: p.groupId, tab: VALID_TABS.includes(p.tab) ? p.tab : 'expenses' };
+    const tab = p.tab === 'activity' ? 'log' : p.tab;
+    return { groupId: p.groupId, tab: VALID_TABS.includes(tab) ? tab : 'expenses' };
   } catch { return null; }
 }
 export default function App() {
@@ -149,7 +150,7 @@ export default function App() {
   const [groupLoading, setGroupLoading] = useState(false);
   const loadSeq = useRef(0);
   const restoredRef = useRef(false);
-  const [tab, setTab] = useState<'expenses'|'balances'|'members'|'activity'>('expenses');
+  const [tab, setTab] = useState<'expenses'|'balances'|'members'|'log'>('expenses');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   async function loadGroups() { try { setGroups(await api('/api/groups')); setError(''); } catch(e:any){ setError(e.message); } }
@@ -801,7 +802,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
   const [memberErrors, setMemberErrors] = useState<Record<string,string>>({});
   const [paymentErrors, setPaymentErrors] = useState<Record<string,string>>({});
   useEffect(()=>{ setMemberErrors({}); setPaymentErrors({}); }, [group]);
-  function changeTab(t: 'expenses'|'balances'|'members'|'activity') { setTab(t); setError(''); setMemberErrors({}); setPaymentErrors({}); }
+  function changeTab(t: 'expenses'|'balances'|'members'|'log') { setTab(t); setError(''); setMemberErrors({}); setPaymentErrors({}); }
   const [catCur, setCatCur] = useState<string>('');
   const currencies = Object.keys(group.categoryGroup || {});
   // CHUNK 1, Nov 2026: catCur persists across groups (GroupView state
@@ -852,7 +853,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
     </div>
     {error && <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:12}}><span style={{color:'#f87171'}}>{error}</span><button style={btn} onClick={()=>reload()}>Retry</button></div>}
     <div style={tabTrack}>
-      {(['expenses','balances','members','activity'] as const).map(t=>(<button key={t} onClick={()=>changeTab(t)} style={{flex:1,padding:'10px 4px',fontSize:14,color:tab===t?'#0f172a':'#a3a3a3',background:tab===t?'#fff':'transparent',border:'none',borderRadius:999,fontWeight:tab===t?600:400,textTransform:'capitalize'}}>{t}</button>))}
+      {(['expenses','balances','members','log'] as const).map(t=>(<button key={t} onClick={()=>changeTab(t)} style={{flex:1,padding:'10px 4px',fontSize:14,color:tab===t?'#0f172a':'#a3a3a3',background:tab===t?'#fff':'transparent',border:'none',borderRadius:999,fontWeight:tab===t?600:400,textTransform:'capitalize'}}>{t}</button>))}
     </div>
     {tab==='expenses' && <>
       <div style={card}><h3 style={{marginTop:0}}>Spend by category</h3>
@@ -1036,11 +1037,11 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         </div>}
       </div>
     </div>)}
-    {tab==='activity' && <>
-      {displayedActivity.length===0 && <p>No activity yet.</p>}
-      {displayedActivity.length>0 && <div style={balCard}>{displayedActivity.map((a:any,ai:number,arr:any[])=>{const d = new Date(a.created_at); const dateStr = `${d.getDate()} ${d.toLocaleString('en-GB',{month:'short'})} · ${d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}`; return (<div key={a.id} style={{...balRow,flexDirection:'column',alignItems:'stretch',gap:2,borderBottom:ai===arr.length-1?'none':balHairline}}><div style={{fontWeight:600,lineHeight:1.4}}>{activityTitle(a)}{a.amount_minor!=null ? ` · ${fmt(a.amount_minor,a.currency)}` : ''}</div><div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4}}>{a.actor_name} · {dateStr}{a.detail?` · ${a.detail}`:''}</div></div>);})}</div>}
-      {activityMore && <AsyncButton style={{...btn,width:'100%',padding:'14px',fontSize:16,marginTop:4}} onClick={loadOlderActivity}>{activityLoading ? 'Loading…' : 'Load older activity'}</AsyncButton>}
-      {!activityMore && displayedActivity.length>0 && <p style={{fontSize:13,color:'#a3a3a3'}}>That's all the activity for this group.</p>}
+    {tab==='log' && <>
+      {displayedActivity.length===0 && <p>No log entries yet.</p>}
+      {displayedActivity.length>0 && <div style={balCard}>{displayedActivity.map((a:any,ai:number,arr:any[])=>{const d = new Date(a.created_at); const dateStr = `${d.getDate()} ${d.toLocaleString('en-GB',{month:'short'})} · ${d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}`; return (<div key={a.id} style={{...balRow,flexDirection:'column',alignItems:'stretch',gap:2,borderBottom:ai===arr.length-1?'none':balHairline}}><div style={{fontWeight:600,lineHeight:1.4}}>{activityTitle(a)}{a.amount_minor!=null ? ` · ${fmt(a.amount_minor,a.currency)}` : ''}</div><div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4}}>{a.actorName || a.actor_name} · {dateStr}{a.detail?` · ${a.detail}`:''}</div></div>);})}</div>}
+      {activityMore && <AsyncButton style={{...btn,width:'100%',padding:'14px',fontSize:16,marginTop:4}} onClick={loadOlderActivity}>{activityLoading ? 'Loading…' : 'Load older entries'}</AsyncButton>}
+      {!activityMore && displayedActivity.length>0 && <p style={{fontSize:13,color:'#a3a3a3'}}>That's all the log for this group.</p>}
       {activityError && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{activityError}</p>}
     </>}
     {detailExpense && <ExpenseDetailSheet group={group} expense={detailExpense} onClose={()=>setDetailExpense(null)} setConfirm={setConfirm} reload={reload} />}
@@ -1051,7 +1052,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
   </div>);
 }
 function activityTitle(a:any) {
-  const map: Record<string,string> = { group_created:'Group created', group_renamed:'Group renamed', group_currency_changed:'Default currency changed', group_icon_changed:'Group icon changed', expense_added:'Expense added', expense_deleted:'Expense deleted', payment_recorded:'Payment recorded', payment_deleted:'Payment deleted', member_added:'Member added', member_removed:'Member removed', member_email_updated:'Member email updated', member_left:'Member left', group_archived:'Group archived', group_restored:'Group restored' };
+  const map: Record<string,string> = { expense_added:'Expense added', expense_deleted:'Expense deleted', payment_recorded:'Payment recorded', payment_deleted:'Payment deleted' };
   return map[a.type] || a.type;
 }
 function AddMember({ groupId, reload }: any) {

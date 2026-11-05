@@ -130,21 +130,45 @@ async function rateRecord(env: Env, kind: string, key: string, now: number): Pro
 async function rateClear(env: Env, kind: string, key: string): Promise<void> {
   try { await env.DB.prepare('DELETE FROM rate_limits WHERE kind=? AND key=?').bind(kind, key).run(); } catch {}
 }
-async function logActivity(env: Env, groupId: string, actor: string, type: string, amountMinor: number | null, currency: string | null, detail: string) {
-  await env.DB.prepare('INSERT INTO activity_log (id, group_id, actor_name, type, amount_minor, currency, detail, created_at) VALUES (?,?,?,?,?,?,?,?)')
-    .bind(uid(), groupId, actor, type, amountMinor, currency, detail, nowIso()).run();
-}
+// LOG IDENTITY, Nov 2026: the Log is a payment audit log (expenses +
+// settles), so the people in it are identified by MEMBER id, like
+// everywhere else (expenses, splits, payments, balances) — not by name
+// strings. Names are resolved live at read time (enrichActivity), so a
+// rename relabels the log; the audit facts (who-by-id, amount, currency,
+// when) never change, only the display label does. actor_name/detail are
+// still written as fallback for rows whose member is gone, and old rows
+// (all three ids NULL) keep rendering from those strings.
+// MONEY EVENTS ONLY: only expense_added/expense_deleted/
+// payment_recorded/payment_deleted are written. Group/member admin
+// entries (group_created, member_added, ...) are not money and are no
+// longer logged.
 // MEDIUM FIX, Nov 2026: batched writes need the activity INSERT as a
 // prepared statement, not an executed one, so it can go into the same
 // env.DB.batch() call as the main write. D1 batch() runs its statements
 // in a single transaction: if any statement fails, all roll back —
 // that is what makes the batched writes below atomic, not just faster.
-// Kept separate from logActivity() (which is still used by the
-// sequential paths: leave, add member, edit email, where a specific
-// error mapping — e.g. 409 for a duplicate email — must stay precise).
-function activityStmt(env: Env, groupId: string, actor: string, type: string, amountMinor: number | null, currency: string | null, detail: string) {
-  return env.DB.prepare('INSERT INTO activity_log (id, group_id, actor_name, type, amount_minor, currency, detail, created_at) VALUES (?,?,?,?,?,?,?,?)')
-    .bind(uid(), groupId, actor, type, amountMinor, currency, detail, nowIso());
+const MONEY_ACTIVITY_TYPES_SQL = "'expense_added','expense_deleted','payment_recorded','payment_deleted'";
+function activityStmt(env: Env, groupId: string, actorId: string | null, actorName: string, type: string, amountMinor: number | null, currency: string | null, detail: string, fromId: string | null = null, toId: string | null = null) {
+  return env.DB.prepare('INSERT INTO activity_log (id, group_id, actor_member_id, actor_name, from_member_id, to_member_id, type, amount_minor, currency, detail, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+    .bind(uid(), groupId, actorId, actorName, fromId, toId, type, amountMinor, currency, detail, nowIso());
+}
+// Resolve log names live from member ids. Old rows (all three ids NULL)
+// and rows whose member is gone fall back to the stored strings, so the
+// log stays readable for its whole history. Payment detail ("X -> Y")
+// is rebuilt from resolved ids only when BOTH sides resolve; otherwise
+// the stored detail stands, so a half-resolved row never shows
+// "Name -> Unknown member".
+function enrichActivity(members: any[], rows: any[]) {
+  const byId = new Map((members||[]).map((m:any)=>[m.id, m.name]));
+  const name = (id: string|null|undefined, fb: string|undefined) => (id && byId.get(id)) || fb || 'Unknown member';
+  return rows.map((a:any)=>{
+    const actorName = name(a.actor_member_id, a.actor_name);
+    let detail = a.detail;
+    if ((a.type==='payment_recorded' || a.type==='payment_deleted') && a.from_member_id && a.to_member_id && byId.has(a.from_member_id) && byId.has(a.to_member_id)) {
+      detail = `${byId.get(a.from_member_id)} -> ${byId.get(a.to_member_id)}`;
+    }
+    return {...a, actorName, detail};
+  });
 }
 // RESET TOKENS, Nov 2026: 32 random bytes -> base64url (256-bit, not
 // guessable). Only the SHA-256 hash is stored in password_resets; the
@@ -357,13 +381,13 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       if (!name) return err('Group name is required', 400, origin);
       if (!(CURRENCIES as readonly string[]).includes(currency)) return err('Invalid currency', 400, origin);
       const gid = uid();
-      // Batched + atomic: group + creator member + activity in one
-      // transaction. Previously, if the member INSERT failed, the group
-      // row stayed behind as an orphan no one belonged to.
+      // Batched + atomic: group + creator member in one transaction.
+      // Previously, if the member INSERT failed, the group row stayed
+      // behind as an orphan no one belonged to. Group creation is not
+      // a money event, so the Log gets no entry for it.
       await env.DB.batch([
         env.DB.prepare('INSERT INTO groups (id,name,default_currency,is_archived,created_at,created_by_user_id) VALUES (?,?,?,?,?,?)').bind(gid, name, currency, 0, nowIso(), user.id),
         env.DB.prepare('INSERT INTO group_members (id,group_id,user_id,name,email,created_at) VALUES (?,?,?,?,?,?)').bind(uid(), gid, user.id, user.name, user.email, nowIso()),
-        activityStmt(env, gid, user.name, 'group_created', null, null, name),
       ]);
       return json({ id: gid, name, icon: null, defaultCurrency: currency, isArchived: false }, 201, origin);
     }
@@ -404,26 +428,21 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         const url = new URL(req.url);
         const before = url.searchParams.get('before'); const beforeId = url.searchParams.get('beforeId');
         if (!before || !beforeId) return err('before and beforeId are required', 400, origin);
-        const rows = await env.DB.prepare('SELECT * FROM activity_log WHERE group_id=? AND (created_at < ? OR (created_at = ? AND id < ?)) ORDER BY created_at DESC, id DESC LIMIT 51').bind(groupId, before, before, beforeId).all<Row>();
+        const rows = await env.DB.prepare(`SELECT * FROM activity_log WHERE group_id=? AND type IN (${MONEY_ACTIVITY_TYPES_SQL}) AND (created_at < ? OR (created_at = ? AND id < ?)) ORDER BY created_at DESC, id DESC LIMIT 51`).bind(groupId, before, before, beforeId).all<Row>();
         const list = rows.results || [];
-        return json({ activity: list.slice(0, 50), hasMore: list.length > 50 }, 200, origin);
+        const members = await env.DB.prepare('SELECT id, name FROM group_members WHERE group_id=?').bind(groupId).all<Row>();
+        return json({ activity: enrichActivity(members.results||[], list.slice(0, 50)), hasMore: list.length > 50 }, 200, origin);
       }
       if (sub === '' && req.method === 'PATCH') {
         const name = body.name !== undefined ? String(body.name).trim() : g.name;
         const currency = body.defaultCurrency !== undefined ? String(body.defaultCurrency) : g.default_currency;
         if (!name) return err('Group name is required', 400, origin);
         if (!(CURRENCIES as readonly string[]).includes(currency)) return err('Invalid currency', 400, origin);
-        const patchStmts: any[] = [env.DB.prepare('UPDATE groups SET name=?, default_currency=? WHERE id=?').bind(name, currency, groupId)];
-        if (name !== g.name) patchStmts.push(activityStmt(env, groupId, user.name, 'group_renamed', null, null, `${g.name} -> ${name}`));
-        if (currency !== g.default_currency) patchStmts.push(activityStmt(env, groupId, user.name, 'group_currency_changed', null, currency, `Default currency ${g.default_currency} -> ${currency} (new expenses only)`));
-        await env.DB.batch(patchStmts);
+        await env.DB.prepare('UPDATE groups SET name=?, default_currency=? WHERE id=?').bind(name, currency, groupId).run();
         return json(await groupDetail(env, { ...g, name, default_currency: currency }, user.id), 200, origin);
       }
       if (sub === 'archive' && req.method === 'POST') {
-        await env.DB.batch([
-          env.DB.prepare('UPDATE groups SET is_archived=1 WHERE id=?').bind(groupId),
-          activityStmt(env, groupId, user.name, 'group_archived', null, null, g.name),
-        ]);
+        await env.DB.prepare('UPDATE groups SET is_archived=1 WHERE id=?').bind(groupId).run();
         // Return full detail (not just {ok}) so the frontend can use it
         // directly instead of refetching — same pattern as every other
         // group write. Note the is_archived flag must be passed explicitly:
@@ -432,17 +451,13 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         return json(await groupDetail(env, { ...g, is_archived: 1 }, user.id), 200, origin);
       }
       if (sub === 'restore' && req.method === 'POST') {
-        await env.DB.batch([
-          env.DB.prepare('UPDATE groups SET is_archived=0 WHERE id=?').bind(groupId),
-          activityStmt(env, groupId, user.name, 'group_restored', null, null, g.name),
-        ]);
+        await env.DB.prepare('UPDATE groups SET is_archived=0 WHERE id=?').bind(groupId).run();
         return json(await groupDetail(env, { ...g, is_archived: 0 }, user.id), 200, origin);
       }
       if (sub === 'leave' && req.method === 'POST') {
         const blocked = await hasAnyExpense(env, groupId, member.id);
         if (blocked) return err("You can't leave this group because you have an expense here, as payer or as a split participant, even if balances are settled.", 403, origin);
         await env.DB.prepare('DELETE FROM group_members WHERE id=?').bind(member.id).run();
-        await logActivity(env, groupId, user.name, 'member_left', null, null, user.name);
         const remaining = await env.DB.prepare('SELECT COUNT(*) AS c FROM group_members WHERE group_id=?').bind(groupId).first<Row>();
         // CREATOR TRANSFER, 2026-11-05: if the leaver was the creator and
         // members remain, creator passes to the earliest remaining
@@ -463,7 +478,6 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
             return json({ ok: true, groupDeleted: true }, 200, origin);
           }
           await env.DB.prepare('UPDATE groups SET is_archived=1 WHERE id=?').bind(groupId).run();
-          await logActivity(env, groupId, user.name, 'group_archived', null, null, 'Last member left, data preserved');
           return json({ ok: true, groupArchived: true }, 200, origin);
         }
         return json({ ok: true }, 200, origin);
@@ -475,7 +489,6 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         if (email) { const u = await env.DB.prepare('SELECT id FROM users WHERE email=?').bind(email).first<Row>(); if (u) userId = u.id; }
         try { await env.DB.prepare('INSERT INTO group_members (id,group_id,user_id,name,email,created_at) VALUES (?,?,?,?,?,?)').bind(uid(), groupId, userId, name, email, nowIso()).run(); }
         catch { return err('That email is already a member of this group', 409, origin); }
-        await logActivity(env, groupId, user.name, 'member_added', null, null, name);
         return json(await groupDetail(env, g, user.id), 201, origin);
       }
       const rm = sub.match(/^members\/([^/]+)$/);
@@ -493,7 +506,6 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         const u = await env.DB.prepare('SELECT id FROM users WHERE email=?').bind(email).first<Row>(); if (u) userId = u.id;
         try { await env.DB.prepare('UPDATE group_members SET email=?, user_id=? WHERE id=? AND group_id=?').bind(email, userId, targetId, groupId).run(); }
         catch { return err('That email is already a member of this group', 409, origin); }
-        await logActivity(env, groupId, user.name, 'member_email_updated', null, null, target.name);
         return json(await groupDetail(env, g, user.id), 200, origin);
       }
       if (rm && req.method === 'DELETE') {
@@ -527,10 +539,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         const summary = await groupSummary(env, groupId, user.id);
         const bal = summary.balances.find(b => b.memberId === targetId);
         if (bal && bal.balance !== 0) return err('Member must have a zero balance to be removed', 403, origin);
-        await env.DB.batch([
-          env.DB.prepare('DELETE FROM group_members WHERE id=?').bind(targetId),
-          activityStmt(env, groupId, user.name, 'member_removed', null, null, target.name),
-        ]);
+        await env.DB.prepare('DELETE FROM group_members WHERE id=?').bind(targetId).run();
         return json(await groupDetail(env, g, user.id), 200, origin);
       }
       if (sub === 'expenses' && req.method === 'POST') return addExpense(env, g, user, body, origin);
@@ -540,7 +549,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         if (!e) return err('Expense not found', 404, origin);
         await env.DB.batch([
           env.DB.prepare('DELETE FROM expenses WHERE id=?').bind(e.id),
-          activityStmt(env, groupId, user.name, 'expense_deleted', e.amount_minor, e.currency, e.description),
+          activityStmt(env, groupId, member.id, member.name, 'expense_deleted', e.amount_minor, e.currency, e.description),
         ]);
         return json(await groupDetail(env, g, user.id), 200, origin);
       }
@@ -549,11 +558,12 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       if (dp && req.method === 'DELETE') {
         const p = await env.DB.prepare('SELECT * FROM payments WHERE id=? AND group_id=?').bind(decodeURIComponent(dp[1]), groupId).first<Row>();
         if (!p) return err('Payment not found', 404, origin);
-        // CHUNK 1, Nov 2026: payment_deleted used to log member IDs
-        // (from_member_id -> to_member_id), so Activity showed UUIDs.
-        // payment_recorded logs names; deleted must match, so look up
-        // the two members' names first (fall back to IDs if a member
-        // row is somehow gone, rather than failing the delete).
+        // LOG IDENTITY, Nov 2026: the from/to member IDs go in the
+        // from_member_id/to_member_id COLUMNS now (resolved to names at
+        // read time), not in the detail string — an earlier version put
+        // raw IDs in the detail and the Log showed UUIDs. The names
+        // below are only the fallback detail string, for rows read
+        // before their members resolve (or if a member row is gone).
         // DELETE AUTH, Nov 2026: only the two parties to the payment
         // (debtor from_member_id, creditor to_member_id) may delete it.
         // An uninvolved member cannot erase someone else's settlement.
@@ -565,7 +575,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         const payToName = (payMembers.results || []).find((m: any) => m.id === p.to_member_id)?.name || p.to_member_id;
         await env.DB.batch([
           env.DB.prepare('DELETE FROM payments WHERE id=?').bind(p.id),
-          activityStmt(env, groupId, user.name, 'payment_deleted', p.amount_minor, p.currency, `${payFromName} -> ${payToName}`),
+          activityStmt(env, groupId, member.id, member.name, 'payment_deleted', p.amount_minor, p.currency, `${payFromName} -> ${payToName}`, p.from_member_id, p.to_member_id),
         ]);
         return json(await groupDetail(env, g, user.id), 200, origin);
       }
@@ -646,7 +656,7 @@ async function groupDetail(env: Env, g: Row, userId: string) {
   // + frontend tab-triggered fetches, which is a bigger change for a
   // saving of only ~2 queries; the parallel fetch gets most of it.
   const [activity, myHas] = await Promise.all([
-    env.DB.prepare('SELECT * FROM activity_log WHERE group_id=? ORDER BY created_at DESC, id DESC LIMIT 51').bind(g.id).all<Row>(),
+    env.DB.prepare(`SELECT * FROM activity_log WHERE group_id=? AND type IN (${MONEY_ACTIVITY_TYPES_SQL}) ORDER BY created_at DESC, id DESC LIMIT 51`).bind(g.id).all<Row>(),
     myMemberRow ? hasAnyExpense(env, g.id, myMemberRow.id) : Promise.resolve(false),
   ]);
   const suggestions: any[] = [];
@@ -670,7 +680,7 @@ async function groupDetail(env: Env, g: Row, userId: string) {
     id: g.id, name: g.name, icon: g.icon || null, defaultCurrency: g.default_currency, isArchived: !!g.is_archived,
     members: s.members, expenses: expensesOut, payments: paymentsOut, balances: balancesOut, suggestions,
     categoryGroup: catGroup, categoryMine: catMine,
-    activity: (activity.results||[]).slice(0, 50),
+    activity: enrichActivity(s.members, (activity.results||[]).slice(0, 50)),
     hasMoreActivity: (activity.results||[]).length > 50,
     myMemberId: myMemberRow?.id || null,
     myHasExpense: myHas,
@@ -680,6 +690,7 @@ async function groupDetail(env: Env, g: Row, userId: string) {
 async function addExpense(env: Env, g: Row, user: Row, body: any, origin: string | null = null) {
   const members = await env.DB.prepare('SELECT * FROM group_members WHERE group_id=?').bind(g.id).all<Row>();
   const memberIds = new Set((members.results||[]).map(m=>m.id));
+  const myMember = (members.results||[]).find((m:any)=>m.user_id===user.id);
   const currency = String(body.currency || g.default_currency);
   if (!(CURRENCIES as readonly string[]).includes(currency)) return err('Invalid currency', 400, origin);
   const amountMinor = typeof body.amountMinor === 'number' ? body.amountMinor : null;
@@ -714,7 +725,7 @@ async function addExpense(env: Env, g: Row, user: Row, body: any, origin: string
     env.DB.prepare('INSERT INTO expenses (id,group_id,paid_by_member_id,description,amount_minor,currency,category,date,created_at,created_by_user_id) VALUES (?,?,?,?,?,?,?,?,?,?)')
       .bind(eid, g.id, paidBy, description, amountMinor, currency, category, date, nowIso(), user.id),
     ...participants.map((pid, i) => env.DB.prepare('INSERT INTO expense_splits (id,expense_id,member_id,amount_minor) VALUES (?,?,?,?)').bind(uid(), eid, pid, amounts[i])),
-    activityStmt(env, g.id, user.name, 'expense_added', amountMinor, currency, description),
+    activityStmt(env, g.id, myMember?.id || null, myMember?.name || user.name, 'expense_added', amountMinor, currency, description),
   ]);
   return json(await groupDetail(env, g, user.id), 201, origin);
 }
@@ -757,7 +768,7 @@ async function recordPayment(env: Env, g: Row, user: Row, body: any, origin: str
   await env.DB.batch([
     env.DB.prepare('INSERT INTO payments (id,group_id,from_member_id,to_member_id,amount_minor,currency,date,created_at,created_by_user_id) VALUES (?,?,?,?,?,?,?,?,?)')
       .bind(pid, g.id, from, to, amountMinor, currency, date, nowIso(), user.id),
-    activityStmt(env, g.id, user.name, 'payment_recorded', amountMinor, currency, `${summary.members.find((m:any)=>m.id===from)?.name} -> ${summary.members.find((m:any)=>m.id===to)?.name}`),
+    activityStmt(env, g.id, myMemberRow?.id || null, myMemberRow?.name || user.name, 'payment_recorded', amountMinor, currency, `${summary.members.find((m:any)=>m.id===from)?.name} -> ${summary.members.find((m:any)=>m.id===to)?.name}`, from, to),
   ]);
   return json(await groupDetail(env, g, user.id), 201, origin);
 }
