@@ -585,6 +585,42 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
   const [emailDraft, setEmailDraft] = useState('');
   const [catView, setCatView] = useState<'group'|'mine'>('group');
   const [catChart, setCatChart] = useState<'pie'|'bar'>('pie');
+  // Activity pagination, 50/page: group.activity is the first page from
+  // groupDetail, extraActivity holds older pages appended below it.
+  // hasMoreActivity comes from groupDetail (51st row exists); after
+  // each older page, the endpoint's hasMore takes over. A write reloads
+  // group.activity to a fresh first 50, which shifts the window by the
+  // new entries — so if the base page changed since older pages were
+  // loaded, the next Load older re-cursors from the fresh last row and
+  // merges by id, instead of continuing from the stale tail and
+  // skipping the entry that slid out of the first page.
+  const [extraActivity, setExtraActivity] = useState<any[]>([]);
+  const [activityHasMore, setActivityHasMore] = useState<boolean | null>(null);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState('');
+  const [activityBaseLastId, setActivityBaseLastId] = useState<string | null>(null);
+  const displayedActivity = (() => {
+    const seen = new Set<string>(); const out: any[] = [];
+    for (const a of [...(group.activity || []), ...extraActivity]) { if (!seen.has(a.id)) { seen.add(a.id); out.push(a); } }
+    out.sort((a,b) => a.created_at === b.created_at ? (a.id < b.id ? 1 : -1) : (a.created_at < b.created_at ? 1 : -1));
+    return out;
+  })();
+  const activityMore = activityHasMore !== null ? activityHasMore : !!group.hasMoreActivity;
+  async function loadOlderActivity() {
+    if (activityLoading) return;
+    const baseLast = group.activity?.[group.activity.length - 1];
+    const staleBase = extraActivity.length > 0 && activityBaseLastId && baseLast && activityBaseLastId !== baseLast.id;
+    const cursor = staleBase ? baseLast : displayedActivity[displayedActivity.length - 1];
+    if (!cursor) return;
+    setActivityLoading(true); setActivityError('');
+    try {
+      const d = await api(`/api/groups/${group.id}/activity?before=${encodeURIComponent(cursor.created_at)}&beforeId=${encodeURIComponent(cursor.id)}`, 'GET');
+      const merged = (() => { const seen = new Set<string>(); const out: any[] = []; for (const a of [...(group.activity || []), ...extraActivity, ...(d.activity || [])]) { if (!seen.has(a.id)) { seen.add(a.id); out.push(a); } } out.sort((a,b) => a.created_at === b.created_at ? (a.id < b.id ? 1 : -1) : (a.created_at < b.created_at ? 1 : -1)); return out; })();
+      setExtraActivity(merged.slice((group.activity || []).length));
+      setActivityHasMore(!!d.hasMore);
+      setActivityBaseLastId(baseLast?.id || null);
+    } catch (e: any) { setActivityError(e.message); } finally { setActivityLoading(false); }
+  }
   // Carousel swipe: touch start/end only (refs, not state — no re-render
   // while the finger moves). A horizontal swipe >50px, and more horizontal
   // than vertical, switches charts: left = pie -> bar, right = bar -> pie.
@@ -809,8 +845,11 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
       {!group.isArchived && <AddMember groupId={group.id} reload={reload} />}
     </>}
     {tab==='activity' && <>
-      {group.activity.length===0 && <p>No activity yet.</p>}
-      {group.activity.length>0 && <div style={balCard}>{group.activity.map((a:any,ai:number,arr:any[])=>{const d = new Date(a.created_at); const dateStr = `${d.getDate()} ${d.toLocaleString('en-GB',{month:'short'})} · ${d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}`; return (<div key={a.id} style={{...balRow,flexDirection:'column',alignItems:'stretch',gap:2,borderBottom:ai===arr.length-1?'none':balHairline}}><div style={{fontWeight:600,lineHeight:1.4}}>{activityTitle(a)}{a.amount_minor!=null ? ` · ${fmt(a.amount_minor,a.currency)}` : ''}</div><div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4}}>{a.actor_name} · {dateStr}{a.detail?` · ${a.detail}`:''}</div></div>);})}</div>}
+      {displayedActivity.length===0 && <p>No activity yet.</p>}
+      {displayedActivity.length>0 && <div style={balCard}>{displayedActivity.map((a:any,ai:number,arr:any[])=>{const d = new Date(a.created_at); const dateStr = `${d.getDate()} ${d.toLocaleString('en-GB',{month:'short'})} · ${d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}`; return (<div key={a.id} style={{...balRow,flexDirection:'column',alignItems:'stretch',gap:2,borderBottom:ai===arr.length-1?'none':balHairline}}><div style={{fontWeight:600,lineHeight:1.4}}>{activityTitle(a)}{a.amount_minor!=null ? ` · ${fmt(a.amount_minor,a.currency)}` : ''}</div><div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4}}>{a.actor_name} · {dateStr}{a.detail?` · ${a.detail}`:''}</div></div>);})}</div>}
+      {activityMore && <AsyncButton style={{...btn,width:'100%',padding:'14px',fontSize:16,marginTop:4}} onClick={loadOlderActivity}>{activityLoading ? 'Loading…' : 'Load older activity'}</AsyncButton>}
+      {!activityMore && displayedActivity.length>0 && <p style={{fontSize:13,color:'#a3a3a3'}}>That's all the activity for this group.</p>}
+      {activityError && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{activityError}</p>}
     </>}
     {detailExpense && <ExpenseDetailSheet group={group} expense={detailExpense} onClose={()=>setDetailExpense(null)} setConfirm={setConfirm} reload={reload} />}
     {showExpense && <ExpenseModal group={group} onClose={()=>setShowExpense(false)} reload={(d?:any)=>{setShowExpense(false); reload(d);}} />}

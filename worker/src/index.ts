@@ -387,6 +387,20 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       }
 
       if (sub === '' && req.method === 'GET') return json(await groupDetail(env, g, user.id), 200, origin);
+      if (sub === 'activity' && req.method === 'GET') {
+        // Cursor pagination, 50/page: before = created_at of the last
+        // row shown, beforeId = its id (tie-break, since created_at
+        // is ms-resolution and several rows can share it). Order must
+        // match groupDetail: created_at DESC, id DESC, and the cursor
+        // condition must match that order, otherwise a page boundary
+        // can skip or repeat a row.
+        const url = new URL(req.url);
+        const before = url.searchParams.get('before'); const beforeId = url.searchParams.get('beforeId');
+        if (!before || !beforeId) return err('before and beforeId are required', 400, origin);
+        const rows = await env.DB.prepare('SELECT * FROM activity_log WHERE group_id=? AND (created_at < ? OR (created_at = ? AND id < ?)) ORDER BY created_at DESC, id DESC LIMIT 51').bind(groupId, before, before, beforeId).all<Row>();
+        const list = rows.results || [];
+        return json({ activity: list.slice(0, 50), hasMore: list.length > 50 }, 200, origin);
+      }
       if (sub === '' && req.method === 'PATCH') {
         const name = body.name !== undefined ? String(body.name).trim() : g.name;
         const currency = body.defaultCurrency !== undefined ? String(body.defaultCurrency) : g.default_currency;
@@ -602,7 +616,7 @@ async function groupDetail(env: Env, g: Row, userId: string) {
   // + frontend tab-triggered fetches, which is a bigger change for a
   // saving of only ~2 queries; the parallel fetch gets most of it.
   const [activity, myHas] = await Promise.all([
-    env.DB.prepare('SELECT * FROM activity_log WHERE group_id=? ORDER BY created_at DESC LIMIT 200').bind(g.id).all<Row>(),
+    env.DB.prepare('SELECT * FROM activity_log WHERE group_id=? ORDER BY created_at DESC, id DESC LIMIT 51').bind(g.id).all<Row>(),
     myMemberRow ? hasAnyExpense(env, g.id, myMemberRow.id) : Promise.resolve(false),
   ]);
   const suggestions: any[] = [];
@@ -626,7 +640,8 @@ async function groupDetail(env: Env, g: Row, userId: string) {
     id: g.id, name: g.name, icon: g.icon || null, defaultCurrency: g.default_currency, isArchived: !!g.is_archived,
     members: s.members, expenses: expensesOut, payments: paymentsOut, balances: balancesOut, suggestions,
     categoryGroup: catGroup, categoryMine: catMine,
-    activity: activity.results||[],
+    activity: (activity.results||[]).slice(0, 50),
+    hasMoreActivity: (activity.results||[]).length > 50,
     myMemberId: myMemberRow?.id || null,
     myHasExpense: myHas,
   };
