@@ -846,13 +846,13 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         <div style={{flex:1,minWidth:0}}>
           {isEditing ? (<input style={{...input,margin:0}} placeholder="Email" value={emailDraft} onChange={e=>setEmailDraft(e.target.value)} aria-label="Member email" />) : (<>
           <div style={{fontWeight:600,lineHeight:1.4}}>{m.id === group.myMemberId ? `You (${m.name})` : m.name}{!m.user_id ? <span style={noAccountChip}>No account yet</span> : null}</div>
-          {m.email ? (<div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.email}</div>) : (!m.user_id ? (<div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4}}>Placeholder — no email set, no one can claim this yet</div>) : null)}
-          {!m.user_id && m.email ? (<div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4}}>Placeholder — they can claim this by signing up with the same email</div>) : null}
+          {m.email ? (<div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.email}</div>) : (!m.user_id ? (<div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4}}>No email set — can't be claimed yet</div>) : null)}
+          {!m.user_id && m.email ? (<div style={{fontSize:13,color:'#a3a3a3',lineHeight:1.4}}>Can be claimed with this email</div>) : null}
           </>)}
         </div>
         {isEditing ? (<span style={{display:'flex',gap:8,flexShrink:0}}>
-          <AsyncButton style={primary} onClick={async()=>{try{const d = await api(`/api/groups/${group.id}/members/${m.id}`,'PATCH',{email:emailDraft}); setEditingMemberId(null); reload(d);}catch(er:any){setError(er.message);}}}>Save</AsyncButton>
-          <button style={btn} onClick={()=>setEditingMemberId(null)}>Cancel</button>
+          <AsyncButton style={{...primary,padding:'6px 10px',fontSize:13,whiteSpace:'nowrap'}} onClick={async()=>{try{const d = await api(`/api/groups/${group.id}/members/${m.id}`,'PATCH',{email:emailDraft}); setEditingMemberId(null); reload(d);}catch(er:any){setError(er.message);}}}>Save</AsyncButton>
+          <button style={{...btn,padding:'6px 10px',fontSize:13,whiteSpace:'nowrap'}} onClick={()=>setEditingMemberId(null)}>Cancel</button>
         </span>) : (group.isArchived || m.id === group.myMemberId ? null : (<span style={{display:'flex',gap:8,flexShrink:0,flexWrap:'wrap',justifyContent:'flex-end'}}>
           {/* Edit email + Remove now live on the FIRST row, right of the
           name (2026-11-05): the old second row left a full empty row
@@ -862,8 +862,8 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
           button (2026-11-04): self-removal is Settings -> Leave group,
           which has the last-member cleanup (delete/archive) and
           navigates back to Home. */}
-          {!m.user_id && <button style={btn} onClick={()=>{setEditingMemberId(m.id); setEmailDraft(m.email || '');}}>Edit email</button>}
-          <button style={{...btn,flexShrink:0,background:'#422006',borderColor:'#422006',color:'#f87171',fontWeight:600}} onClick={()=>setConfirm({title:'Remove member?',message:`Remove ${m.name} from this group? This cannot be undone.`,onError:(msg:string)=>setMemberErrors(prev=>({...prev,[m.id]:msg})),action:async()=>{const d = await api(`/api/groups/${group.id}/members/${m.id}`,'DELETE'); reload(d);}})}>Remove</button>
+          {!m.user_id && <button style={{...btn,padding:'6px 10px',fontSize:13,whiteSpace:'nowrap'}} onClick={()=>{setEditingMemberId(m.id); setEmailDraft(m.email || '');}}>Edit email</button>}
+          <button style={{...btn,flexShrink:0,padding:'6px 10px',fontSize:13,whiteSpace:'nowrap',background:'#422006',borderColor:'#422006',color:'#f87171',fontWeight:600}} onClick={()=>setConfirm({title:'Remove member?',message:`Remove ${m.name} from this group? This cannot be undone.`,onError:(msg:string)=>setMemberErrors(prev=>({...prev,[m.id]:msg})),action:async()=>{const d = await api(`/api/groups/${group.id}/members/${m.id}`,'DELETE'); reload(d);}})}>Remove</button>
         </span>))}
         </div>
         {memberErrors[m.id] && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{memberErrors[m.id]}</p>}
