@@ -914,7 +914,24 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
       {!showExpense && !group.isArchived && <div style={{position:'fixed',left:0,right:0,bottom:0,background:'#1c1c1e',borderTop:'1px solid #333',padding:12,textAlign:'center'}}><button style={primary} onClick={()=>setShowExpense(true)}>+ Add expense</button></div>}
     </>}
     {tab==='balances' && <>
-      {group.balances.length===0 && <p>No balances yet.</p>}
+      {/* EMPTY STATE, 2026-11-05: a group with no balances, no settle
+      suggestions and no payments gets ONE designed zero-state card
+      instead of "No balances yet." + "All settled." plus a bare
+      "Recorded payments" header — a bare header with nothing under
+      it reads as "still loading", not "zero rows". The guidance
+      notes below only make sense once their sections have content,
+      so they stay with the non-empty render; unchanged there.
+      "No balances yet." is deleted outright: balances empty always
+      implies suggestions empty, so "All settled." already covers it. */}
+      {group.balances.length===0 && group.suggestions.length===0 && group.payments.length===0 ? (<div style={balCard}>
+        <div style={{padding:'16px 14px',textAlign:'center'}}>
+          <div style={{fontWeight:600,fontSize:16}}>All settled.</div>
+          {!group.isArchived && (<>
+            <div style={{fontSize:13,color:'#a3a3a3',marginTop:6}}>Add an expense to start tracking balances.</div>
+            <button style={{...primary,marginTop:12}} onClick={()=>setShowExpense(true)}>+ Add expense</button>
+          </>)}
+        </div>
+      </div>) : (<>
       {(() => {
         const mine = group.balances.filter((b:any)=>b.memberId===group.myMemberId);
         if (!mine.length) return null;
@@ -985,7 +1002,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
       })}</div>}
       <p style={{fontSize:13,color:'#a3a3a3',lineHeight:1.45,margin:'8px 0 0'}}>Only the creditor can settle a debt — if a Settle button is dark, you're not part of that pair. Settling records a payment between the two people — partial amounts are fine, edit the amount in the sheet.</p>
       <h3 style={{margin:'20px 0 8px',fontSize:17}}>Recorded payments</h3>
-      {group.payments.length>0 && <div style={balCard}>{group.payments.map((p:any,pi:number)=>{
+      {group.payments.length>0 ? <div style={balCard}>{group.payments.map((p:any,pi:number)=>{
         const from = personDisplay(group, p.from_member_id, p.fromName);
         const to = personDisplay(group, p.to_member_id, p.toName);
         return (<div key={p.id} style={{...balRow,justifyContent:'space-between',borderBottom:pi===group.payments.length-1?'none':balHairline}}>
@@ -997,9 +1014,10 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
           </div>
           {!group.isArchived && (group.myMemberId === p.from_member_id || group.myMemberId === p.to_member_id) && <button style={{...btn,flexShrink:0,background:'#422006',borderColor:'#422006',color:'#f87171',fontWeight:600}} onClick={()=>setConfirm({title:'Delete payment?',message:`Delete the ${p.display} payment from ${from.label} to ${to.label} on ${fmtDate(p.date)}? This cannot be undone.`,onError:(msg:string)=>setPaymentErrors(prev=>({...prev,[p.id]:msg})),action:async()=>{const d = await api(`/api/groups/${group.id}/payments/${p.id}`,'DELETE'); reload(d);}})}>Delete</button>}
         </div>);
-      })}</div>}
+      })}</div> : <div style={balCard}><div style={{...balRow,color:'#a3a3a3'}}>No recorded payments yet.</div></div>}
       <p style={{fontSize:13,color:'#a3a3a3',lineHeight:1.45,margin:'8px 0 0'}}>Delete shows only on payments you're part of — as the person who paid or the person who was paid.</p>
       <p style={{fontSize:13,color:'#a3a3a3',lineHeight:1.45,margin:'16px 0 0'}}>Balances are per currency and never converted. Recording a payment never moves real money — it just records that money changed hands. Settle up above, one currency at a time.</p>
+      </>)}
     </>}
     {tab==='members' && <>
       {group.members.length>0 && <div style={balCard}>{group.members.map((m:any,mi:number,arr:any[])=>{
