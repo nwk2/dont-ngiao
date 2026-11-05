@@ -783,12 +783,14 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         const toMember = group.members.find((m:any)=>m.id===s.toMemberId);
         const canSettle = group.myMemberId === s.toMemberId || (toMember && !toMember.user_id && group.myMemberId === s.fromMemberId);
         return (<div key={i} style={{...balRow,justifyContent:'space-between',borderBottom:i===group.suggestions.length-1?'none':balHairline}}>
+          {/* Settle rows now match Recorded payments (2026-11-05): overlapping
+          avatar pair, debtor first, creditor second, in memberDotColor —
+          the single debtor dot is dropped, since avatars now carry the
+          same sequential colour and also show the creditor. */}
+          <div style={{display:'flex',alignItems:'center',flexShrink:0}}><span style={{...avatar,width:28,height:28,fontSize:12,background:memberDotColor(group, from.memberId)}}>{initials(from.name)}</span><span style={{...avatar,width:28,height:28,fontSize:12,marginLeft:-10,border:'2px solid #1c1c1e',background:memberDotColor(group, to.memberId)}}>{initials(to.name)}</span></div>
           <div style={{flex:1,minWidth:0,lineHeight:1.4}}>
-            <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:8}}>
-              <span style={{width:10,height:10,borderRadius:'50%',background:memberDotColor(group, from.memberId),flexShrink:0}} />
-              <span>{from.label} <span style={{color:'#a3a3a3'}}>owes</span> {to.label}</span>
-            </div>
-            <div style={{marginLeft:18,marginTop:4}}><strong>{s.display}</strong></div>
+            <div>{from.label} <span style={{color:'#a3a3a3'}}>owes</span> {to.label}</div>
+            <div style={{marginTop:4}}><strong>{s.display}</strong></div>
           </div>
           {!group.isArchived && <button style={{...primary,flexShrink:0,background:canSettle?'#2dd4bf':'#1f4d4a',borderColor:canSettle?'#2dd4bf':'#1f4d4a',color:canSettle?'#0f172a':'#0f172a',cursor:canSettle?'pointer':'not-allowed'}} disabled={!canSettle} onClick={()=>setSettle(s)}>Settle</button>}
         </div>);
