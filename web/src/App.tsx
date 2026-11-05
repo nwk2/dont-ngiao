@@ -480,34 +480,6 @@ function useBlink() {
   return blink;
 }
 
-// Shared password overlays (2026-11-05, Wai's revision — the old paws
-// were head-coloured, so they were invisible against the head):
-// - binocular: password focused + HIDDEN — pet tries to peek at a
-//   masked password. Dark rings + glass lenses + grips, over the eyes.
-// - cover: password focused + SHOWN — pet covers its eyes because the
-//   password is now actually visible. Contrasting paw colour + finger
-//   bumps + toe lines, so it reads as hands, not face. Both fade in/out
-//   (opacity, not unmount) so the switch is smooth; neither shows when
-//   the password field is not focused.
-function PetBinocular({ show }: any) {
-  return (<g opacity={show ? 1 : 0} style={{transition:'opacity 0.25s ease'}}>
-    <rect x="57" y="52" width="6" height="8" fill="#333" />
-    <circle cx="44" cy="58" r="15" fill="#242424" stroke="#666" strokeWidth="2" />
-    <circle cx="76" cy="58" r="15" fill="#242424" stroke="#666" strokeWidth="2" />
-    <circle cx="44" cy="58" r="9" fill="#0f172a" /><circle cx="76" cy="58" r="9" fill="#0f172a" />
-    <circle cx="41" cy="55" r="2.5" fill="#fff" opacity="0.6" /><circle cx="73" cy="55" r="2.5" fill="#fff" opacity="0.6" />
-    <rect x="38" y="71" width="12" height="10" rx="3" fill="#242424" /><rect x="70" y="71" width="12" height="10" rx="3" fill="#242424" />
-  </g>);
-}
-function PetCover({ show, fill, line }: any) {
-  return (<g opacity={show ? 1 : 0} style={{transition:'opacity 0.25s ease'}}>
-    <circle cx="36" cy="47" r="4.5" fill={fill} /><circle cx="44" cy="45" r="4.5" fill={fill} /><circle cx="52" cy="47" r="4.5" fill={fill} />
-    <circle cx="68" cy="47" r="4.5" fill={fill} /><circle cx="76" cy="45" r="4.5" fill={fill} /><circle cx="84" cy="47" r="4.5" fill={fill} />
-    <ellipse cx="44" cy="58" rx="17" ry="14" fill={fill} stroke="#3e2723" strokeWidth="1" />
-    <ellipse cx="76" cy="58" rx="17" ry="14" fill={fill} stroke="#3e2723" strokeWidth="1" />
-    <path d="M36 54 v6 M44 52 v6 M52 54 v6 M68 54 v6 M76 52 v6 M84 54 v6" stroke={line} strokeWidth="1.5" strokeLinecap="round" />
-  </g>);
-}
 function AuthBear({ focus, value, showPassword }: any) {
   const blink = useBlink();
   const len = (value || '').length;
@@ -515,8 +487,8 @@ function AuthBear({ focus, value, showPassword }: any) {
   const dy = focus ? 4 : 2; // anxious look-down: down even at idle, clearly down when a field is focused
   const eyeRy = blink ? 1 : 9;
   const pw = focus === 'password';
-  const binocular = pw && !showPassword;
-  const cover = pw && showPassword;
+  const eyesClosed = pw && !showPassword; // hidden password: both eyes shut
+  const oneEyePeek = pw && showPassword;  // shown password: left eye open, right winking shut
   return (<div aria-hidden="true" style={{display:'flex',justifyContent:'center',marginBottom:8}}>
     <svg width="88" height="88" viewBox="0 0 120 120">
       <circle cx="28" cy="30" r="16" fill="#8d6b4f" /><circle cx="28" cy="30" r="8" fill="#c9a88a" />
@@ -527,12 +499,20 @@ function AuthBear({ focus, value, showPassword }: any) {
       <path d="M48 88 Q52 84 56 88 Q60 84 64 88 Q68 84 72 88" fill="none" stroke="#3e2723" strokeWidth="2" strokeLinecap="round" />
       <path d="M36 46 L52 41 M68 41 L84 46" fill="none" stroke="#3e2723" strokeWidth="2.5" strokeLinecap="round" />
       <g>
-        <ellipse cx="44" cy="58" rx="9" ry={eyeRy} fill="#fff" />
-        <ellipse cx="76" cy="58" rx="9" ry={eyeRy} fill="#fff" />
-        {!blink && (<><circle cx={44 + dx} cy={58 + dy} r="4.5" fill="#1c1c1e" /><circle cx={76 + dx} cy={58 + dy} r="4.5" fill="#1c1c1e" /></>)}
+        {eyesClosed ? (<>
+          <path d="M35 58 Q44 52 53 58" fill="none" stroke="#3e2723" strokeWidth="2.5" strokeLinecap="round" />
+          <path d="M67 58 Q76 52 85 58" fill="none" stroke="#3e2723" strokeWidth="2.5" strokeLinecap="round" />
+        </>) : oneEyePeek ? (<>
+          <ellipse cx="44" cy="58" rx="9" ry={eyeRy} fill="#fff" />
+          {!blink && <circle cx={44 + dx} cy={58 + dy} r="4.5" fill="#1c1c1e" />}
+          <path d="M67 58 Q76 52 85 58" fill="none" stroke="#3e2723" strokeWidth="2.5" strokeLinecap="round" />
+        </>) : (<>
+          <ellipse cx="44" cy="58" rx="9" ry={eyeRy} fill="#fff" />
+          <ellipse cx="76" cy="58" rx="9" ry={eyeRy} fill="#fff" />
+          {!blink && (<><circle cx={44 + dx} cy={58 + dy} r="4.5" fill="#1c1c1e" /><circle cx={76 + dx} cy={58 + dy} r="4.5" fill="#1c1c1e" /></>)}
+        </>)}
       </g>
-      <PetBinocular show={binocular} />
-      <PetCover show={cover} fill="#5d4037" line="#8d6b4f" />
+
     </svg>
   </div>);
 }
@@ -550,8 +530,8 @@ function AuthCorgi({ focus, value, showPassword }: any) {
   const dy = focus ? 4 : 2; // anxious look-down: down even at idle, clearly down when a field is focused
   const eyeRy = blink ? 1 : 9;
   const pw = focus === 'password';
-  const binocular = pw && !showPassword;
-  const cover = pw && showPassword;
+  const eyesClosed = pw && !showPassword; // hidden password: both eyes shut
+  const oneEyePeek = pw && showPassword;  // shown password: left eye open, right winking shut
   return (<div aria-hidden="true" style={{display:'flex',justifyContent:'center',marginBottom:8}}>
     <svg width="88" height="88" viewBox="0 0 120 120">
       <path d="M22 44 L30 6 L54 32 Z" fill="#d99a5b" stroke="#d99a5b" strokeWidth="4" strokeLinejoin="round" />
@@ -567,12 +547,20 @@ function AuthCorgi({ focus, value, showPassword }: any) {
       <path d="M48 89 Q52 85 56 89 Q60 85 64 89 Q68 85 72 89" fill="none" stroke="#3e2723" strokeWidth="2" strokeLinecap="round" />
       <path d="M36 46 L52 41 M68 41 L84 46" fill="none" stroke="#3e2723" strokeWidth="2.5" strokeLinecap="round" />
       <g>
-        <ellipse cx="44" cy="58" rx="9" ry={eyeRy} fill="#fff" />
-        <ellipse cx="76" cy="58" rx="9" ry={eyeRy} fill="#fff" />
-        {!blink && (<><circle cx={44 + dx} cy={58 + dy} r="4.5" fill="#1c1c1e" /><circle cx={76 + dx} cy={58 + dy} r="4.5" fill="#1c1c1e" /></>)}
+        {eyesClosed ? (<>
+          <path d="M35 58 Q44 52 53 58" fill="none" stroke="#3e2723" strokeWidth="2.5" strokeLinecap="round" />
+          <path d="M67 58 Q76 52 85 58" fill="none" stroke="#3e2723" strokeWidth="2.5" strokeLinecap="round" />
+        </>) : oneEyePeek ? (<>
+          <ellipse cx="44" cy="58" rx="9" ry={eyeRy} fill="#fff" />
+          {!blink && <circle cx={44 + dx} cy={58 + dy} r="4.5" fill="#1c1c1e" />}
+          <path d="M67 58 Q76 52 85 58" fill="none" stroke="#3e2723" strokeWidth="2.5" strokeLinecap="round" />
+        </>) : (<>
+          <ellipse cx="44" cy="58" rx="9" ry={eyeRy} fill="#fff" />
+          <ellipse cx="76" cy="58" rx="9" ry={eyeRy} fill="#fff" />
+          {!blink && (<><circle cx={44 + dx} cy={58 + dy} r="4.5" fill="#1c1c1e" /><circle cx={76 + dx} cy={58 + dy} r="4.5" fill="#1c1c1e" /></>)}
+        </>)}
       </g>
-      <PetBinocular show={binocular} />
-      <PetCover show={cover} fill="#ffffff" line="#c9a88a" />
+
     </svg>
   </div>);
 }
