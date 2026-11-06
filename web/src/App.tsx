@@ -207,7 +207,18 @@ function useVisualViewport() {
   useEffect(() => {
     const vp = window.visualViewport;
     if (!vp) return;
-    const update = () => setVv({ kb: Math.max(0, Math.round(window.innerHeight - vp.height)), height: vp.height });
+    const update = () => {
+      const newKb = Math.max(0, Math.round(window.innerHeight - vp.height));
+      const newHeight = vp.height;
+      // Only set state when the values actually changed. The resize and
+      // scroll events fire very frequently (scroll fires on every tick),
+      // and calling setState with a fresh object on each one forces a
+      // re-render every time — on Wai's phone that re-render ghosts the
+      // sheet (the content paints twice, overlapping, frames 9.33s /
+      // 15.60s of his 5:27 video). Returning the previous state object
+      // when nothing changed lets React bail out of the re-render.
+      setVv(prev => (prev.kb === newKb && prev.height === newHeight) ? prev : { kb: newKb, height: newHeight });
+    };
     vp.addEventListener('resize', update);
     vp.addEventListener('scroll', update);
     update();
