@@ -557,16 +557,24 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         if (summary.balances.some((b:any) => b.memberId === member.id && b.balance !== 0)) return err('You must have a zero balance to leave this group', 403, origin);
         await env.DB.prepare('DELETE FROM group_members WHERE id=?').bind(member.id).run();
         const remaining = await env.DB.prepare('SELECT COUNT(*) AS c FROM group_members WHERE group_id=?').bind(groupId).first<Row>();
-        // CREATOR TRANSFER, 2026-11-05: if the leaver was the creator and
-        // members remain, creator passes to the earliest remaining
-        // ACCOUNT member (created_at, then id for ties). Placeholders
-        // cannot be creator (no user_id). If no account member remains,
-        // created_by_user_id becomes NULL, and the hybrid rule falls back
-        // to the old peer behaviour for account members (there are none
-        // left to protect, and placeholders are removable by anyone).
+        // CREATOR TRANSFER, 2026-11-05 (fixed 2026-11-06): if the leaver
+        // was the creator and members remain, creator passes to the
+        // earliest remaining ACCOUNT member (created_at, then id for
+        // ties). Placeholders cannot be creator (no user_id). If no
+        // account member remains, do NOT set created_by_user_id to NULL
+        // — the column is NOT NULL, so that UPDATE crashes AFTER the
+        // member row is already deleted (a partial Leave: the user is
+        // out but the endpoint errors, and a retry then 403s 'Not a
+        // group member'). Leave it pointing at the departed creator;
+        // the Remove guards short-circuit on a missing creator, and
+        // placeholders are removable by anyone, so nothing is blocked.
+        // (Known edge: a later account member joining a placeholder-
+        // only group can't remove other account members until a creator
+        // is re-established — the column can't be NULL without a
+        // table-recreation migration.)
         if (Number(remaining?.c || 0) > 0 && g.created_by_user_id && user.id === g.created_by_user_id) {
           const next = await env.DB.prepare('SELECT user_id FROM group_members WHERE group_id=? AND user_id IS NOT NULL ORDER BY created_at ASC, id ASC LIMIT 1').bind(groupId).first<Row>();
-          await env.DB.prepare('UPDATE groups SET created_by_user_id=? WHERE id=?').bind(next?.user_id || null, groupId).run();
+          if (next?.user_id) await env.DB.prepare('UPDATE groups SET created_by_user_id=? WHERE id=?').bind(next.user_id, groupId).run();
         }
         if (Number(remaining?.c || 0) === 0) {
           const exps = await env.DB.prepare('SELECT COUNT(*) AS c FROM expenses WHERE group_id=?').bind(groupId).first<Row>();
