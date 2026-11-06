@@ -1545,7 +1545,7 @@ function ExpenseModal({ group, onClose, reload }: any) {
   //   centre as one group (2026-11-06).
   const [modalError, setModalError] = useState('');
   const [description, setDescription] = useState(''); const [amount, setAmount] = useState(''); const [currency, setCurrency] = useState(group.defaultCurrency);
-  const [date, setDate] = useState(todayIso()); const [payer, setPayer] = useState(group.members[0]?.id || ''); const [category, setCategory] = useState('Other');
+  const [date, setDate] = useState(todayIso()); const [payer, setPayer] = useState(group.myMemberId || group.members[0]?.id || ''); const [category, setCategory] = useState('Other');
   const [splitType, setSplitType] = useState<'equal'|'exact'|'percent'>('equal');
   const [selected, setSelected] = useState<string[]>(group.members.map((m:any)=>m.id));
   const [percents, setPercents] = useState<Record<string,string>>({}); const [exact, setExact] = useState<Record<string,string>>({});
