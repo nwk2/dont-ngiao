@@ -1560,7 +1560,7 @@ function ExpenseModal({ group, onClose, reload }: any) {
           if (splitType==='percent') body.percents = selected.map(id=>Number(percents[id]||0));
           if (splitType==='exact') { const arr = selected.map(id=>toMinor(exact[id]||'', currency)); if (arr.some(v=>v===null)) { setModalError('Enter valid exact amounts'); return; } body.exactAmounts = arr; }
           try { const d = await api(`/api/groups/${group.id}/expenses`,'POST',body); reload(d); } catch(e:any){ setModalError(e.message); }
-        }}>Add expense</AsyncButton>
+        }}>Save</AsyncButton>
       </div>
     </div>
     {showCurrencyPicker && <CurrencyPickerSheet current={currency} onClose={()=>setShowCurrencyPicker(false)} onPick={(c:string)=>{setCurrency(c); setShowCurrencyPicker(false);}} />}
