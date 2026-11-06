@@ -1411,6 +1411,15 @@ function SettleModal({ group, suggestion, onClose, reload, setError }: any) {
 function SettingsModal({ group, onClose, reload, back }: any) {
   const [name, setName] = useState(group.name); const [cur, setCur] = useState(group.defaultCurrency);
   const hasExpense = !!group.myHasExpense;
+  // LEAVE BLOCKERS, 2026-11-06: the server now blocks Leave on
+  // payments and a non-zero balance too (not just expenses), because
+  // deleting the member row fails on the payment foreign keys. The
+  // frontend mirrors the guard so the button is greyed out with the
+  // right reason before the tap, instead of a server error after it.
+  // groupDetail already returns payments, balances and myMemberId.
+  const hasPayment = (group.payments||[]).some((pp:any) => pp.from_member_id===group.myMemberId || pp.to_member_id===group.myMemberId);
+  const hasNonZeroBalance = (group.balances||[]).some((bb:any) => bb.memberId===group.myMemberId && bb.balance!==0);
+  const leaveBlocked = hasExpense || hasPayment || hasNonZeroBalance;
   // Save feedback, three parts (see the Save discussion): (1) dirty
   // check — Save is disabled + dimmed when nothing changed, so a
   // no-change click can never look like a silent no-op; name is compared
@@ -1446,9 +1455,11 @@ function SettingsModal({ group, onClose, reload, back }: any) {
       {settingsError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:12,marginBottom:0}}>{settingsError}</p>}
       <p style={{fontSize:13,color:'var(--muted)'}}>Archiving hides the group from the active list and preserves all expenses, payments, members and activity. It can be restored.</p>
       <div style={{marginTop:20}}>
-        <AsyncButton style={{...btn, width:'100%', padding:'14px', fontSize:16, background:'var(--danger-bg)', borderColor:'var(--danger-bg)', color:'var(--danger-text)', opacity: hasExpense?0.5:1, cursor: hasExpense?'not-allowed':'pointer'}} disabled={hasExpense} aria-disabled={hasExpense} onClick={async()=>{setSettingsError(''); try{const r = await api(`/api/groups/${group.id}/leave`,'POST'); if (r.groupDeleted || r.groupArchived) back(); else reload();}catch(e:any){setSettingsError(e.message);}}}>Leave group</AsyncButton>
+        <AsyncButton style={{...btn, width:'100%', padding:'14px', fontSize:16, background:'var(--danger-bg)', borderColor:'var(--danger-bg)', color:'var(--danger-text)', opacity: leaveBlocked?0.5:1, cursor: leaveBlocked?'not-allowed':'pointer'}} disabled={leaveBlocked} aria-disabled={leaveBlocked} onClick={async()=>{setSettingsError(''); try{await api(`/api/groups/${group.id}/leave`,'POST'); back();}catch(e:any){setSettingsError(e.message);}}}>Leave group</AsyncButton>
         {hasExpense && <p style={{fontSize:13,color:'var(--muted)'}}>Leave is greyed out because you have an expense in this group, as payer or as a split participant — even if balances are settled. The server enforces the same rule.</p>}
-        {!hasExpense && <p style={{fontSize:13,color:'var(--muted)'}}>You have no expenses in this group, so you can leave. If you are the last member, the group is deleted (it has no expenses to preserve).</p>}
+        {!hasExpense && hasPayment && <p style={{fontSize:13,color:'var(--muted)'}}>Leave is greyed out because you have a payment in this group. Delete the recorded payment first, then leave. The server enforces the same rule.</p>}
+        {!hasExpense && !hasPayment && hasNonZeroBalance && <p style={{fontSize:13,color:'var(--muted)'}}>Leave is greyed out because your balance in this group isn't zero. Settle it first, then leave. The server enforces the same rule.</p>}
+        {!leaveBlocked && <p style={{fontSize:13,color:'var(--muted)'}}>You have no expenses, payments or outstanding balance in this group, so you can leave. If you are the last member, the group is deleted (it has nothing to preserve).</p>}
       </div>
     </div>
   </div>);

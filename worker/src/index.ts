@@ -164,8 +164,17 @@ function enrichActivity(members: any[], rows: any[]) {
   return rows.map((a:any)=>{
     const actorName = name(a.actor_member_id, a.actor_name);
     let detail = a.detail;
-    if ((a.type==='payment_recorded' || a.type==='payment_deleted') && a.from_member_id && a.to_member_id && byId.has(a.from_member_id) && byId.has(a.to_member_id)) {
-      detail = `${byId.get(a.from_member_id)} -> ${byId.get(a.to_member_id)}`;
+    if (a.type==='payment_recorded' || a.type==='payment_deleted') {
+      if (a.from_member_id && a.to_member_id && byId.has(a.from_member_id) && byId.has(a.to_member_id)) {
+        detail = `${byId.get(a.from_member_id)} -> ${byId.get(a.to_member_id)}`;
+      } else if (a.detail) {
+        // OLD ROWS (pre-refactor): the detail is the raw "uuid -> uuid"
+        // string, because the member ids were never stored in columns.
+        // Resolve each side to its member name so the Log shows names,
+        // not UUIDs. A side that isn't a known member id is left as-is
+        // (it may already be a name, or its member is gone).
+        detail = a.detail.split(' -> ').map((pp: string) => byId.get(pp) || pp).join(' -> ');
+      }
     }
     return {...a, actorName, detail};
   });
@@ -457,6 +466,18 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       if (sub === 'leave' && req.method === 'POST') {
         const blocked = await hasAnyExpense(env, groupId, member.id);
         if (blocked) return err("You can't leave this group because you have an expense here, as payer or as a split participant, even if balances are settled.", 403, origin);
+        // LEAVE GUARD, 2026-11-06: Leave was blocked only by expenses,
+        // but deleting the member row also fails (FOREIGN KEY) while any
+        // payment still references it — payments.from/to_member_id ->
+        // group_members(id) has no cascade — and a non-zero balance
+        // would be orphaned. So Leave now matches Remove: blocked by
+        // expenses, payments, or a non-zero balance, with a clear
+        // message instead of a raw D1 error. The member deletes the
+        // payment(s) (they're a party to them) and settles, then leaves.
+        const payCount = await env.DB.prepare('SELECT COUNT(*) AS c FROM payments WHERE group_id=? AND (from_member_id=? OR to_member_id=?)').bind(groupId, member.id, member.id).first<Row>();
+        if (Number(payCount?.c || 0) > 0) return err('You have payments in this group and cannot leave — delete the recorded payments first.', 403, origin);
+        const summary = await groupSummary(env, groupId, user.id);
+        if (summary.balances.some((b:any) => b.memberId === member.id && b.balance !== 0)) return err('You must have a zero balance to leave this group', 403, origin);
         await env.DB.prepare('DELETE FROM group_members WHERE id=?').bind(member.id).run();
         const remaining = await env.DB.prepare('SELECT COUNT(*) AS c FROM group_members WHERE group_id=?').bind(groupId).first<Row>();
         // CREATOR TRANSFER, 2026-11-05: if the leaver was the creator and
