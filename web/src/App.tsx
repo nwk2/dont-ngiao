@@ -175,88 +175,23 @@ function useSheetDrag(onClose: () => void) {
   return { dragY, dragging, onPointerDown };
 }
 
-// KEYBOARD / VISUAL VIEWPORT, Nov 2026: iOS Safari overlays the keyboard
-// on the layout viewport, so a fixed bottom sheet ends up behind it —
-// and Safari's scroll-into-view shove cuts the sheet's top off (the Add
-// expense title, and the accessory bar covering the Date row). The
-// viewport meta interactive-widget=resizes-content (v120) did NOT fix it
-// on Wai's phone (reloaded and still there). Lifting the container by
-// the keyboard height alone (v121, bottom: kb) also did not fix it —
-// because the inputs were font-size < 16px, so Safari ZOOMED on focus,
-// changing the visual viewport's scale (v123 fixed the zoom with
-// font-size:16px). Tracking the visual viewport's offsetTop (v122) also
-// did not fix it — when the keyboard closes, Safari leaves the page
-// scrolled (offsetTop stays > 0), so a container at top: offsetTop with
-// height: innerHeight extends BELOW the screen and pushes the sheet out
-// of view (the sheet stays shifted after the keyboard dismisses).
-// So: track only the keyboard height (kb = innerHeight - vv.height,
-// 0 when closed) and the visual viewport height. The container is
-// anchored to the layout viewport (top:0, bottom: kb) — a fixed element
-// does not scroll with the page, so there is no stuck-after-dismiss —
-// and the sheet caps its height to 88% of the visual viewport height
-// (not calc(100vh - kb): 100vh != window.innerHeight on iOS). When the
-// keyboard is closed, kb is 0 and the container is full-screen
-// (identical to inset:0); when it opens, the container lifts above the
-// keyboard and the sheet fits the visible area. Works on all iOS
-// versions (visualViewport is iOS 13+), and is a no-op on desktop.
-// NOTE 2026-11-06: no-op re-trigger — v129 (a9b7f820) never built because
-// its push webhook was missed, so this comment-only change re-fires the
-// Cloudflare build from the current head (which already has the v8 fix).
-function useVisualViewport() {
-  const [vv, setVv] = useState(() => {
-    const vp = window.visualViewport;
-    return vp ? { kb: Math.max(0, Math.round(window.innerHeight - vp.height)), height: vp.height } : { kb: 0, height: window.innerHeight };
-  });
-  useEffect(() => {
-    const vp = window.visualViewport;
-    if (!vp) return;
-    const update = () => {
-      const newKb = Math.max(0, Math.round(window.innerHeight - vp.height));
-      const newHeight = vp.height;
-      // Only set state when the values actually changed. The resize and
-      // scroll events fire very frequently (scroll fires on every tick),
-      // and calling setState with a fresh object on each one forces a
-      // re-render every time — on Wai's phone that re-render ghosts the
-      // sheet (the content paints twice, overlapping, frames 9.33s /
-      // 15.60s of his 5:27 video). Returning the previous state object
-      // when nothing changed lets React bail out of the re-render.
-      setVv(prev => (prev.kb === newKb && prev.height === newHeight) ? prev : { kb: newKb, height: newHeight });
-    };
-    // KEYBOARD-CLOSE RE-CHECK, 2026-11-06: the visualViewport resize /
-    // scroll events don't reliably fire when the keyboard closes on iOS,
-    // so vv.height can stay stuck at the keyboard-open value (~325px) and
-    // the sheet stays capped at 88% of it — Split/Date/Save cut off and
-    // the page showing through below the sheet (Wai's 7:39 video). The
-    // keyboard opens on input focus and closes on blur, so re-check the
-    // viewport on focusin / focusout too, twice (100ms and 350ms) to
-    // catch the keyboard animation settling. The guard above makes the
-    // extra checks cheap: no re-render when nothing changed.
-    const scheduleUpdate = () => { setTimeout(update, 100); setTimeout(update, 350); };
-    vp.addEventListener('resize', update);
-    vp.addEventListener('scroll', update);
-    window.addEventListener('focusin', scheduleUpdate);
-    window.addEventListener('focusout', scheduleUpdate);
-    update();
-    return () => { vp.removeEventListener('resize', update); vp.removeEventListener('scroll', update); window.removeEventListener('focusin', scheduleUpdate); window.removeEventListener('focusout', scheduleUpdate); };
-  }, []);
-  return vv;
-}
-
-// KEYBOARD SCROLL RESET, Nov 2026: when the keyboard opens, Safari
-// scrolls the sheet's content to bring the focused input into view, and
-// it overshoots — the title scrolls off the top and the Save button
-// scrolls out of reach — and the scroll position sticks after the
-// keyboard closes (Wai's 4:52 video: the sheet stays shifted with the
-// title cut off and Save hidden until he scrolls it himself). Reset the
-// sheet to the top whenever the keyboard opens or closes, so the title
-// is always visible and the user can scroll down to Save. The reset only
-// fires on the keyboard state change (kb), so the user can still scroll
-// freely in between.
-function useSheetScrollReset(kb: number) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (ref.current) ref.current.scrollTop = 0; }, [kb]);
-  return ref;
-}
+// KEYBOARD, Nov 2026 (CSS approach, replaces the JS viewport system):
+// The sheet size/position used to be driven by JS state (a hook tracking
+// the visual viewport's keyboard height + height, a scrollTop reset on
+// keyboard change). That system was unreliable on iOS: the viewport
+// resize/scroll events fire with INTERMEDIATE heights during the keyboard
+// animation and don't reliably fire when it closes, so the tracked height
+// got stuck at a mid-animation value (~430px) and the sheet stayed short
+// — Split / Date / Save cut off, page showing through below it —
+// flip-flopping between full and short across keyboard cycles (Wai's
+// 8:06 video, v131). The fix: let the browser do it. The viewport meta
+// now carries interactive-widget=resizes-content, so iOS shrinks the
+// LAYOUT viewport when the keyboard opens. The sheet container is plain
+// position:fixed inset:0 (bottom:0) and the sheet caps at 88vh — both now
+// track the shrunken viewport automatically, with no JS state to get
+// stuck. When the keyboard closes the viewport expands and the sheet
+// returns to full height by itself. The 16px input font-size (v123, no
+// iOS zoom) stays.
 
 // to the global setError — and closes the sheet either way.
 function ConfirmSheet({ title, message, confirmLabel, onConfirm, onCancel }: any) {
@@ -674,10 +609,8 @@ function CreateGroupModal({ onClose, onDone }: any) {
   // looked like "nothing happens" — the sheet just stayed open.
   const [createError, setCreateError] = useState('');
   const drag = useSheetDrag(onClose);
-  const vv = useVisualViewport();
-  const sheetRef = useSheetScrollReset(vv.kb);
-  return (<div role="dialog" aria-modal="true" style={{position:'fixed',top:0,left:0,right:0,bottom:vv.kb,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
-    <div ref={sheetRef} style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:Math.round(vv.height*0.88),overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
+  return (<div role="dialog" aria-modal="true" style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
+    <div style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
       <div style={{width:36,height:4,borderRadius:99,background:'var(--border)',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><h2 style={{margin:0}}>New group</h2><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
       <label>Group name</label><input style={input} placeholder="e.g. Bali Trip 🌴" value={name} onChange={e=>setName(e.target.value)} />
@@ -1363,12 +1296,10 @@ function AddMember({ groupId, reload }: any) {
   const [show, setShow] = useState(false);
   const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [addError, setAddError] = useState('');
   const drag = useSheetDrag(()=>setShow(false));
-  const vv = useVisualViewport();
-  const sheetRef = useSheetScrollReset(vv.kb);
   return (<>
     <button style={{...btn,width:'100%',padding:'14px',fontSize:16}} onClick={()=>{setName(''); setEmail(''); setAddError(''); setShow(true);}}>+ Add placeholder</button>
-    {show && (<div role="dialog" aria-modal="true" style={{position:'fixed',top:0,left:0,right:0,bottom:vv.kb,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) setShow(false); }}>
-      <div ref={sheetRef} style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:Math.round(vv.height*0.88),overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
+    {show && (<div role="dialog" aria-modal="true" style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) setShow(false); }}>
+      <div style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
         <div style={{width:36,height:4,borderRadius:99,background:'var(--border)',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><h2 style={{margin:0}}>Add placeholder</h2><button type="button" aria-label="Close" title="Close" onClick={()=>setShow(false)} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
         <label style={{display:'block',marginTop:16}}>Name</label>
@@ -1494,10 +1425,8 @@ const pickCheck = (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" s
 // (useSheetDrag), zIndex 60 so it sits above the form sheet (zIndex 50).
 function PickerSheet({ title, onClose, children }: any) {
   const drag = useSheetDrag(onClose);
-  const vv = useVisualViewport();
-  const sheetRef = useSheetScrollReset(vv.kb);
-  return (<div role="dialog" aria-modal="true" style={{position:'fixed',top:0,left:0,right:0,bottom:vv.kb,background:'rgba(0,0,0,0.4)',zIndex:60,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
-    <div ref={sheetRef} style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:Math.round(vv.height*0.88),overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
+  return (<div role="dialog" aria-modal="true" style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.4)',zIndex:60,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
+    <div style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
       <div style={{width:36,height:4,borderRadius:99,background:'var(--border)',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><h2 style={{margin:0}}>{title}</h2><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
       {children}
@@ -1566,13 +1495,11 @@ function ExpenseModal({ group, onClose, reload }: any) {
   const splitLabel = splitType==='equal' ? 'Equally' : splitType==='exact' ? 'Exact amounts' : 'Percentages';
   const sym = (cur:string) => CURRENCY_INFO[cur]?.sym || cur;
   const drag = useSheetDrag(onClose);
-  const vv = useVisualViewport();
-  const sheetRef = useSheetScrollReset(vv.kb);
   const payerPerson = personDisplay(group, payer, group.members.find((m:any)=>m.id===payer)?.name);
   const rowBtn: React.CSSProperties = {display:'flex',alignItems:'center',gap:12,width:'100%',background:'transparent',border:'none',borderTop:balHairline,padding:'13px 14px',color:'var(--text)',cursor:'pointer',textAlign:'left'};
   return (<>
-    <div role="dialog" aria-modal="true" style={{position:'fixed',top:0,left:0,right:0,bottom:vv.kb,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
-      <div ref={sheetRef} style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:Math.round(vv.height*0.88),overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
+    <div role="dialog" aria-modal="true" style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
+      <div style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
         <div style={{width:36,height:4,borderRadius:99,background:'var(--border)',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><h2 style={{margin:0}}>Add expense</h2><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
         <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'12px 0 4px'}}><span style={{fontSize:36,fontWeight:700,lineHeight:1}}>{sym(currency)}</span><input style={{width:`${Math.max((amount || '0.00').length, 1)}ch`,background:'transparent',border:'none',color:'var(--text)',fontSize:36,fontWeight:700,lineHeight:1,padding:0,textAlign:'center',outline:'none'}} inputMode="decimal" placeholder="0.00" value={amount} onChange={e=>setAmount(e.target.value)} onFocus={e=>e.target.select()} aria-label="Amount" /></div>
