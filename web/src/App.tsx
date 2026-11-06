@@ -839,10 +839,12 @@ function ResetPasswordView({ token }: { token: string }) {
 // Resolves the token (no auth needed to see it), then joins (auth
 // required — a guest sees the normal Auth screen first, and the token
 // survives in the URL, so after login the join screen appears). After
-// joining, onJoined clears the param and opens the group. Joining
-// creates a member from the account (name + email); if the group already
-// has a placeholder with that email, it is claimed instead. Joining is
-// not a money event, so the Log gets no entry for it.
+// joining, onJoined clears the param and opens the group. Joining adds
+// a membership for the account (name + email). There is no claim step:
+// if the group had a placeholder with this email, registering already
+// activated THAT user row, so the caller IS that user and is already a
+// member — the join screen never appears for them. Joining is not a
+// money event, so the Log gets no entry for it.
 function InviteView({ token, onJoined, onCancel }: any) {
   const [state, setState] = useState<'loading'|'ready'|'error'>('loading');
   const [invite, setInvite] = useState<any>(null);
@@ -865,7 +867,7 @@ function InviteView({ token, onJoined, onCancel }: any) {
     {error && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4}}>{error}</p>}
     <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} disabled={joining} onClick={join}>{joining ? 'Joining…' : 'Join group'}</AsyncButton>
     <div style={{marginTop:12}}><button style={{...btn,width:'100%',padding:'14px',fontSize:16}} onClick={onCancel}>Not now</button></div>
-    <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,marginTop:12}}>Joining creates a member for you in this group, using your account name and email. If the group already has a placeholder with your email, you'll claim it instead.</p>
+    <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,marginTop:12}}>Joining adds you to this group, using your account name and email. If someone added you as a placeholder with this email, you're already a member — the group will open instead.</p>
   </div></div>);
 }
 
@@ -895,7 +897,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
   const emailTrimmed = emailDraft.trim().toLowerCase();
   const emailAt = emailTrimmed.indexOf('@'); const emailDot = emailTrimmed.lastIndexOf('.');
   const emailValid = !!emailTrimmed && emailAt > 0 && emailDot > emailAt + 1 && emailDot < emailTrimmed.length - 1;
-  const saveEmailDisabled = !detailMember || !!detailMember.user_id || !emailValid || emailTrimmed === (detailMember?.email || '').toLowerCase();
+  const saveEmailDisabled = !detailMember || !!detailMember.hasAccount || !emailValid || emailTrimmed === (detailMember?.email || '').toLowerCase();
   // HYBRID REMOVE RULE (mirror of the worker guard, 2026-11-05):
   // placeholder -> anyone; account member -> creator only; creator ->
   // nobody. Tappable iff the sheet would have an action: Edit email
@@ -904,7 +906,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
   // peer behaviour so the UI never hides a Remove the server allows.
   const creatorMemberId = group.createdByUserId ? (group.members.find((m:any)=>m.user_id===group.createdByUserId)?.id || null) : null;
   const isGroupCreator = !!group.createdByUserId && group.myMemberId === creatorMemberId;
-  const canRemoveMember = (m:any) => !group.isArchived && m.id !== group.myMemberId && (!m.user_id || !group.createdByUserId || isGroupCreator);
+  const canRemoveMember = (m:any) => !group.isArchived && m.id !== group.myMemberId && (!m.hasAccount || !group.createdByUserId || isGroupCreator);
   const [catView, setCatView] = useState<'group'|'mine'>('group');
   const [catChart, setCatChart] = useState<'pie'|'bar'>('pie');
   // Activity pagination, 50/page: group.activity is the first page from
@@ -1112,7 +1114,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
               return (<div key={b.memberId+b.currency} style={{...balRow,borderBottom:bi===arr.length-1?'none':balHairline}}>
                 <div style={{...avatar,background:memberDotColor(group, b.memberId)}}>{initials(b.memberName)}</div>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontWeight:600,lineHeight:1.4}}>{displayName}{member && !member.user_id ? <span style={noAccountChip}>No account yet</span> : null}</div>
+                  <div style={{fontWeight:600,lineHeight:1.4}}>{displayName}{member && !member.hasAccount ? <span style={noAccountChip}>No account yet</span> : null}</div>
                   <div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4}}>Paid {fmt(b.paid ?? 0, cur)} · Share {fmt(b.share ?? 0, cur)}</div>
                 </div>
                 <strong style={{color:b.balance>0?'var(--tint-text)':b.balance<0?'var(--danger-text)':'var(--muted)',fontSize:16,whiteSpace:'nowrap',flexShrink:0,textAlign:'right'}}>{b.balance>0?'+':''}{b.display}</strong>
@@ -1133,7 +1135,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         // button, so a debtor is not left wondering why there is no
         // Settle button (same pattern as the Leave grey-out).
         const toMember = group.members.find((m:any)=>m.id===s.toMemberId);
-        const canSettle = group.myMemberId === s.toMemberId || (toMember && !toMember.user_id && group.myMemberId === s.fromMemberId);
+        const canSettle = group.myMemberId === s.toMemberId || (toMember && !toMember.hasAccount && group.myMemberId === s.fromMemberId);
         return (<div key={i} style={{...balRow,justifyContent:'space-between',borderBottom:i===group.suggestions.length-1?'none':balHairline}}>
           {/* Settle rows now match Recorded payments (2026-11-05): overlapping
           avatar pair, debtor first, creditor second, in memberDotColor —
@@ -1172,9 +1174,9 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         return (<div key={m.id} style={{...balRow,borderBottom:mi===arr.length-1?'none':balHairline,cursor:tappable?'pointer':'default'}} onClick={tappable?()=>{setDetailMember(m); setEmailDraft(m.email || ''); setMemberSheetError('');}:undefined}>
         <div style={{...avatar,background:memberDotColor(group, m.id)}}>{initials(m.name)}</div>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontWeight:600,lineHeight:1.4}}>{m.id === group.myMemberId ? `You (${m.name})` : m.name}{!m.user_id ? <span style={noAccountChip}>No account yet</span> : null}</div>
-          {m.email ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.email}</div>) : (!m.user_id ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4}}>No email set — can't be claimed yet</div>) : null)}
-          {!m.user_id && m.email ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4}}>Can be claimed with this email</div>) : null}
+          <div style={{fontWeight:600,lineHeight:1.4}}>{m.id === group.myMemberId ? `You (${m.name})` : m.name}{!m.hasAccount ? <span style={noAccountChip}>No account yet</span> : null}</div>
+          {m.email ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.email}</div>) : (!m.hasAccount ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4}}>No email set — add one so they can register with it</div>) : null)}
+          {!m.hasAccount && m.email ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4}}>They can register with this email to join</div>) : null}
         </div>
         {tappable && <span style={{color:'var(--muted)',flexShrink:0}}>›</span>}
       </div>);})}</div>}
@@ -1187,17 +1189,17 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         <div style={{display:'flex',alignItems:'center',gap:12,marginTop:16}}>
           <div style={{...avatar,background:memberDotColor(group, detailMember.id)}}>{initials(detailMember.name)}</div>
           <div style={{flex:1,minWidth:0}}>
-            <div style={{fontWeight:600,lineHeight:1.4}}>{detailMember.id === group.myMemberId ? `You (${detailMember.name})` : detailMember.name}{!detailMember.user_id ? <span style={noAccountChip}>No account yet</span> : null}</div>
-            {detailMember.email ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{detailMember.email}</div>) : (!detailMember.user_id ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4}}>No email set — can't be claimed yet</div>) : null)}
-            {!detailMember.user_id && detailMember.email ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4}}>Can be claimed with this email</div>) : null}
+            <div style={{fontWeight:600,lineHeight:1.4}}>{detailMember.id === group.myMemberId ? `You (${detailMember.name})` : detailMember.name}{!detailMember.hasAccount ? <span style={noAccountChip}>No account yet</span> : null}</div>
+            {detailMember.email ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{detailMember.email}</div>) : (!detailMember.hasAccount ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4}}>No email set — add one so they can register with it</div>) : null)}
+            {!detailMember.hasAccount && detailMember.email ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4}}>They can register with this email to join</div>) : null}
           </div>
         </div>
         {/* Edit email: placeholders only, as before — an account member's
         email is their account email, not a per-group field. */}
-        {!detailMember.user_id && <>
+        {!detailMember.hasAccount && <>
           <label style={{display:'block',marginTop:16}}>Email</label>
           <input style={input} placeholder="Email" value={emailDraft} onChange={e=>setEmailDraft(e.target.value)} aria-label="Member email" />
-          <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,marginTop:0}}>Attach an email later to link their account — they can claim this member by signing up with the same email.</p>
+          <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,marginTop:0}}>Attach an email so they can register with it — signing up with this email sets up this same person, keeping their expenses.</p>
           {memberSheetError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{memberSheetError}</p>}
           <AsyncButton disabled={saveEmailDisabled} style={{...primary,width:'100%',padding:'14px',fontSize:16,opacity:saveEmailDisabled?0.5:1}} onClick={async()=>{setMemberSheetError(''); try{const d = await api(`/api/groups/${group.id}/members/${detailMember.id}`,'PATCH',{email:emailDraft.trim()}); setDetailMember(null); reload(d);}catch(er:any){setMemberSheetError(er.message);}}}>Save email</AsyncButton>
         </>}
@@ -1240,18 +1242,18 @@ function AddMember({ groupId, reload }: any) {
   const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [addError, setAddError] = useState('');
   const drag = useSheetDrag(()=>setShow(false));
   return (<>
-    <button style={{...btn,width:'100%',padding:'14px',fontSize:16}} onClick={()=>{setName(''); setEmail(''); setAddError(''); setShow(true);}}>+ Add member</button>
+    <button style={{...btn,width:'100%',padding:'14px',fontSize:16}} onClick={()=>{setName(''); setEmail(''); setAddError(''); setShow(true);}}>+ Add placeholder</button>
     {show && (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) setShow(false); }}>
       <div style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
         <div style={{width:36,height:4,borderRadius:99,background:'var(--border)',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><h2 style={{margin:0}}>Add member</h2><button type="button" aria-label="Close" title="Close" onClick={()=>setShow(false)} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><h2 style={{margin:0}}>Add placeholder</h2><button type="button" aria-label="Close" title="Close" onClick={()=>setShow(false)} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
         <label style={{display:'block',marginTop:16}}>Name</label>
         <input style={input} placeholder="Name" value={name} onChange={e=>setName(e.target.value)} />
         <label>Email (optional)</label>
         <input style={input} placeholder="Email (optional)" value={email} onChange={e=>setEmail(e.target.value)} />
-        <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,marginTop:0}}>Email is optional — add a placeholder now and attach an email later to link their account.</p>
+        <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,marginTop:0}}>For someone without an account — like an elderly relative. They'll use their own name when they register and join; email is optional, and can be added later.</p>
         {addError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{addError}</p>}
-        <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={async()=>{setAddError(''); try{const d = await api(`/api/groups/${groupId}/members`,'POST',{name,email:email||null}); reload(d); setShow(false);}catch(e:any){setAddError(e.message);}}}>Add member</AsyncButton>
+        <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={async()=>{setAddError(''); try{const d = await api(`/api/groups/${groupId}/members`,'POST',{name,email:email||null}); reload(d); setShow(false);}catch(e:any){setAddError(e.message);}}}>Add placeholder</AsyncButton>
       </div>
     </div>)}
   </>);
@@ -1504,7 +1506,7 @@ function ExpenseDetailSheet({ group, expense: e, onClose, setConfirm, reload }: 
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><div><h2 style={{marginTop:0,marginBottom:4}}>{e.description}</h2><div><span style={{fontSize:12,background:'var(--subtle-bg)',padding:'2px 6px',borderRadius:99}}>{e.category}</span></div><div style={{fontSize:13,color:'var(--muted)',marginTop:6}}>Paid by {e.payerName} · split between {e.splits.length} people · {fmtDate(e.date)}</div></div><div style={{display:'flex',alignItems:'center',gap:12,flexShrink:0}}><div style={{textAlign:'right'}}><strong style={{fontSize:20}}>{e.display}</strong></div><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div></div>
       <div style={{marginTop:12}}>{e.splits.map((s:any)=>{const member = group.members.find((x:any)=>x.id===s.member_id); const pd = personDisplay(group, s.member_id, member?.name); const isMine = group.myMemberId && s.member_id===group.myMemberId; return (<div key={s.member_id} style={{...rowCard,display:'flex',alignItems:'center',gap:12,background:isMine?'var(--tint-bg)':'var(--card)'}}>
         <div style={{...avatar,background:memberDotColor(group, pd.memberId)}}>{initials(pd.name)}</div>
-        <div style={{flex:1,minWidth:0,fontWeight:600,lineHeight:1.4}}>{pd.label}{member && !member.user_id ? <span style={noAccountChip}>No account yet</span> : null}</div>
+        <div style={{flex:1,minWidth:0,fontWeight:600,lineHeight:1.4}}>{pd.label}{member && !member.hasAccount ? <span style={noAccountChip}>No account yet</span> : null}</div>
         <strong style={{color:isMine?'var(--tint-text)':'var(--text)',whiteSpace:'nowrap',flexShrink:0}}>{fmt(s.amount_minor,e.currency)}</strong>
       </div>);})}</div>
       {sheetError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:12,marginBottom:0}}>{sheetError}</p>}

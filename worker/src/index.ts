@@ -195,10 +195,6 @@ async function hashToken(token: string): Promise<string> {
   return Array.from(new Uint8Array(buf)).map(x => x.toString(16).padStart(2, '0')).join('');
 }
 const RESET_TTL_MS = 24 * 60 * 60 * 1000;
-async function claimPlaceholders(env: Env, user: Row) {
-  await env.DB.prepare('UPDATE group_members SET user_id=? WHERE email=? AND user_id IS NULL').bind(user.id, user.email).run();
-}
-
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     // Outer catch: without this, ANY throw inside a handler (e.g. a D1
@@ -234,15 +230,28 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         await rateRecord(env, 'register', ip, now);
       }
       const salt = newSalt(); const hash = await hashPassword(password, salt);
-      const id = uid();
       const createdAt = nowIso();
-      try { await env.DB.prepare('INSERT INTO users (id,name,email,password_salt,password_hash,created_at) VALUES (?,?,?,?,?,?)').bind(id, name, email.toLowerCase(), salt, hash, createdAt).run(); }
-      catch { return err('Email already registered', 409, origin); }
+      // ONE-ENTITY USER, Nov 2026: if this email already belongs to a
+      // placeholder user (added by a group member, no password yet),
+      // ACTIVATE that row — set the password and the name they entered
+      // — instead of creating a new user. The placeholder IS the user,
+      // so they are already a member of every group it was in, with its
+      // history intact, and the name syncs to the account name. A real
+      // account with this email is still a 409.
+      const existing = await env.DB.prepare('SELECT id, password_hash FROM users WHERE email=?').bind(String(email).toLowerCase()).first<Row>();
+      let id: string;
+      if (existing && !existing.password_hash) {
+        id = String(existing.id);
+        await env.DB.prepare('UPDATE users SET name=?, password_salt=?, password_hash=? WHERE id=?').bind(name, salt, hash, id).run();
+      } else {
+        id = uid();
+        try { await env.DB.prepare('INSERT INTO users (id,name,email,password_salt,password_hash,created_at) VALUES (?,?,?,?,?,?)').bind(id, name, email.toLowerCase(), salt, hash, createdAt).run(); }
+        catch { return err('Email already registered', 409, origin); }
+      }
       // Include created_at: YouView's "User since" line needs it, and a
       // fresh register session never calls /api/me to fill it in (same
       // omission as login, fixed below).
       const user = { id, name, email: email.toLowerCase(), created_at: createdAt };
-      await claimPlaceholders(env, user as Row);
       const token = uid();
       await env.DB.prepare('INSERT INTO sessions (token,user_id,created_at) VALUES (?,?,?)').bind(token, id, nowIso()).run();
       return json({ user, token }, 200, origin);
@@ -260,13 +269,13 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       }
       const u = await env.DB.prepare('SELECT * FROM users WHERE email=?').bind(String(email||'').toLowerCase()).first<Row>();
       if (!u) { await rateRecord(env, 'login_failed', loginKey, Date.now()); return err('Invalid email or password', 401, origin); }
+      if (!u.password_hash || !u.password_salt) { await rateRecord(env, 'login_failed', loginKey, Date.now()); return err('Invalid email or password', 401, origin); }
       if ((await hashPassword(password, u.password_salt)) !== u.password_hash) { await rateRecord(env, 'login_failed', loginKey, Date.now()); return err('Invalid email or password', 401, origin); }
       await rateClear(env, 'login_failed', loginKey);
       // Include created_at (u.created_at): same "User since" reason as
       // register — a fresh login session never calls /api/me, so without
       // this the line silently disappears until the next page reload.
       const user = { id: u.id, name: u.name, email: u.email, created_at: u.created_at };
-      await claimPlaceholders(env, user as Row);
       const token = uid();
       await env.DB.prepare('INSERT INTO sessions (token,user_id,created_at) VALUES (?,?,?)').bind(token, u.id, nowIso()).run();
       return json({ user, token }, 200, origin);
@@ -327,7 +336,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         // in the group, else their account name, else a generic label.
         let inviterName = 'Someone';
         if (invite.created_by_member_id) {
-          const m = await env.DB.prepare('SELECT name FROM group_members WHERE id=?').bind(invite.created_by_member_id).first<Row>();
+          const m = await env.DB.prepare('SELECT u.name FROM group_members gm JOIN users u ON u.id = gm.user_id WHERE gm.id=?').bind(invite.created_by_member_id).first<Row>();
           if (m) inviterName = String(m.name);
         }
         if (inviterName === 'Someone' && invite.created_by_user_id) {
@@ -352,18 +361,14 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         // so the frontend can open the group.
         const existing = await env.DB.prepare('SELECT * FROM group_members WHERE group_id=? AND user_id=?').bind(g.id, user.id).first<Row>();
         if (existing) return json({ ok: true, alreadyMember: true, group: await groupDetail(env, g, user.id) }, 200, origin);
-        // A placeholder with this email? Claim it (set user_id, keep
-        // the placeholder's name — the same claim login performs).
-        const ph = await env.DB.prepare('SELECT * FROM group_members WHERE group_id=? AND email=? AND user_id IS NULL').bind(g.id, String(user.email).toLowerCase()).first<Row>();
-        if (ph) {
-          await env.DB.prepare('UPDATE group_members SET user_id=? WHERE id=?').bind(user.id, ph.id).run();
-          return json({ ok: true, claimed: true, group: await groupDetail(env, g, user.id) }, 200, origin);
-        }
-        // Otherwise create a member row from the account (name + email).
-        // The UNIQUE(group_id, email) backstop handles a double-tap
-        // race: if the INSERT fails, re-check — a member row now exists.
+        // No placeholder claim any more: if this email matched a
+        // placeholder, register activated THAT user row, so the caller IS
+        // that user and alreadyMember (checked above) is true. Join just
+        // inserts the membership; the UNIQUE(group_id, user_id) backstop
+        // handles a double-tap race: if the INSERT fails, re-check — a
+        // member row now exists.
         try {
-          await env.DB.prepare('INSERT INTO group_members (id,group_id,user_id,name,email,created_at) VALUES (?,?,?,?,?,?)').bind(uid(), g.id, user.id, user.name, String(user.email).toLowerCase(), nowIso()).run();
+          await env.DB.prepare('INSERT INTO group_members (id,group_id,user_id,created_at) VALUES (?,?,?,?)').bind(uid(), g.id, user.id, nowIso()).run();
         } catch {
           const again = await env.DB.prepare('SELECT * FROM group_members WHERE group_id=? AND user_id=?').bind(g.id, user.id).first<Row>();
           if (!again) throw new Error('Could not join this group');
@@ -380,6 +385,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       // Generic error for all failures: wrong email, wrong password, or
       // a real user who is not admin must be indistinguishable.
       if (!u) return err('Invalid admin credentials', 401, origin);
+      if (!u.password_hash || !u.password_salt) return err('Invalid admin credentials', 401, origin);
       if ((await hashPassword(String(password || ''), u.password_salt)) !== u.password_hash) return err('Invalid admin credentials', 401, origin);
       if (!Number(u.is_admin || 0)) return err('Invalid admin credentials', 401, origin);
       const token = uid();
@@ -388,7 +394,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
     }
     if (path === '/api/admin/users' && req.method === 'GET') {
       const admin = await authAdmin(req, env); if (!admin) return err('Admin access required', 403, origin);
-      const users = await env.DB.prepare('SELECT id, name, email, is_admin, created_at FROM users ORDER BY created_at').bind().all<Row>();
+      const users = await env.DB.prepare('SELECT id, name, email, is_admin, created_at FROM users WHERE LENGTH(password_hash) > 0 ORDER BY created_at').bind().all<Row>();
       return json({ users: (users.results || []).map((u: any) => ({ id: u.id, name: u.name, email: u.email, isAdmin: !!u.is_admin, createdAt: u.created_at })) }, 200, origin);
     }
     const ar = path.match(/^\/api\/admin\/users\/([^/]+)\/reset$/);
@@ -460,7 +466,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       // a money event, so the Log gets no entry for it.
       await env.DB.batch([
         env.DB.prepare('INSERT INTO groups (id,name,default_currency,is_archived,created_at,created_by_user_id) VALUES (?,?,?,?,?,?)').bind(gid, name, currency, 0, nowIso(), user.id),
-        env.DB.prepare('INSERT INTO group_members (id,group_id,user_id,name,email,created_at) VALUES (?,?,?,?,?,?)').bind(uid(), gid, user.id, user.name, user.email, nowIso()),
+        env.DB.prepare('INSERT INTO group_members (id,group_id,user_id,created_at) VALUES (?,?,?,?)').bind(uid(), gid, user.id, nowIso()),
       ]);
       return json({ id: gid, name, icon: null, defaultCurrency: currency, isArchived: false }, 201, origin);
     }
@@ -503,7 +509,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         if (!before || !beforeId) return err('before and beforeId are required', 400, origin);
         const rows = await env.DB.prepare(`SELECT * FROM activity_log WHERE group_id=? AND type IN (${MONEY_ACTIVITY_TYPES_SQL}) AND (created_at < ? OR (created_at = ? AND id < ?)) ORDER BY created_at DESC, id DESC LIMIT 51`).bind(groupId, before, before, beforeId).all<Row>();
         const list = rows.results || [];
-        const members = await env.DB.prepare('SELECT id, name FROM group_members WHERE group_id=?').bind(groupId).all<Row>();
+        const members = await env.DB.prepare('SELECT gm.id, u.name FROM group_members gm JOIN users u ON u.id = gm.user_id WHERE gm.group_id=?').bind(groupId).all<Row>();
         return json({ activity: enrichActivity(members.results||[], list.slice(0, 50)), hasMore: list.length > 50 }, 200, origin);
       }
       if (sub === '' && req.method === 'PATCH') {
@@ -567,7 +573,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         if (summary.balances.some((b:any) => b.memberId === member.id && b.balance !== 0)) return err('You must have a zero balance to leave this group', 403, origin);
         await env.DB.prepare('DELETE FROM group_members WHERE id=?').bind(member.id).run();
         // OPTION A, 2026-11-06: 'remaining' counts ACCOUNT members only
-        // (user_id IS NOT NULL). A group with only placeholders has no
+        // (user has a password). A group with only placeholders has no
         // real users — no one can open it, and no member can clean it up
         // — so it is treated as empty: the delete/archive branch below
         // runs (delete if clean, archive if it somehow has money
@@ -576,13 +582,13 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         // runs when other account members remain, so a next account
         // member always exists (the 'skip the UPDATE when none' guard
         // stays as a belt-and-braces safety net).
-        const remaining = await env.DB.prepare('SELECT COUNT(*) AS c FROM group_members WHERE group_id=? AND user_id IS NOT NULL').bind(groupId).first<Row>();
+        const remaining = await env.DB.prepare('SELECT COUNT(*) AS c FROM group_members gm JOIN users u ON u.id = gm.user_id WHERE gm.group_id=? AND LENGTH(u.password_hash) > 0').bind(groupId).first<Row>();
         // CREATOR TRANSFER, 2026-11-05: if the leaver was the creator
         // and account members remain, creator passes to the earliest
         // remaining ACCOUNT member (created_at, then id for ties).
         // Placeholders cannot be creator (no user_id).
         if (Number(remaining?.c || 0) > 0 && g.created_by_user_id && user.id === g.created_by_user_id) {
-          const next = await env.DB.prepare('SELECT user_id FROM group_members WHERE group_id=? AND user_id IS NOT NULL ORDER BY created_at ASC, id ASC LIMIT 1').bind(groupId).first<Row>();
+          const next = await env.DB.prepare('SELECT gm.user_id FROM group_members gm JOIN users u ON u.id = gm.user_id WHERE gm.group_id=? AND LENGTH(u.password_hash) > 0 ORDER BY gm.created_at ASC, gm.id ASC LIMIT 1').bind(groupId).first<Row>();
           if (next?.user_id) await env.DB.prepare('UPDATE groups SET created_by_user_id=? WHERE id=?').bind(next.user_id, groupId).run();
         }
         if (Number(remaining?.c || 0) === 0) {
@@ -598,29 +604,50 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         return json({ ok: true }, 200, origin);
       }
       if (sub === 'members' && req.method === 'POST') {
+        // ONE-ENTITY USER, Nov 2026: manual add is ONLY for placeholders
+        // (a real user joins via an invite link). This creates a
+        // placeholder USER row (name + optional email, no password) and
+        // a membership for it, in one batch. If the email matches an
+        // existing user (real or placeholder), add THAT user instead —
+        // their account name is used and the entered name is ignored
+        // (one name per user). The UNIQUE(group_id, user_id) backstop
+        // gives the 409 when they are already a member.
         const name = String(body.name || '').trim(); const email = body.email ? String(body.email).toLowerCase() : null;
         if (!name) return err('Member name is required', 400, origin);
         let userId: string | null = null;
-        if (email) { const u = await env.DB.prepare('SELECT id FROM users WHERE email=?').bind(email).first<Row>(); if (u) userId = u.id; }
-        try { await env.DB.prepare('INSERT INTO group_members (id,group_id,user_id,name,email,created_at) VALUES (?,?,?,?,?,?)').bind(uid(), groupId, userId, name, email, nowIso()).run(); }
-        catch { return err('That email is already a member of this group', 409, origin); }
+        if (email) { const u = await env.DB.prepare('SELECT id FROM users WHERE email=?').bind(email).first<Row>(); if (u) userId = String(u.id); }
+        try {
+          if (userId) {
+            await env.DB.prepare('INSERT INTO group_members (id,group_id,user_id,created_at) VALUES (?,?,?,?)').bind(uid(), groupId, userId, nowIso()).run();
+          } else {
+            const phId = uid();
+            const phEmail = email || ('placeholder-' + phId + '@placeholder.invalid');
+            await env.DB.batch([
+              env.DB.prepare('INSERT INTO users (id,name,email,password_salt,password_hash,created_at) VALUES (?,?,?,?,?,?)').bind(phId, name, phEmail, '', '', nowIso()),
+              env.DB.prepare('INSERT INTO group_members (id,group_id,user_id,created_at) VALUES (?,?,?,?)').bind(uid(), groupId, phId, nowIso()),
+            ]);
+          }
+        } catch { return err('That email is already a member of this group', 409, origin); }
         return json(await groupDetail(env, g, user.id), 201, origin);
       }
       const rm = sub.match(/^members\/([^/]+)$/);
       if (rm && req.method === 'PATCH') {
+        // ONE-ENTITY USER, Nov 2026: the email lives on the USER row,
+        // so this updates users.email for the member's user. Only a
+        // placeholder user (no password yet) can have its email changed
+        // — a real account's email is theirs. The duplicate check is
+        // global (users.email is UNIQUE), not group-scoped.
         const targetId = decodeURIComponent(rm[1]);
-        const target = await env.DB.prepare('SELECT * FROM group_members WHERE id=? AND group_id=?').bind(targetId, groupId).first<Row>();
+        const target = await env.DB.prepare('SELECT gm.*, u.password_hash FROM group_members gm JOIN users u ON u.id = gm.user_id WHERE gm.id=? AND gm.group_id=?').bind(targetId, groupId).first<Row>();
         if (!target) return err('Member not found', 404, origin);
-        if (target.user_id) return err('Only placeholder members can have their email changed', 400, origin);
+        if (target.password_hash) return err('Only placeholder members can have their email changed', 400, origin);
         const email = body.email ? String(body.email).trim().toLowerCase() : '';
         const at = email.indexOf('@'); const dot = email.lastIndexOf('.');
         if (!email || at <= 0 || dot <= at + 1 || dot >= email.length - 1) return err('A valid email is required', 400, origin);
-        const dup = await env.DB.prepare('SELECT id FROM group_members WHERE group_id=? AND email=? AND id!=?').bind(groupId, email, targetId).first<Row>();
-        if (dup) return err('That email is already a member of this group', 409, origin);
-        let userId: string | null = null;
-        const u = await env.DB.prepare('SELECT id FROM users WHERE email=?').bind(email).first<Row>(); if (u) userId = u.id;
-        try { await env.DB.prepare('UPDATE group_members SET email=?, user_id=? WHERE id=? AND group_id=?').bind(email, userId, targetId, groupId).run(); }
-        catch { return err('That email is already a member of this group', 409, origin); }
+        const dup = await env.DB.prepare('SELECT id FROM users WHERE email=? AND id!=?').bind(email, target.user_id).first<Row>();
+        if (dup) return err('That email belongs to another account', 409, origin);
+        try { await env.DB.prepare('UPDATE users SET email=? WHERE id=?').bind(email, target.user_id).run(); }
+        catch { return err('That email belongs to another account', 409, origin); }
         return json(await groupDetail(env, g, user.id), 200, origin);
       }
       if (rm && req.method === 'DELETE') {
@@ -634,17 +661,22 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         // or delete. Rejecting here makes the API match the UI, where
         // your own row now has no Remove button at all.
         if (targetId === member.id) return err('Use Leave group in Settings to remove yourself from a group', 400, origin);
-        const target = await env.DB.prepare('SELECT * FROM group_members WHERE id=? AND group_id=?').bind(targetId, groupId).first<Row>();
+        const target = await env.DB.prepare('SELECT gm.*, u.password_hash FROM group_members gm JOIN users u ON u.id = gm.user_id WHERE gm.id=? AND gm.group_id=?').bind(targetId, groupId).first<Row>();
         if (!target) return err('Member not found', 404, origin);
-        // HYBRID REMOVE RULE, 2026-11-05 (Wai): placeholders (user_id
-        // NULL) may be removed by any member; account members may be
-        // removed only by the group creator; the creator may never be
-        // removed by anyone (creator leaves via Leave, which transfers
-        // creator to the earliest remaining account member, below).
+        // HYBRID REMOVE RULE, 2026-11-05 (Wai): placeholders (no
+        // password yet) may be removed by any member; account members
+        // may be removed only by the group creator; the creator may
+        // never be removed by anyone (creator leaves via Leave, which
+        // transfers creator to the earliest remaining account member,
+        // below).
         // This is IN ADDITION to, not instead of, the expense/payment/
         // balance guards below — a member with any expense, payment or
         // non-zero balance cannot be removed by anyone, creator included.
-        if (target.user_id) {
+        // ONE-ENTITY USER, Nov 2026: placeholder-ness is "the user has
+        // no password yet" (user_id is now always set). The creator
+        // checks still key off user_id.
+        const targetIsPlaceholder = !target.password_hash;
+        if (!targetIsPlaceholder) {
           if (g.created_by_user_id && target.user_id === g.created_by_user_id) return err('The group creator cannot be removed', 403, origin);
           if (g.created_by_user_id && user.id !== g.created_by_user_id) return err('Only the group creator can remove account members', 403, origin);
         }
@@ -664,7 +696,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         if (!e) return err('Expense not found', 404, origin);
         await env.DB.batch([
           env.DB.prepare('DELETE FROM expenses WHERE id=?').bind(e.id),
-          activityStmt(env, groupId, member.id, member.name, 'expense_deleted', e.amount_minor, e.currency, e.description),
+          activityStmt(env, groupId, member.id, user.name, 'expense_deleted', e.amount_minor, e.currency, e.description),
         ]);
         return json(await groupDetail(env, g, user.id), 200, origin);
       }
@@ -685,12 +717,12 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         // Same server-enforcement principle as the Settle guard: the
         // frontend hiding the button is not the protection.
         if (member.id !== p.from_member_id && member.id !== p.to_member_id) return err('Only the debtor or creditor can delete this payment', 403, origin);
-        const payMembers = await env.DB.prepare('SELECT id, name FROM group_members WHERE group_id=?').bind(groupId).all<Row>();
+        const payMembers = await env.DB.prepare('SELECT gm.id, u.name FROM group_members gm JOIN users u ON u.id = gm.user_id WHERE gm.group_id=?').bind(groupId).all<Row>();
         const payFromName = (payMembers.results || []).find((m: any) => m.id === p.from_member_id)?.name || p.from_member_id;
         const payToName = (payMembers.results || []).find((m: any) => m.id === p.to_member_id)?.name || p.to_member_id;
         await env.DB.batch([
           env.DB.prepare('DELETE FROM payments WHERE id=?').bind(p.id),
-          activityStmt(env, groupId, member.id, member.name, 'payment_deleted', p.amount_minor, p.currency, `${payFromName} -> ${payToName}`, p.from_member_id, p.to_member_id),
+          activityStmt(env, groupId, member.id, user.name, 'payment_deleted', p.amount_minor, p.currency, `${payFromName} -> ${payToName}`, p.from_member_id, p.to_member_id),
         ]);
         return json(await groupDetail(env, g, user.id), 200, origin);
       }
@@ -721,7 +753,7 @@ async function groupSummary(env: Env, groupId: string, _userId: string) {
   // the (already persisted) data. Now: 4 queries, fetched in parallel,
   // all aggregation in memory. Response shape is unchanged.
   const [membersRes, expensesRes, paymentsRes, splitsRes] = await Promise.all([
-    env.DB.prepare('SELECT * FROM group_members WHERE group_id=? ORDER BY created_at').bind(groupId).all<Row>(),
+    env.DB.prepare("SELECT gm.*, u.name, CASE WHEN u.email LIKE '%@placeholder.invalid' THEN NULL ELSE u.email END AS email, (LENGTH(u.password_hash) > 0) AS hasAccount FROM group_members gm JOIN users u ON u.id = gm.user_id WHERE gm.group_id=? ORDER BY gm.created_at").bind(groupId).all<Row>(),
     env.DB.prepare('SELECT * FROM expenses WHERE group_id=? ORDER BY date DESC, created_at DESC').bind(groupId).all<Row>(),
     env.DB.prepare('SELECT * FROM payments WHERE group_id=? ORDER BY date DESC, created_at DESC').bind(groupId).all<Row>(),
     env.DB.prepare('SELECT s.* FROM expense_splits s JOIN expenses e ON e.id=s.expense_id WHERE e.group_id=? ORDER BY s.rowid').bind(groupId).all<Row>(),
@@ -840,13 +872,13 @@ async function addExpense(env: Env, g: Row, user: Row, body: any, origin: string
     env.DB.prepare('INSERT INTO expenses (id,group_id,paid_by_member_id,description,amount_minor,currency,category,date,created_at,created_by_user_id) VALUES (?,?,?,?,?,?,?,?,?,?)')
       .bind(eid, g.id, paidBy, description, amountMinor, currency, category, date, nowIso(), user.id),
     ...participants.map((pid, i) => env.DB.prepare('INSERT INTO expense_splits (id,expense_id,member_id,amount_minor) VALUES (?,?,?,?)').bind(uid(), eid, pid, amounts[i])),
-    activityStmt(env, g.id, myMember?.id || null, myMember?.name || user.name, 'expense_added', amountMinor, currency, description),
+    activityStmt(env, g.id, myMember?.id || null, user.name, 'expense_added', amountMinor, currency, description),
   ]);
   return json(await groupDetail(env, g, user.id), 201, origin);
 }
 
 async function recordPayment(env: Env, g: Row, user: Row, body: any, origin: string | null = null) {
-  const members = await env.DB.prepare('SELECT * FROM group_members WHERE group_id=?').bind(g.id).all<Row>();
+  const members = await env.DB.prepare('SELECT gm.*, u.name, (LENGTH(u.password_hash) > 0) AS hasAccount FROM group_members gm JOIN users u ON u.id = gm.user_id WHERE gm.group_id=?').bind(g.id).all<Row>();
   const ids = new Set((members.results||[]).map(m=>m.id));
   const from = String(body.fromMemberId||''); const to = String(body.toMemberId||'');
   const currency = String(body.currency||''); const amountMinor = body.amountMinor;
@@ -855,12 +887,12 @@ async function recordPayment(env: Env, g: Row, user: Row, body: any, origin: str
   // may record a payment — not the debtor, and not an uninvolved member.
   // This is the server enforcement; hiding/disabling the button in the
   // frontend alone would not stop a direct API call. Exception: if the
-  // creditor is a placeholder (no account, user_id NULL), they cannot
-  // log in to confirm at all, so the debtor may record instead — the
-  // activity log still records who did it (created_by_user_id).
+  // creditor is a placeholder (no password yet), they cannot log in to
+  // confirm at all, so the debtor may record instead — the activity log
+  // still records who did it (created_by_user_id).
   const myMemberRow = (members.results || []).find((m: any) => m.user_id === user.id);
   const toMemberRow = (members.results || []).find((m: any) => m.id === to);
-  const creditorIsPlaceholder = toMemberRow && !toMemberRow.user_id;
+  const creditorIsPlaceholder = toMemberRow && !toMemberRow.hasAccount;
   const allowed = myMemberRow && (myMemberRow.id === to || (creditorIsPlaceholder && myMemberRow.id === from));
   if (!allowed) return err('Only the person owed can record this payment (or the debtor, if the person owed has no account yet)', 403, origin);
   if (!amountMinor || amountMinor <= 0) return err('Amount must be positive', 400, origin);
@@ -883,7 +915,7 @@ async function recordPayment(env: Env, g: Row, user: Row, body: any, origin: str
   await env.DB.batch([
     env.DB.prepare('INSERT INTO payments (id,group_id,from_member_id,to_member_id,amount_minor,currency,date,created_at,created_by_user_id) VALUES (?,?,?,?,?,?,?,?,?)')
       .bind(pid, g.id, from, to, amountMinor, currency, date, nowIso(), user.id),
-    activityStmt(env, g.id, myMemberRow?.id || null, myMemberRow?.name || user.name, 'payment_recorded', amountMinor, currency, `${summary.members.find((m:any)=>m.id===from)?.name} -> ${summary.members.find((m:any)=>m.id===to)?.name}`, from, to),
+    activityStmt(env, g.id, myMemberRow?.id || null, user.name, 'payment_recorded', amountMinor, currency, `${summary.members.find((m:any)=>m.id===from)?.name} -> ${summary.members.find((m:any)=>m.id===to)?.name}`, from, to),
   ]);
   return json(await groupDetail(env, g, user.id), 201, origin);
 }
