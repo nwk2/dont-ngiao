@@ -491,7 +491,7 @@ function Home({ user, setUser, onLogout, groups, loadGroups, loadGroup, error, s
     </div>
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
       <h2 style={{margin:0}}>Your groups</h2>
-      <button style={{...btn,borderRadius:999,padding:'10px 18px'}} onClick={()=>setShowCreate(true)}>+ New group</button>
+      <button style={{...primary,borderRadius:999,padding:'10px 18px'}} onClick={()=>setShowCreate(true)}>+ New group</button>
     </div>
     {groups?.active?.length === 0 && <p style={{color:'var(--muted)'}}>No groups yet — tap + New group to create one.</p>}
     {groups?.active?.map((g:any)=>{
