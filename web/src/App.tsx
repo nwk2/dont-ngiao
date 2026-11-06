@@ -222,10 +222,22 @@ function useVisualViewport() {
       // when nothing changed lets React bail out of the re-render.
       setVv(prev => (prev.kb === newKb && prev.height === newHeight) ? prev : { kb: newKb, height: newHeight });
     };
+    // KEYBOARD-CLOSE RE-CHECK, 2026-11-06: the visualViewport resize /
+    // scroll events don't reliably fire when the keyboard closes on iOS,
+    // so vv.height can stay stuck at the keyboard-open value (~325px) and
+    // the sheet stays capped at 88% of it — Split/Date/Save cut off and
+    // the page showing through below the sheet (Wai's 7:39 video). The
+    // keyboard opens on input focus and closes on blur, so re-check the
+    // viewport on focusin / focusout too, twice (100ms and 350ms) to
+    // catch the keyboard animation settling. The guard above makes the
+    // extra checks cheap: no re-render when nothing changed.
+    const scheduleUpdate = () => { setTimeout(update, 100); setTimeout(update, 350); };
     vp.addEventListener('resize', update);
     vp.addEventListener('scroll', update);
+    window.addEventListener('focusin', scheduleUpdate);
+    window.addEventListener('focusout', scheduleUpdate);
     update();
-    return () => { vp.removeEventListener('resize', update); vp.removeEventListener('scroll', update); };
+    return () => { vp.removeEventListener('resize', update); vp.removeEventListener('scroll', update); window.removeEventListener('focusin', scheduleUpdate); window.removeEventListener('focusout', scheduleUpdate); };
   }, []);
   return vv;
 }
