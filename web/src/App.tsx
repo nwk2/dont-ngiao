@@ -521,7 +521,18 @@ function Home({ user, setUser, onLogout, groups, loadGroups, loadGroup, error, s
         {my.length>0 && <div style={{marginTop:8}}>{groupBalancesByVerb(my).map((g:any,gi:number)=>g.items.map((b:any,i:number)=>(<div key={b.currency} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,fontSize:14,color:b.balance>0?'var(--tint-text)':b.balance<0?'var(--danger-text)':'var(--muted)',...(i===0 && gi>0 ? {borderTop:balHairline,paddingTop:8,marginTop:8} : {})}}><span>{i===0 ? g.verb : ''}</span><span style={{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'}}>{fmt(Math.abs(b.balance),b.currency)}</span></div>)))}</div>}
       </div>);
     })}
-    {showCreate && <CreateGroupModal onClose={()=>setShowCreate(false)} onDone={(d:any)=>{setShowCreate(false); if (d?.id) loadGroup(d.id); else loadGroups();}} />}
+    {showCreate && <CreateGroupModal onClose={()=>setShowCreate(false)} onDone={(d:any)=>{setShowCreate(false);
+      // HOME REFRESH, Nov 2026: creating a group used to leave the Home
+      // list stale until the user went back AND the back-navigation fetch
+      // completed — Home showed the pre-creation count, and the profile
+      // count (same state, read after the fetch landed) already showed
+      // the new one. loadGroup(d.id) only sets the single group detail,
+      // never the list. So refresh the list HERE, in the background while
+      // the user is inside the new group — by the time they tap back,
+      // Home is already correct. back() still refetches too (belt and
+      // braces for the other paths that land back on Home).
+      if (d?.id) { loadGroup(d.id); loadGroups(); } else loadGroups();
+    }} />}
   </div>);
 }
 
