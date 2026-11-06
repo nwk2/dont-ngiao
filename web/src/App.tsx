@@ -373,7 +373,7 @@ export default function App() {
     if (readSavedGroup()) return <GroupSkeleton />;
     return <HomeSkeleton user={null} />;
   }
-  if (authState === 'guest' || !user) return <Auth onAuth={doAuth} error={error} loading={loading} />;
+  if (authState === 'guest' || !user) return <Auth onAuth={doAuth} error={error} loading={loading} inviteToken={inviteToken} onInvalidInvite={clearInviteParam} />;
   if (inviteToken) return <InviteView token={inviteToken} onJoined={handleInviteJoined} onCancel={clearInviteParam} />;
   if (groupLoading) return <GroupSkeleton />;
   // Reload with a detail object when the write already returned one:
@@ -696,12 +696,27 @@ function AuthCorgi({ focus, value, eyesClosed, oneEyePeek }: any) {
   </div>);
 }
 
-function Auth({ onAuth, error, loading }: any) {
+function Auth({ onAuth, error, loading, inviteToken, onInvalidInvite }: any) {
   const [mode, setMode] = useState<'login'|'register'>('login');
   const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [focus, setFocus] = useState<string|null>(null);
   const [lastField, setLastField] = useState<string|null>(null);
+  // INVITE BANNER, Nov 2026: a guest opening an invite link used to see
+  // only the generic login screen — nothing said they were invited, or
+  // to which group, until AFTER they created an account (the join screen
+  // only appears once authed). Resolve the token here (the resolve
+  // endpoint is public, no auth needed) and show the invite up front,
+  // so they know WHY they are creating an account before they do it.
+  // If the link is dead/revoked, say so here too, with a way back to the
+  // plain login — so they never register for a link that can't be used.
+  const [invite, setInvite] = useState<any>(null);
+  const [inviteState, setInviteState] = useState<'idle'|'loading'|'ready'|'error'>('idle');
+  const [inviteError, setInviteError] = useState('');
+  useEffect(()=>{ if (!inviteToken) return; let cancelled = false; setInviteState('loading');
+    api(`/api/invites/${encodeURIComponent(inviteToken)}`).then((d:any)=>{ if (!cancelled) { setInvite(d); setInviteState('ready'); } }).catch((e:any)=>{ if (!cancelled) { setInviteError(e.message || 'This invite link is invalid or has been revoked'); setInviteState('error'); } });
+    return ()=>{ cancelled = true; };
+  }, [inviteToken]);
   const passwordRef = useRef<any>(null);
   const focusValue = focus==='name' ? name : focus==='email' ? email : focus==='password' ? password : '';
   // Pet placement 2026-11-05, corrected same day: inside the form card,
@@ -716,6 +731,18 @@ function Auth({ onAuth, error, loading }: any) {
   const oneEyePeek = showPassword && (pwFocused || lastField === 'password');
   const pet = mode==='login' ? <AuthCorgi focus={focus} value={focusValue} eyesClosed={eyesClosed} oneEyePeek={oneEyePeek} /> : <AuthBear focus={focus} value={focusValue} eyesClosed={eyesClosed} oneEyePeek={oneEyePeek} />;
   return (<div style={S}><h1>Don't Ngiao</h1><p style={{color:'var(--muted)',marginTop:0}}>Mai ngiao, mai drama.</p>
+    {inviteToken && inviteState==='loading' && <p style={{color:'var(--muted)',fontSize:13}}>Checking your invite…</p>}
+    {inviteToken && inviteState==='ready' && invite && <div style={{...homeCard,background:'var(--tint-bg)',marginBottom:16}}>
+      <div style={{fontSize:18,fontWeight:700,lineHeight:1.3}}>You're invited to join {invite.groupName}</div>
+      <div style={{color:'var(--muted)',marginTop:4}}>{invite.inviterName} invited you to join this group.</div>
+      <div style={{fontSize:13,color:'var(--muted)',marginTop:8}}>Log in or create an account to join.</div>
+    </div>}
+    {inviteToken && inviteState==='error' && <div style={{...homeCard,marginBottom:16}}>
+      <div style={{fontWeight:700}}>Invite link</div>
+      <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.45,margin:'8px 0'}}>{inviteError}</p>
+      <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,margin:'0 0 12px'}}>The link may have been revoked, or the group may have been deleted or archived.</p>
+      <button style={{...btn,width:'100%',padding:'12px',fontSize:15}} onClick={()=>{ if (onInvalidInvite) onInvalidInvite(); }}>Go to log in</button>
+    </div>}
     <div style={{...tabTrack,marginBottom:16}}><button style={mode==='login'?tabPillActive:tabPill} onClick={()=>setMode('login')}>Log in</button><button style={mode==='register'?tabPillActive:tabPill} onClick={()=>setMode('register')}>Register</button></div>
     <div style={homeCard}>
     {error && <p style={{color:'var(--danger-text)',marginTop:0}}>{error}</p>}
