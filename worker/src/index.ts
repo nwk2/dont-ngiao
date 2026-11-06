@@ -566,22 +566,21 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         const summary = await groupSummary(env, groupId, user.id);
         if (summary.balances.some((b:any) => b.memberId === member.id && b.balance !== 0)) return err('You must have a zero balance to leave this group', 403, origin);
         await env.DB.prepare('DELETE FROM group_members WHERE id=?').bind(member.id).run();
-        const remaining = await env.DB.prepare('SELECT COUNT(*) AS c FROM group_members WHERE group_id=?').bind(groupId).first<Row>();
-        // CREATOR TRANSFER, 2026-11-05 (fixed 2026-11-06): if the leaver
-        // was the creator and members remain, creator passes to the
-        // earliest remaining ACCOUNT member (created_at, then id for
-        // ties). Placeholders cannot be creator (no user_id). If no
-        // account member remains, do NOT set created_by_user_id to NULL
-        // — the column is NOT NULL, so that UPDATE crashes AFTER the
-        // member row is already deleted (a partial Leave: the user is
-        // out but the endpoint errors, and a retry then 403s 'Not a
-        // group member'). Leave it pointing at the departed creator;
-        // the Remove guards short-circuit on a missing creator, and
-        // placeholders are removable by anyone, so nothing is blocked.
-        // (Known edge: a later account member joining a placeholder-
-        // only group can't remove other account members until a creator
-        // is re-established — the column can't be NULL without a
-        // table-recreation migration.)
+        // OPTION A, 2026-11-06: 'remaining' counts ACCOUNT members only
+        // (user_id IS NOT NULL). A group with only placeholders has no
+        // real users — no one can open it, and no member can clean it up
+        // — so it is treated as empty: the delete/archive branch below
+        // runs (delete if clean, archive if it somehow has money
+        // history), instead of leaving an orphan behind. This also makes
+        // the creator-transfer NULL crash impossible: the transfer only
+        // runs when other account members remain, so a next account
+        // member always exists (the 'skip the UPDATE when none' guard
+        // stays as a belt-and-braces safety net).
+        const remaining = await env.DB.prepare('SELECT COUNT(*) AS c FROM group_members WHERE group_id=? AND user_id IS NOT NULL').bind(groupId).first<Row>();
+        // CREATOR TRANSFER, 2026-11-05: if the leaver was the creator
+        // and account members remain, creator passes to the earliest
+        // remaining ACCOUNT member (created_at, then id for ties).
+        // Placeholders cannot be creator (no user_id).
         if (Number(remaining?.c || 0) > 0 && g.created_by_user_id && user.id === g.created_by_user_id) {
           const next = await env.DB.prepare('SELECT user_id FROM group_members WHERE group_id=? AND user_id IS NOT NULL ORDER BY created_at ASC, id ASC LIMIT 1').bind(groupId).first<Row>();
           if (next?.user_id) await env.DB.prepare('UPDATE groups SET created_by_user_id=? WHERE id=?').bind(next.user_id, groupId).run();
