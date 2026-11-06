@@ -8,17 +8,17 @@ import { fmt, CATEGORIES } from './api';
 // dark-theme-friendly palette (same family as the settle colour dots,
 // different mapping — categories and members are different domains).
 export const CAT_COLORS: Record<string, string> = {
-  // Gruvbox dark (approved 2026-11-04 for dark mode; light pastel is
-  // a separate light-mode palette, not built yet): green, blue, purple,
-  // yellow, orange, aqua. Fixed per category, same in pie and bar.
-  'Food & Drink': '#b8bb26',
-  'Transport': '#83a598',
-  'Accommodation': '#d3869b',
-  'Activities': '#fabd2f',
-  'Shopping': '#fe8019',
-  'Other': '#8ec07c',
+  // Theme variables (defined in index.html): gruvbox dark, pastels
+  // light (approved 2026-11-04 dark; light pastels 2026-11-06, proposed
+  // values). Fixed per category, same in pie and bar.
+  'Food & Drink': 'var(--cat-food)',
+  'Transport': 'var(--cat-transport)',
+  'Accommodation': 'var(--cat-accommodation)',
+  'Activities': 'var(--cat-activities)',
+  'Shopping': 'var(--cat-shopping)',
+  'Other': 'var(--cat-other)',
 };
-function catColor(cat: string) { return CAT_COLORS[cat] || '#a3a3a3'; }
+function catColor(cat: string) { return CAT_COLORS[cat] || 'var(--muted)'; }
 function Legend({ entries, total, currency }: { entries: [string, number][]; total: number; currency: string }) {
   return (<div style={{width:'100%',maxWidth:360}}>
     {entries.map(([cat, v]) => (<div key={cat} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'6px 0'}}>
@@ -30,7 +30,7 @@ function Legend({ entries, total, currency }: { entries: [string, number][]; tot
 export function Pie({ data, currency }: { data: Record<string, number>; currency: string }) {
   const entries = Object.entries(data).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
   const total = entries.reduce((a,[,v])=>a+v,0);
-  if (total === 0) return <p style={{color:'#a3a3a3'}}>No spend in {currency} yet.</p>;
+  if (total === 0) return <p style={{color:'var(--muted)'}}>No spend in {currency} yet.</p>;
   const totalStr = fmt(total, currency);
   const centreSize = totalStr.length > 9 ? 12 : 16;
   let acc = 0;
@@ -44,9 +44,9 @@ export function Pie({ data, currency }: { data: Record<string, number>; currency
   const isFullCircle = slices.length === 1;
   return (<div style={{display:'flex',flexDirection:'column',alignItems:'center'}}>
     <svg viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="Spend by category pie chart">
-      {isFullCircle ? (<><circle cx={100} cy={100} r={80} fill={slices[0].color} stroke="#1c1c1e" strokeWidth={2} /><circle cx={100} cy={100} r={48} fill="#1c1c1e" /></>) : slices.map(s=><path key={s.cat} d={s.d} fill={s.color} stroke="#1c1c1e" strokeWidth={2} />)}
-      <text x={100} y={98} textAnchor="middle" fontSize={centreSize} fontWeight={700} fill="#fff" style={{fontVariantNumeric:'tabular-nums'}}>{totalStr}</text>
-      <text x={100} y={116} textAnchor="middle" fontSize={11} fill="#a3a3a3">total</text>
+      {isFullCircle ? (<><circle cx={100} cy={100} r={80} fill={slices[0].color} stroke="var(--card)" strokeWidth={2} /><circle cx={100} cy={100} r={48} fill="var(--card)" /></>) : slices.map(s=><path key={s.cat} d={s.d} fill={s.color} stroke="var(--card)" strokeWidth={2} />)}
+      <text x={100} y={98} textAnchor="middle" fontSize={centreSize} fontWeight={700} fill="var(--text)" style={{fontVariantNumeric:'tabular-nums'}}>{totalStr}</text>
+      <text x={100} y={116} textAnchor="middle" fontSize={11} fill="var(--muted)">total</text>
     </svg>
     <Legend entries={entries} total={total} currency={currency} />
   </div>);
@@ -90,7 +90,7 @@ export function DailyBar({ expenses, myMemberId, view, currency }: { expenses: a
   const days = Array.from(byDay.keys()).sort();
   const dayTotals = days.map(d => Object.values(byDay.get(d)!).reduce((a,b)=>a+b,0));
   const grandTotal = dayTotals.reduce((a,b)=>a+b,0);
-  if (grandTotal === 0) return <p style={{color:'#a3a3a3'}}>No spend in {currency} yet.</p>;
+  if (grandTotal === 0) return <p style={{color:'var(--muted)'}}>No spend in {currency} yet.</p>;
   const maxTotal = Math.max(...dayTotals);
   const catTotals: Record<string, number> = {};
   for (const d of days) for (const [cat, v] of Object.entries(byDay.get(d)!)) catTotals[cat] = (catTotals[cat] || 0) + v;
@@ -119,8 +119,8 @@ export function DailyBar({ expenses, myMemberId, view, currency }: { expenses: a
     <div ref={wrapRef} style={{width:'100%'}}>
       <svg width={svgW} height={svgH} role="img" aria-label="Daily spend by category bar chart" style={{display:'block',margin:'0 auto'}}>
         {ticks.map((t, i) => { const y = top + plotH * (1 - (maxTotal ? t / maxTotal : 0)); return (<g key={i}>
-          <line x1={left} x2={svgW - right} y1={y} y2={y} stroke="#2e2e2e" strokeWidth={1} />
-          <text x={left - 6} y={y + 4} textAnchor="end" fontSize={10} fill="#a3a3a3" style={{fontVariantNumeric:'tabular-nums'}}>{fmt(Math.round(t), currency)}</text>
+          <line x1={left} x2={svgW - right} y1={y} y2={y} stroke="var(--hairline)" strokeWidth={1} />
+          <text x={left - 6} y={y + 4} textAnchor="end" fontSize={10} fill="var(--muted)" style={{fontVariantNumeric:'tabular-nums'}}>{fmt(Math.round(t), currency)}</text>
         </g>); })}
         {days.map((day, i) => {
           const x = left + i * slot + (slot - barW) / 2;
@@ -137,7 +137,7 @@ export function DailyBar({ expenses, myMemberId, view, currency }: { expenses: a
           return (<g key={day}>
             <title>{day}: {fmt(dayTotals[i], currency)}</title>
             {segs.map(s => (<rect key={s.cat} x={s.x} y={s.y} width={barW} height={Math.max(s.h, 0)} fill={catColor(s.cat)} />))}
-            {i % labelStep === 0 && <text x={x + barW / 2} y={top + plotH + 18} textAnchor="middle" fontSize={10} fill="#a3a3a3">{day.slice(5)}</text>}
+            {i % labelStep === 0 && <text x={x + barW / 2} y={top + plotH + 18} textAnchor="middle" fontSize={10} fill="var(--muted)">{day.slice(5)}</text>}
           </g>);
         })}
       </svg>

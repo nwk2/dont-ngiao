@@ -220,6 +220,18 @@ function readSavedGroup(): { groupId: string; tab: typeof VALID_TABS[number] } |
     return { groupId: p.groupId, tab: VALID_TABS.includes(tab) ? tab : 'expenses' };
   } catch { return null; }
 }
+// Theme pill (shared, 2026-11-06 L3): the sun/moon segmented toggle,
+// used in the Home header, the You screen Appearance row, and the group
+// header. Tapping it flips dark <-> light and persists the choice
+// (THEME_KEY). The highlighted side follows the active theme. A third
+// scheme later becomes a third segment here (and one more theme key).
+function ThemePill({ theme, setTheme }: any) {
+  const seg = (active: boolean) => ({flex:1,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:999,background:active?'var(--pill-active)':'transparent',color:active?'var(--text)':'var(--muted)'} as React.CSSProperties);
+  return (<button type="button" aria-label="Colour scheme" title="Switch colour scheme" onClick={()=>setTheme(theme==='dark'?'light':'dark')} style={{width:88,height:40,borderRadius:999,border:'1px solid var(--border)',background:'var(--field)',padding:3,boxSizing:'border-box',display:'flex',alignItems:'stretch',cursor:'pointer',flexShrink:0}}>
+    <span aria-hidden="true" style={seg(theme==='light')}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg></span>
+    <span aria-hidden="true" style={seg(theme==='dark')}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z" /></svg></span>
+  </button>);
+}
 export default function App() {
   const [user, setUser] = useState<any>(null);
   const [authState, setAuthState] = useState<'checking'|'guest'|'authed'>(()=> getToken() ? 'checking' : 'guest');
@@ -241,16 +253,12 @@ export default function App() {
   // catIcon glyphs) return var(--dot-N) / var(--cat-x) references instead
   // of hex. First load follows the system (prefers-color-scheme); a
   // manual choice is persisted under THEME_KEY and wins after that.
-  // L1 only: the variables are defined and the data-theme attribute is
-  // set, but nothing references the variables yet, so the app still
-  // renders exactly the dark colours. The pill stays disabled until L3
-  // wires setTheme to it.
+  // L3: the pill (ThemePill, shared by Home/You/Group) is wired, and
+  // first load follows the system; a manual choice persists under
+  // THEME_KEY and wins after that.
   const [theme, setTheme] = useState<'dark'|'light'>(()=>{
-    // L1+L2 force dark: the system default + saved preference are
-    // restored in L3, once pie.tsx and calendar.tsx are tokenised too —
-    // otherwise a light-system device would get a half-light app (App
-    // tokenised, charts/calendar still dark) with the pill still disabled.
-    return 'dark';
+    try { const saved = localStorage.getItem(THEME_KEY); if (saved==='light'||saved==='dark') return saved; } catch { /* ignore */ }
+    return (typeof window!=='undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
   });
   useEffect(()=>{ document.documentElement.dataset.theme = theme; try { localStorage.setItem(THEME_KEY, theme); } catch { /* ignore */ } },[theme]);
   async function loadGroups() { try { setGroups(await api('/api/groups')); setError(''); } catch(e:any){ setError(e.message); } }
@@ -357,9 +365,9 @@ export default function App() {
   // Members landed back on Expenses, hiding the updated data). Refetch
   // (keepTab) is only the fallback for writes that return no detail
   // (archive/restore/leave from Settings, Home restore via loadGroups).
-  if (group) return <GroupView group={group} setGroup={setGroup} tab={tab} setTab={setTab} back={()=>{setGroup(null); loadGroups();}} reload={(detail?: any)=> detail && detail.id ? (setGroup(detail), setError(''), Promise.resolve(true)) : loadGroup(group.id, { keepTab: true })} error={error} setError={setError} />;
+  if (group) return <GroupView group={group} setGroup={setGroup} tab={tab} setTab={setTab} back={()=>{setGroup(null); loadGroups();}} reload={(detail?: any)=> detail && detail.id ? (setGroup(detail), setError(''), Promise.resolve(true)) : loadGroup(group.id, { keepTab: true })} error={error} setError={setError}  theme={theme} setTheme={setTheme} />;
   if (!groups) return <HomeSkeleton user={user} />;
-  return <Home user={user} setUser={setUser} onLogout={doLogout} groups={groups} loadGroups={loadGroups} loadGroup={(id: string)=>loadGroup(id, { skeleton: true })} error={error} setError={setError} />;
+  return <Home user={user} setUser={setUser} onLogout={doLogout} groups={groups} loadGroups={loadGroups} loadGroup={(id: string)=>loadGroup(id, { skeleton: true })} error={error} setError={setError}  theme={theme} setTheme={setTheme} />;
 }
 
 // Skeleton screens: grey blocks in the exact shape of the content that is
@@ -450,7 +458,7 @@ function groupBalancesByVerb(items: any[]) {
   }
   return groups;
 }
-function Home({ user, setUser, onLogout, groups, loadGroups, loadGroup, error, setError }: any) {
+function Home({ user, setUser, onLogout, groups, loadGroups, loadGroup, error, setError, theme, setTheme }: any) {
   const [showCreate, setShowCreate] = useState(false);
   const [showYou, setShowYou] = useState(false);
   // BUG FIX, 2026-11-05: YouView used to render inline at the BOTTOM of
@@ -459,7 +467,7 @@ function Home({ user, setUser, onLogout, groups, loadGroups, loadGroup, error, s
   // Home, then You, then scrolling back to Home. It now replaces Home
   // via an early return, like App replaces Home with GroupView and like
   // YouView replaces itself with the archived view.
-  if (showYou) return <YouView user={user} setUser={setUser} onLogout={onLogout} groups={groups} loadGroups={loadGroups} loadGroup={loadGroup} onBack={()=>setShowYou(false)} setError={setError} />;
+  if (showYou) return <YouView user={user} setUser={setUser} onLogout={onLogout} groups={groups} loadGroups={loadGroups} loadGroup={loadGroup} onBack={()=>setShowYou(false)} setError={setError}  theme={theme} setTheme={setTheme} />;
     const totals: any[] = groups?.totals || [];
   return (<div style={S}>
     <div style={{marginBottom:16}}>
@@ -469,10 +477,7 @@ function Home({ user, setUser, onLogout, groups, loadGroups, loadGroup, error, s
           <div style={{fontSize:20,fontWeight:700}}>{user.name}</div>
           <div style={{fontSize:13,color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',lineHeight:1.4}}>Mai ngiao, mai drama.</div>
         </div>
-        <button type="button" aria-label="Dark / light mode (coming soon)" title="Dark / light mode — coming soon" disabled style={{width:88,height:40,borderRadius:999,border:'1px solid var(--border)',background:'var(--field)',padding:3,boxSizing:'border-box',display:'flex',alignItems:'stretch',cursor:'not-allowed',flexShrink:0}}>
-          <span aria-hidden="true" style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:999,color:'var(--muted)'}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg></span>
-          <span aria-hidden="true" style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:999,background:'var(--pill-active)',color:'var(--text)'}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z" /></svg></span>
-        </button>
+        <ThemePill theme={theme} setTheme={setTheme} />
       </div>
     </div>
     {error && <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:12}}><span style={{color:'var(--danger-text)'}}>{error}</span><button style={btn} onClick={()=>loadGroups()}>Retry</button></div>}
@@ -503,7 +508,7 @@ function Home({ user, setUser, onLogout, groups, loadGroups, loadGroup, error, s
 }
 
 
-function YouView({ user, setUser, onLogout, groups, loadGroups, loadGroup, onBack, setError }: any) {
+function YouView({ user, setUser, onLogout, groups, loadGroups, loadGroup, onBack, setError, theme, setTheme }: any) {
   const [showArchived, setShowArchived] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(user.name || '');
@@ -526,10 +531,7 @@ function YouView({ user, setUser, onLogout, groups, loadGroups, loadGroup, onBac
       {since && <div style={{fontSize:13,color:'var(--muted)',marginTop:4}}>User since {since} · {totalGroups} {totalGroups===1?'group':'groups'}</div>}
     </div>
     <h3 style={{marginBottom:8}}>Appearance</h3>
-    <div style={{...homeCard,display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}><span>Theme</span><button type="button" aria-label="Dark / light mode (coming soon)" title="Dark / light mode — coming soon" disabled style={{width:88,height:40,borderRadius:999,border:'1px solid var(--border)',background:'var(--field)',padding:3,boxSizing:'border-box',display:'flex',alignItems:'stretch',cursor:'not-allowed',flexShrink:0}}>
-      <span aria-hidden="true" style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:999,color:'var(--muted)'}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg></span>
-      <span aria-hidden="true" style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:999,background:'var(--pill-active)',color:'var(--text)'}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z" /></svg></span>
-    </button></div>
+    <div style={{...homeCard,display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}><span>Theme</span><ThemePill theme={theme} setTheme={setTheme} /></div>
     <h3 style={{marginBottom:8}}>Account</h3>
     <div style={{...homeCard,display:'flex',flexDirection:'column',gap:8}}>
       <button style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}} onClick={()=>{setNameDraft(user.name); setEditError(''); setEditingName(true);}}><span>Edit name <span style={{color:'var(--muted)'}}>· Shown to your groups</span></span><span style={{color:'var(--muted)'}}>›</span></button>
@@ -815,7 +817,7 @@ function ResetPasswordView({ token }: { token: string }) {
   </div>);
 }
 
-function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError }: any) {
+function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError, theme, setTheme }: any) {
   const [showExpense, setShowExpense] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [detailExpense, setDetailExpense] = useState<any>(null);
@@ -937,19 +939,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
     <div style={{display:'flex',gap:8,alignItems:'center',justifyContent:'space-between'}}>
       <button style={btn} onClick={back}>← Groups</button>
       <span style={{display:'flex',gap:8,alignItems:'center'}}>
-        {/* Theme toggle PLACEHOLDER, Nov 2026: segmented pill like the
-        reference image — sun left, moon right, current mode highlighted.
-        The app is dark-only, so this shows the dark state (moon side
-        highlighted, sun dim), exactly like the bottom half of the
-        reference. Icons are line SVGs (feather sun/moon), not emoji, so
-        they match the reference's outline style. Still disabled: no
-        light mode exists yet, so tapping it must not promise a switch
-        that does nothing — when light mode is built, this same pill
-        becomes the working toggle and the highlighted side flips. */}
-        <button type="button" aria-label="Dark / light mode (coming soon)" title="Dark / light mode — coming soon" disabled style={{width:88,height:40,borderRadius:999,border:'1px solid var(--border)',background:'var(--field)',padding:3,boxSizing:'border-box',display:'flex',alignItems:'stretch',cursor:'not-allowed',flexShrink:0}}>
-          <span aria-hidden="true" style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:999,color:'var(--muted)'}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg></span>
-          <span aria-hidden="true" style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:999,background:'var(--pill-active)',color:'var(--text)'}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z" /></svg></span>
-        </button>
+        <ThemePill theme={theme} setTheme={setTheme} />
         <button type="button" aria-label="Group settings" title="Group settings" onClick={()=>setShowSettings(true)} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg></button>
       </span>
     </div>

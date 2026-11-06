@@ -10,7 +10,7 @@ import React, { useState } from 'react';
 // The date button itself carries no 📅 emoji: Apple's calendar emoji
 // always renders "JUL 17", which reads as a second, wrong date next to
 // the real formatted date — so the button is text only.
-const pickerBtn: React.CSSProperties = { padding:'9px 14px', borderRadius:999, border:'1px solid #333', background:'#242424', color:'#fff', cursor:'pointer' };
+const pickerBtn: React.CSSProperties = { padding:'9px 14px', borderRadius:999, border:'1px solid var(--border)', background:'var(--field)', color:'var(--text)', cursor:'pointer' };
 export function fmtDate(iso: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
   const [y,m,d] = iso.split('-').map(Number);
@@ -24,8 +24,8 @@ export function DateField({ value, onChange, id }: { value: string; onChange: (v
   const daysIn = new Date(ym.y, ym.m+1, 0).getDate();
   const cells: (number|null)[] = [...Array(startDay).fill(null), ...Array.from({length: daysIn}, (_,i)=>i+1)];
   return (<div>
-    <button type="button" id={id} onClick={()=>setOpen(o=>!o)} style={{width:'100%',padding:'10px',textAlign:'left',border:'1px solid #333',borderRadius:8,background:'#242424',color:'#fff'}}>{fmtDate(value)}</button>
-    {open && <div role="dialog" aria-label="Choose date" style={{border:'1px solid #333',borderRadius:8,padding:10,marginTop:6,background:'#1c1c1e',color:'#fff'}}>
+    <button type="button" id={id} onClick={()=>setOpen(o=>!o)} style={{width:'100%',padding:'10px',textAlign:'left',border:'1px solid var(--border)',borderRadius:8,background:'var(--field)',color:'var(--text)'}}>{fmtDate(value)}</button>
+    {open && <div role="dialog" aria-label="Choose date" style={{border:'1px solid var(--border)',borderRadius:8,padding:10,marginTop:6,background:'var(--card)',color:'var(--text)'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
         <button type="button" style={pickerBtn} onClick={()=>setYm(({y,m})=> m===0?{y:y-1,m:11}:{y,m:m-1})}>‹</button>
         <strong>{first.toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</strong>
@@ -37,8 +37,8 @@ export function DateField({ value, onChange, id }: { value: string; onChange: (v
         <button type="button" style={pickerBtn} onClick={()=>setOpen(false)}>Close</button>
       </div>
       <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2,marginTop:8}}>
-        {['Mo','Tu','We','Th','Fr','Sa','Su'].map(d=><div key={d} style={{textAlign:'center',fontSize:12,color:'#a3a3a3'}}>{d}</div>)}
-        {cells.map((d,i)=> d===null ? <div key={i}/> : <button type="button" key={i} aria-label={fmtDate(`${ym.y}-${String(ym.m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`)} onClick={()=>{onChange(`${ym.y}-${String(ym.m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`); setOpen(false);}} style={{padding:6,background: value===`${ym.y}-${String(ym.m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}` ? '#2dd4bf' : '#242424', color: value===`${ym.y}-${String(ym.m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}` ? '#0f172a' : '#fff', border:'1px solid #333', borderRadius:6}}>{d}</button>)}
+        {['Mo','Tu','We','Th','Fr','Sa','Su'].map(d=><div key={d} style={{textAlign:'center',fontSize:12,color:'var(--muted)'}}>{d}</div>)}
+        {cells.map((d,i)=> d===null ? <div key={i}/> : <button type="button" key={i} aria-label={fmtDate(`${ym.y}-${String(ym.m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`)} onClick={()=>{onChange(`${ym.y}-${String(ym.m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`); setOpen(false);}} style={{padding:6,background: value===`${ym.y}-${String(ym.m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}` ? 'var(--accent)' : 'var(--field)', color: value===`${ym.y}-${String(ym.m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}` ? 'var(--accent-text)' : 'var(--text)', border:'1px solid var(--border)', borderRadius:6}}>{d}</button>)}
       </div>
     </div>}
   </div>);
