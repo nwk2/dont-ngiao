@@ -17,8 +17,13 @@ export function fmtDate(iso: string) {
   return new Date(y, m-1, d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 export function todayIso() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
-export function DateField({ value, onChange, id }: { value: string; onChange: (v: string)=>void; id: string }) {
-  const [open, setOpen] = useState(false);
+export function DateField({ value, onChange, id, autoOpen }: { value: string; onChange: (v: string)=>void; id: string; autoOpen?: boolean }) {
+  // autoOpen: when the field is revealed by expanding a row (Add expense
+  // Date row), start with the calendar already open — tapping the row,
+  // then the date button, then a day was three taps for one date. The
+  // PayModal's DateField is rendered directly (no expanding row), so it
+  // keeps the default (tap the button to open).
+  const [open, setOpen] = useState(!!autoOpen);
   const [ym, setYm] = useState(() => { const [y,m] = value.split('-').map(Number); return { y, m: m-1 }; });
   const first = new Date(ym.y, ym.m, 1); const startDay = (first.getDay()+6)%7; // Mon-first
   const daysIn = new Date(ym.y, ym.m+1, 0).getDate();
