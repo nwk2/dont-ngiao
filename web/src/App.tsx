@@ -849,7 +849,7 @@ function InviteView({ token, onJoined, onCancel }: any) {
   const [error, setError] = useState('');
   const [joining, setJoining] = useState(false);
   useEffect(()=>{ let cancelled = false;
-    api(`/api/invites/${encodeURIComponent(token)}`).then((d:any)=>{ if (!cancelled) { setInvite(d); setState('ready'); } }).catch((e:any)=>{ if (!cancelled) { setError(e.message || 'This invite link is invalid or has been revoked'); setState('error'); } });
+    api(`/api/invites/${encodeURIComponent(token)}`).then((d:any)=>{ if (cancelled) return; if (d.alreadyMember) { onJoined(d.groupId); return; } setInvite(d); setState('ready'); }).catch((e:any)=>{ if (!cancelled) { setError(e.message || 'This invite link is invalid or has been revoked'); setState('error'); } });
     return ()=>{ cancelled = true; };
   }, [token]);
   async function join() {

@@ -334,7 +334,17 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
           const u = await env.DB.prepare('SELECT name FROM users WHERE id=?').bind(invite.created_by_user_id).first<Row>();
           if (u) inviterName = String(u.name);
         }
-        return json({ groupId: g.id, groupName: g.name, inviterName }, 200, origin);
+        // ALREADY A MEMBER, Nov 2026: if the caller is logged in and
+        // already a member, say so — the frontend opens the group instead
+        // of showing the generic join screen (a link should land a member
+        // in the group, not ask them to join it again).
+        let alreadyMember = false;
+        const au = await authUser(req, env);
+        if (au) {
+          const ex = await env.DB.prepare('SELECT id FROM group_members WHERE group_id=? AND user_id=?').bind(g.id, au.id).first<Row>();
+          alreadyMember = !!ex;
+        }
+        return json({ groupId: g.id, groupName: g.name, inviterName, alreadyMember }, 200, origin);
       }
       if (sub === 'join' && req.method === 'POST') {
         const user = await authUser(req, env); if (!user) return err('Unauthorized', 401, origin);
