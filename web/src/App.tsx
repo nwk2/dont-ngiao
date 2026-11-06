@@ -1292,8 +1292,18 @@ function InviteMember({ groupId, setConfirm }: any) {
     catch { setCopyStatus('Could not copy automatically — select the link above and copy it manually.'); }
   }
   function revoke() {
-    setConfirm({ title: 'Revoke invite link?', message: 'The current link will stop working immediately. Anyone who has it will no longer be able to join.', confirmLabel: 'Revoke', onError: (msg: string) => setError(msg), action: async () => {
-      await api(`/api/groups/${groupId}/invite`, 'DELETE'); setToken(null); setCopyStatus('');
+    // REVOKE + REGENERATE, 2026-11-06: revoking immediately generates a
+    // fresh link and shows it (auto-copied, like Generate). The old link
+    // stops working at once — so a leaked link can't be used to join —
+    // and the member always has a valid link to share, with no extra
+    // tap. Revoke stops NEW joins via the old link; it does not remove
+    // anyone who already joined through it.
+    setConfirm({ title: 'Revoke invite link?', message: 'The current link will stop working immediately. A new link will be generated and shown here, so you can share the fresh link.', confirmLabel: 'Revoke', onError: (msg: string) => setError(msg), action: async () => {
+      await api(`/api/groups/${groupId}/invite`, 'DELETE');
+      const d = await api(`/api/groups/${groupId}/invite`, 'POST'); setToken(d.token);
+      const l = `${window.location.origin}/?invite=${d.token}`;
+      try { await navigator.clipboard.writeText(l); setCopyStatus('Old link revoked. New link copied to clipboard — share it with whoever you want to invite.'); }
+      catch { setCopyStatus('Old link revoked. A new link was generated — tap Copy link to copy it.'); }
     }});
   }
   return (<>
