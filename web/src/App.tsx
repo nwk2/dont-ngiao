@@ -175,29 +175,39 @@ function useSheetDrag(onClose: () => void) {
   return { dragY, dragging, onPointerDown };
 }
 
-// KEYBOARD, Nov 2026: iOS Safari overlays the keyboard on the layout
-// viewport, so a fixed bottom sheet ends up behind it — and Safari's
-// scroll-into-view shove cuts the sheet's top off (the Add expense
-// title, and the accessory bar covering the Date row). The viewport
-// meta interactive-widget=resizes-content (v120) did NOT fix it on
-// Wai's phone (reloaded and still there), so track the visual viewport
-// directly instead: when the keyboard opens, visualViewport.height
-// shrinks by the keyboard height. Return that height so a sheet can
-// lift its container above the keyboard and cap its own height to fit
-// the visible area. Works on all iOS versions (visualViewport is
-// iOS 13+), and is a no-op on desktop (no keyboard, height never
-// shrinks below the layout viewport).
-function useKeyboardHeight() {
-  const [kb, setKb] = useState(0);
+// KEYBOARD / VISUAL VIEWPORT, Nov 2026: iOS Safari overlays the keyboard
+// on the layout viewport, so a fixed bottom sheet ends up behind it —
+// and Safari's scroll-into-view shove cuts the sheet's top off (the Add
+// expense title, and the accessory bar covering the Date row). The
+// viewport meta interactive-widget=resizes-content (v120) did NOT fix it
+// on Wai's phone (reloaded and still there), and lifting the container
+// by the keyboard height alone (v121, bottom: kb) also did not fix it —
+// because position:fixed is relative to the LAYOUT viewport, while the
+// user only sees the VISUAL viewport, and Safari scrolls the visual
+// viewport (offsetTop) when it brings the input into view. So track the
+// visual viewport itself (height + offsetTop, on resize AND scroll) and
+// position the sheet container to match it exactly: top = offsetTop,
+// height = height. When the keyboard is closed, offsetTop is 0 and
+// height is the full screen (identical to inset:0); when it opens, the
+// container sits exactly in the visible area above the keyboard, and
+// the sheet caps its height to 88% of that visible area. Works on all
+// iOS versions (visualViewport is iOS 13+), and is a no-op on desktop
+// (no keyboard, the visual viewport never shrinks).
+function useVisualViewport() {
+  const [vv, setVv] = useState(() => {
+    const vp = window.visualViewport;
+    return vp ? { height: vp.height, offsetTop: vp.offsetTop } : { height: window.innerHeight, offsetTop: 0 };
+  });
   useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    const update = () => { const h = window.innerHeight - vv.height; setKb(h > 0 ? Math.round(h) : 0); };
-    vv.addEventListener('resize', update);
+    const vp = window.visualViewport;
+    if (!vp) return;
+    const update = () => setVv({ height: vp.height, offsetTop: vp.offsetTop });
+    vp.addEventListener('resize', update);
+    vp.addEventListener('scroll', update);
     update();
-    return () => vv.removeEventListener('resize', update);
+    return () => { vp.removeEventListener('resize', update); vp.removeEventListener('scroll', update); };
   }, []);
-  return kb;
+  return vv;
 }
 
 // to the global setError — and closes the sheet either way.
@@ -616,8 +626,9 @@ function CreateGroupModal({ onClose, onDone }: any) {
   // looked like "nothing happens" — the sheet just stayed open.
   const [createError, setCreateError] = useState('');
   const drag = useSheetDrag(onClose);
-  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
-    <div style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
+  const vv = useVisualViewport();
+  return (<div role="dialog" aria-modal="true" style={{position:'fixed',top:vv.offsetTop,left:0,right:0,height:vv.height,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
+    <div style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:Math.round(vv.height*0.88),overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
       <div style={{width:36,height:4,borderRadius:99,background:'var(--border)',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><h2 style={{margin:0}}>New group</h2><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
       <label>Group name</label><input style={input} placeholder="e.g. Bali Trip 🌴" value={name} onChange={e=>setName(e.target.value)} />
@@ -1303,10 +1314,11 @@ function AddMember({ groupId, reload }: any) {
   const [show, setShow] = useState(false);
   const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [addError, setAddError] = useState('');
   const drag = useSheetDrag(()=>setShow(false));
+  const vv = useVisualViewport();
   return (<>
     <button style={{...btn,width:'100%',padding:'14px',fontSize:16}} onClick={()=>{setName(''); setEmail(''); setAddError(''); setShow(true);}}>+ Add placeholder</button>
-    {show && (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) setShow(false); }}>
-      <div style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
+    {show && (<div role="dialog" aria-modal="true" style={{position:'fixed',top:vv.offsetTop,left:0,right:0,height:vv.height,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) setShow(false); }}>
+      <div style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:Math.round(vv.height*0.88),overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
         <div style={{width:36,height:4,borderRadius:99,background:'var(--border)',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><h2 style={{margin:0}}>Add placeholder</h2><button type="button" aria-label="Close" title="Close" onClick={()=>setShow(false)} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
         <label style={{display:'block',marginTop:16}}>Name</label>
@@ -1432,9 +1444,9 @@ const pickCheck = (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" s
 // (useSheetDrag), zIndex 60 so it sits above the form sheet (zIndex 50).
 function PickerSheet({ title, onClose, children }: any) {
   const drag = useSheetDrag(onClose);
-  const kb = useKeyboardHeight();
-  return (<div role="dialog" aria-modal="true" style={{position:'fixed',top:0,left:0,right:0,bottom:kb,background:'rgba(0,0,0,0.4)',zIndex:60,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
-    <div style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:kb?`calc(100vh - ${kb}px)`:'88vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
+  const vv = useVisualViewport();
+  return (<div role="dialog" aria-modal="true" style={{position:'fixed',top:vv.offsetTop,left:0,right:0,height:vv.height,background:'rgba(0,0,0,0.4)',zIndex:60,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
+    <div style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:Math.round(vv.height*0.88),overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
       <div style={{width:36,height:4,borderRadius:99,background:'var(--border)',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><h2 style={{margin:0}}>{title}</h2><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
       {children}
@@ -1503,12 +1515,12 @@ function ExpenseModal({ group, onClose, reload }: any) {
   const splitLabel = splitType==='equal' ? 'Equally' : splitType==='exact' ? 'Exact amounts' : 'Percentages';
   const sym = (cur:string) => CURRENCY_INFO[cur]?.sym || cur;
   const drag = useSheetDrag(onClose);
-  const kb = useKeyboardHeight();
+  const vv = useVisualViewport();
   const payerPerson = personDisplay(group, payer, group.members.find((m:any)=>m.id===payer)?.name);
   const rowBtn: React.CSSProperties = {display:'flex',alignItems:'center',gap:12,width:'100%',background:'transparent',border:'none',borderTop:balHairline,padding:'13px 14px',color:'var(--text)',cursor:'pointer',textAlign:'left'};
   return (<>
-    <div role="dialog" aria-modal="true" style={{position:'fixed',top:0,left:0,right:0,bottom:kb,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
-      <div style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:kb?`calc(100vh - ${kb}px)`:'88vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
+    <div role="dialog" aria-modal="true" style={{position:'fixed',top:vv.offsetTop,left:0,right:0,height:vv.height,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
+      <div style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:Math.round(vv.height*0.88),overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
         <div style={{width:36,height:4,borderRadius:99,background:'var(--border)',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><h2 style={{margin:0}}>Add expense</h2><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
         <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'12px 0 4px'}}><span style={{fontSize:36,fontWeight:700,lineHeight:1}}>{sym(currency)}</span><input style={{width:`${Math.max((amount || '0.00').length, 1)}ch`,background:'transparent',border:'none',color:'var(--text)',fontSize:36,fontWeight:700,lineHeight:1,padding:0,textAlign:'center',outline:'none'}} inputMode="decimal" placeholder="0.00" value={amount} onChange={e=>setAmount(e.target.value)} onFocus={e=>e.target.select()} aria-label="Amount" /></div>
