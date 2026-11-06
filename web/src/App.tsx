@@ -199,6 +199,9 @@ function useSheetDrag(onClose: () => void) {
 // (identical to inset:0); when it opens, the container lifts above the
 // keyboard and the sheet fits the visible area. Works on all iOS
 // versions (visualViewport is iOS 13+), and is a no-op on desktop.
+// NOTE 2026-11-06: no-op re-trigger — v129 (a9b7f820) never built because
+// its push webhook was missed, so this comment-only change re-fires the
+// Cloudflare build from the current head (which already has the v8 fix).
 function useVisualViewport() {
   const [vv, setVv] = useState(() => {
     const vp = window.visualViewport;
