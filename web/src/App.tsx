@@ -1189,78 +1189,159 @@ function AddMember({ groupId, reload }: any) {
   </>);
 }
 
+// CURRENCY INFO, 2026-11-06: symbol + full name per code, for the
+// currency picker sheet (searchable list). Symbols mirror ExpenseModal's
+// old local sym() map; names are the standard currency names.
+const CURRENCY_INFO: Record<string, {sym: string; name: string}> = {
+  SGD: {sym: 'S$', name: 'Singapore Dollar'},
+  USD: {sym: '$', name: 'US Dollar'},
+  EUR: {sym: '€', name: 'Euro'},
+  GBP: {sym: '£', name: 'British Pound'},
+  AUD: {sym: 'A$', name: 'Australian Dollar'},
+  CAD: {sym: 'C$', name: 'Canadian Dollar'},
+  JPY: {sym: '¥', name: 'Japanese Yen'},
+  KRW: {sym: '₩', name: 'South Korean Won'},
+  VND: {sym: '₫', name: 'Vietnamese Dong'},
+  HKD: {sym: 'HK$', name: 'Hong Kong Dollar'},
+  TWD: {sym: 'NT$', name: 'New Taiwan Dollar'},
+  CNY: {sym: '¥', name: 'Chinese Yuan'},
+  INR: {sym: '₹', name: 'Indian Rupee'},
+  MYR: {sym: 'RM', name: 'Malaysian Ringgit'},
+  THB: {sym: '฿', name: 'Thai Baht'},
+  IDR: {sym: 'Rp', name: 'Indonesian Rupiah'},
+  PHP: {sym: '₱', name: 'Philippine Peso'},
+  NZD: {sym: 'NZ$', name: 'New Zealand Dollar'},
+  CHF: {sym: 'CHF', name: 'Swiss Franc'},
+};
+// Chevron for grouped-form rows (line SVG, not the text '›' — the old
+// currency pill's text chevron was part of the amateur look). Rotates
+// 90° when the row's inline editor is open (Split/Date).
+function Chev({open}: any) {
+  return (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a3a3a3" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0,transition:'transform 0.2s ease-out',transform:open?'rotate(90deg)':undefined}}><polyline points="9 18 15 12 9 6" /></svg>);
+}
+// Teal checkmark for picker rows (selected option), matching the split
+// editor's teal check language without the filled circle.
+const pickCheck = (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}><polyline points="20 6 9 17 4 12" /></svg>);
+// Picker sheet shell, shared by the Currency/Category/Paid-by pickers:
+// same grabber + backdrop-tap + swipe + X behaviour as every other sheet
+// (useSheetDrag), zIndex 60 so it sits above the form sheet (zIndex 50).
+function PickerSheet({ title, onClose, children }: any) {
+  const drag = useSheetDrag(onClose);
+  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:60,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
+    <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
+      <div style={{width:36,height:4,borderRadius:99,background:'#333',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><h2 style={{margin:0}}>{title}</h2><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
+      {children}
+    </div>
+  </div>);
+}
+function CurrencyPickerSheet({ current, onPick, onClose }: any) {
+  const [q, setQ] = useState('');
+  const ql = q.trim().toLowerCase();
+  const list = CURRENCIES.filter(c => !ql || c.toLowerCase().includes(ql) || (CURRENCY_INFO[c]?.name || '').toLowerCase().includes(ql) || (CURRENCY_INFO[c]?.sym || '').toLowerCase().includes(ql));
+  return (<PickerSheet title="Currency" onClose={onClose}>
+    <div style={{display:'flex',alignItems:'center',gap:8,background:'#242424',borderRadius:10,padding:'10px 12px',margin:'12px 0 6px'}}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a3a3a3" strokeWidth="2" strokeLinecap="round" style={{flexShrink:0}}><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+      <input style={{flex:1,minWidth:0,background:'transparent',border:'none',outline:'none',color:'#fff',fontSize:15,padding:0}} placeholder="Search currencies" value={q} onChange={e=>setQ(e.target.value)} aria-label="Search currencies" />
+    </div>
+    {list.length===0 && <p style={{fontSize:14,color:'#a3a3a3',padding:'12px 0'}}>No currencies match "{q}".</p>}
+    {list.map((c, i) => (<button key={c} type="button" onClick={()=>onPick(c)} style={{display:'flex',alignItems:'center',gap:12,width:'100%',background:'transparent',border:'none',borderTop:i===0?'none':balHairline,padding:'12px 0',color:'#fff',cursor:'pointer',textAlign:'left'}}>
+      <span style={{width:44,fontSize:15,fontWeight:600,color:'#a3a3a3',flexShrink:0}}>{CURRENCY_INFO[c]?.sym || c}</span>
+      <span style={{flex:1,minWidth:0,lineHeight:1.35}}><span style={{display:'block',fontWeight:600}}>{c}</span><span style={{display:'block',fontSize:13,color:'#a3a3a3'}}>{CURRENCY_INFO[c]?.name || ''}</span></span>
+      {c===current && pickCheck}
+    </button>))}
+  </PickerSheet>);
+}
+function CategoryPickerSheet({ current, onPick, onClose }: any) {
+  return (<PickerSheet title="Category" onClose={onClose}>
+    <div style={{marginTop:6}}>{CATEGORIES.map((c, i) => (<button key={c} type="button" onClick={()=>onPick(c)} style={{display:'flex',alignItems:'center',gap:12,width:'100%',background:'transparent',border:'none',borderTop:i===0?'none':balHairline,padding:'12px 0',color:'#fff',cursor:'pointer',textAlign:'left'}}>
+      <span style={{width:36,height:36,borderRadius:10,background:EXP_CAT_COLORS[c] || '#a3a3a3',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{catIcon(c)}</span>
+      <span style={{flex:1,minWidth:0,fontWeight:600}}>{c}</span>
+      {c===current && pickCheck}
+    </button>))}</div>
+  </PickerSheet>);
+}
+function PayerPickerSheet({ group, current, onPick, onClose }: any) {
+  return (<PickerSheet title="Paid by" onClose={onClose}>
+    <div style={{marginTop:6}}>{group.members.map((m:any, i:number) => {
+      const p = personDisplay(group, m.id, m.name);
+      return (<button key={m.id} type="button" onClick={()=>onPick(m.id)} style={{display:'flex',alignItems:'center',gap:12,width:'100%',background:'transparent',border:'none',borderTop:i===0?'none':balHairline,padding:'12px 0',color:'#fff',cursor:'pointer',textAlign:'left'}}>
+        <span style={{...avatar,width:36,height:36,fontSize:14,background:memberDotColor(group,m.id)}}>{initials(m.name)}</span>
+        <span style={{flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.label}</span>
+        {m.id===current && pickCheck}
+      </button>);
+    })}</div>
+  </PickerSheet>);
+}
 function ExpenseModal({ group, onClose, reload }: any) {
-  // Add expense as a BOTTOM SHEET (revamp, dark only), not the old
-  // full-screen modal. All logic/state unchanged: description, amount,
-  // currency (19, group default pre-select), date, payer, category,
-  // split equal/exact/percent + member ticking, modal-local error.
-  // Prototype sheet features, restored to full real detail:
+  // Add expense as a BOTTOM SHEET (revamp, dark only). REDESIGN 2026-11-06:
+  // one grouped card with hairline rows (Description, Category, Currency,
+  // Paid by, Split, Date) — a single field language, replacing the three
+  // the old form mixed (bordered input, wrapping pills, big cards) and
+  // the inline 19-currency pill grid with its redundant 'SGD ▾' text-
+  // chevron pill. Currency/Category/Paid by open picker sheets (searchable
+  // for currency); Split/Date expand their editors inline below their
+  // row. Amount header, submit logic, split math and validation unchanged.
   // - amount header: fixed currency symbol prefix (not editable, symbol
-  //   changes with currency) + numeric input only, select-all on focus,
-  //   so typing replaces the amount and never clears the symbol.
+  //   changes with currency) + numeric input only, select-all on focus.
   //   The input is sized to its content (ch) so the symbol + digits
-  //   centre as one group — a fixed-width input centres the digits
-  //   alone and leaves the symbol hanging left of centre (2026-11-06).
-  //   The width is exactly the content length: even +1ch of breathing
-  //   room leaves the visible group 0.25ch left of centre.
-  // - tap the amount header to pick currency (19, not prototype's 4).
-  // - Split and Date are tappable summary cards opening their editors
-  //   inside the sheet (split editor + calendar), not display-only.
-  // - Category as pills (full names), not a select.
+  //   centre as one group (2026-11-06).
   const [modalError, setModalError] = useState('');
   const [description, setDescription] = useState(''); const [amount, setAmount] = useState(''); const [currency, setCurrency] = useState(group.defaultCurrency);
   const [date, setDate] = useState(todayIso()); const [payer, setPayer] = useState(group.members[0]?.id || ''); const [category, setCategory] = useState('Other');
   const [splitType, setSplitType] = useState<'equal'|'exact'|'percent'>('equal');
   const [selected, setSelected] = useState<string[]>(group.members.map((m:any)=>m.id));
   const [percents, setPercents] = useState<Record<string,string>>({}); const [exact, setExact] = useState<Record<string,string>>({});
-  const [showCurrency, setShowCurrency] = useState(false); const [showSplit, setShowSplit] = useState(false); const [showDate, setShowDate] = useState(false);
+  const [showCurrencyPicker, setShowCurrencyPicker] = useState(false); const [showCategoryPicker, setShowCategoryPicker] = useState(false); const [showPayerPicker, setShowPayerPicker] = useState(false); const [showSplit, setShowSplit] = useState(false); const [showDate, setShowDate] = useState(false);
   const toggle = (id:string)=> setSelected(s=> s.includes(id) ? s.filter(x=>x!==id) : [...s, id]);
   const splitLabel = splitType==='equal' ? 'Equally' : splitType==='exact' ? 'Exact amounts' : 'Percentages';
-  const sym = (cur:string) => { const m:any = {SGD:'S$',USD:'$',EUR:'€',GBP:'£',AUD:'A$',CAD:'C$',JPY:'¥',KRW:'₩',VND:'₫',HKD:'HK$',TWD:'NT$',CNY:'¥',INR:'₹',MYR:'RM',THB:'฿',IDR:'Rp',PHP:'₱',NZD:'NZ$',CHF:'CHF'}; return m[cur] || cur; };
+  const sym = (cur:string) => CURRENCY_INFO[cur]?.sym || cur;
   const drag = useSheetDrag(onClose);
-  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
-    <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
-      <div style={{width:36,height:4,borderRadius:99,background:'#333',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><h2 style={{margin:0}}>Add expense</h2><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
-      <button type="button" onClick={()=>setShowCurrency(v=>!v)} style={{display:'block',width:'100%',background:'transparent',border:'none',padding:'12px 0 4px',cursor:'pointer'}}>
-        <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><span style={{fontSize:36,fontWeight:700,lineHeight:1}}>{sym(currency)}</span><input style={{width:`${Math.max((amount || '0.00').length, 1)}ch`,background:'transparent',border:'none',color:'#fff',fontSize:36,fontWeight:700,lineHeight:1,padding:0,textAlign:'center',outline:'none'}} inputMode="decimal" placeholder="0.00" value={amount} onChange={e=>setAmount(e.target.value)} onFocus={e=>e.target.select()} onClick={e=>e.stopPropagation()} aria-label="Amount" /></div>
-        <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,fontSize:13,color:'#a3a3a3',marginTop:8}}><span style={{border:'1px solid #333',borderRadius:999,padding:'2px 10px',color:'#f5f5f5',fontWeight:600}}>{currency} ▾</span></div>
-      </button>
-      {showCurrency && <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:8}}>{CURRENCIES.map(c=><button key={c} type="button" style={c===currency?catControlActive:catControl} onClick={()=>{setCurrency(c); setShowCurrency(false);}}>{c}</button>)}</div>}
-      <label>Description</label><input style={input} placeholder="What was it for?" value={description} onChange={e=>setDescription(e.target.value)} />
-      <div style={{marginBottom:10}}><div style={{fontSize:13,color:'#a3a3a3',marginBottom:6}}>Category</div><div style={{display:'flex',flexWrap:'wrap',gap:8}}>{CATEGORIES.map(c=><button key={c} type="button" style={c===category?catControlActive:catControl} onClick={()=>setCategory(c)}>{c}</button>)}</div></div>
-      <div style={{background:'#242424',border:'1px solid #333',borderRadius:16,marginBottom:12}}>
-        <button type="button" onClick={()=>setShowSplit(v=>!v)} style={{width:'100%',textAlign:'left',background:'transparent',border:'none',padding:14,color:'#fff',cursor:'pointer'}}><div style={{fontSize:12,color:'#a3a3a3'}}>Split</div><div style={{marginTop:2}}>{splitLabel} · {selected.length} people</div></button>
-        {showSplit && <div style={{borderTop:balHairline,padding:14}}>
-          <select style={{...input,marginTop:0}} value={splitType} onChange={e=>setSplitType(e.target.value as any)}><option value="equal">Equal</option><option value="exact">Exact amounts</option><option value="percent">Percentages</option></select>
-          {group.members.map((m:any,mi:number)=>{
-            const isSel = selected.includes(m.id);
-            return (<button key={m.id} type="button" onClick={()=>toggle(m.id)} style={{display:'flex',alignItems:'center',gap:12,width:'100%',background:'transparent',border:'none',borderTop:mi===0?'none':balHairline,padding:'12px 0',color:'#fff',cursor:'pointer',textAlign:'left'}}>
-              <span style={{...avatar,width:36,height:36,fontSize:14,background:memberDotColor(group,m.id)}}>{initials(m.name)}</span>
-              <span style={{flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.name}</span>
-              {isSel && splitType==='percent' && <input style={{...input,width:80,margin:0,padding:'6px 8px',fontSize:14}} placeholder="%" value={percents[m.id]||''} onChange={e=>setPercents({...percents,[m.id]:e.target.value})} onClick={e=>e.stopPropagation()} aria-label={`Percent for ${m.name}`} />}
-              {isSel && splitType==='exact' && <input style={{...input,width:100,margin:0,padding:'6px 8px',fontSize:14}} placeholder={currency} value={exact[m.id]||''} onChange={e=>setExact({...exact,[m.id]:e.target.value})} onClick={e=>e.stopPropagation()} aria-label={`Exact amount for ${m.name}`} />}
-              <span aria-hidden="true" style={{width:24,height:24,borderRadius:'50%',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',background:isSel?'#2dd4bf':'transparent',border:isSel?'none':'1px solid #555'}}>{isSel && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0f172a" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>}</span>
-            </button>);
-          })}
-        </div>}
+  const payerPerson = personDisplay(group, payer, group.members.find((m:any)=>m.id===payer)?.name);
+  const rowBtn: React.CSSProperties = {display:'flex',alignItems:'center',gap:12,width:'100%',background:'transparent',border:'none',borderTop:balHairline,padding:'13px 14px',color:'#fff',cursor:'pointer',textAlign:'left'};
+  return (<>
+    <div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
+      <div style={{background:'#1c1c1e',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
+        <div style={{width:36,height:4,borderRadius:99,background:'#333',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><h2 style={{margin:0}}>Add expense</h2><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid #333',background:'#242424',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'12px 0 4px'}}><span style={{fontSize:36,fontWeight:700,lineHeight:1}}>{sym(currency)}</span><input style={{width:`${Math.max((amount || '0.00').length, 1)}ch`,background:'transparent',border:'none',color:'#fff',fontSize:36,fontWeight:700,lineHeight:1,padding:0,textAlign:'center',outline:'none'}} inputMode="decimal" placeholder="0.00" value={amount} onChange={e=>setAmount(e.target.value)} onFocus={e=>e.target.select()} aria-label="Amount" /></div>
+        <div style={{...balCard,marginBottom:12}}>
+          <label style={{display:'flex',alignItems:'center',gap:12,padding:'13px 14px'}}><span style={{fontSize:15,color:'#a3a3a3',flexShrink:0}}>Description</span><input style={{flex:1,minWidth:0,background:'transparent',border:'none',outline:'none',color:'#fff',fontSize:15,padding:0,textAlign:'right'}} placeholder="What was it for?" value={description} onChange={e=>setDescription(e.target.value)} aria-label="Description" /></label>
+          <button type="button" onClick={()=>setShowCategoryPicker(true)} style={rowBtn}><span style={{fontSize:15,color:'#a3a3a3',flexShrink:0}}>Category</span><span style={{flex:1}} /><span style={{display:'flex',alignItems:'center',gap:8}}><span style={{width:28,height:28,borderRadius:8,background:EXP_CAT_COLORS[category] || '#a3a3a3',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{catIcon(category)}</span><span style={{fontSize:15}}>{category}</span></span><Chev /></button>
+          <button type="button" onClick={()=>setShowCurrencyPicker(true)} style={rowBtn}><span style={{fontSize:15,color:'#a3a3a3',flexShrink:0}}>Currency</span><span style={{flex:1}} /><span style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:15}}>{currency}</span><span style={{fontSize:15,color:'#a3a3a3'}}>· {CURRENCY_INFO[currency]?.name || ''}</span></span><Chev /></button>
+          <button type="button" onClick={()=>setShowPayerPicker(true)} style={rowBtn}><span style={{fontSize:15,color:'#a3a3a3',flexShrink:0}}>Paid by</span><span style={{flex:1}} /><span style={{display:'flex',alignItems:'center',gap:8}}><span style={{...avatar,width:28,height:28,fontSize:12,background:memberDotColor(group,payer)}}>{initials(payerPerson.name)}</span><span style={{fontSize:15}}>{payerPerson.label}</span></span><Chev /></button>
+          <button type="button" onClick={()=>setShowSplit(v=>!v)} style={rowBtn}><span style={{fontSize:15,color:'#a3a3a3',flexShrink:0}}>Split</span><span style={{flex:1}} /><span style={{fontSize:15}}>{splitLabel} · {selected.length} people</span><Chev open={showSplit} /></button>
+          {showSplit && <div style={{borderTop:balHairline,padding:14}}>
+            <select style={{...input,marginTop:0}} value={splitType} onChange={e=>setSplitType(e.target.value as any)}><option value="equal">Equal</option><option value="exact">Exact amounts</option><option value="percent">Percentages</option></select>
+            {group.members.map((m:any,mi:number)=>{
+              const isSel = selected.includes(m.id);
+              return (<button key={m.id} type="button" onClick={()=>toggle(m.id)} style={{display:'flex',alignItems:'center',gap:12,width:'100%',background:'transparent',border:'none',borderTop:mi===0?'none':balHairline,padding:'12px 0',color:'#fff',cursor:'pointer',textAlign:'left'}}>
+                <span style={{...avatar,width:36,height:36,fontSize:14,background:memberDotColor(group,m.id)}}>{initials(m.name)}</span>
+                <span style={{flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.name}</span>
+                {isSel && splitType==='percent' && <input style={{...input,width:80,margin:0,padding:'6px 8px',fontSize:14}} placeholder="%" value={percents[m.id]||''} onChange={e=>setPercents({...percents,[m.id]:e.target.value})} onClick={e=>e.stopPropagation()} aria-label={`Percent for ${m.name}`} />}
+                {isSel && splitType==='exact' && <input style={{...input,width:100,margin:0,padding:'6px 8px',fontSize:14}} placeholder={currency} value={exact[m.id]||''} onChange={e=>setExact({...exact,[m.id]:e.target.value})} onClick={e=>e.stopPropagation()} aria-label={`Exact amount for ${m.name}`} />}
+                <span aria-hidden="true" style={{width:24,height:24,borderRadius:'50%',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',background:isSel?'#2dd4bf':'transparent',border:isSel?'none':'1px solid #555'}}>{isSel && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0f172a" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>}</span>
+              </button>);
+            })}
+          </div>}
+          <button type="button" onClick={()=>setShowDate(v=>!v)} style={rowBtn}><span style={{fontSize:15,color:'#a3a3a3',flexShrink:0}}>Date</span><span style={{flex:1}} /><span style={{fontSize:15}}>{date===todayIso() ? `Today · ${fmtDate(date)}` : fmtDate(date)}</span><Chev open={showDate} /></button>
+          {showDate && <div style={{borderTop:balHairline,padding:14}}><DateField id="exp-date" value={date} onChange={setDate} /></div>}
+        </div>
+        {modalError && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:12,marginBottom:0}}>{modalError}</p>}
+        <AsyncButton style={{...primary, width:'100%', padding:'14px', fontSize:16, marginTop:8}} onClick={async()=>{
+          setModalError('');
+          const amountMinor = toMinor(amount, currency); if (amountMinor===null) { setModalError('Enter a valid positive amount'); return; }
+          const body: any = { description, amountMinor, currency, date, paidByMemberId: payer, category, splitType, participants: selected };
+          if (splitType==='percent') body.percents = selected.map(id=>Number(percents[id]||0));
+          if (splitType==='exact') { const arr = selected.map(id=>toMinor(exact[id]||'', currency)); if (arr.some(v=>v===null)) { setModalError('Enter valid exact amounts'); return; } body.exactAmounts = arr; }
+          try { const d = await api(`/api/groups/${group.id}/expenses`,'POST',body); reload(d); } catch(e:any){ setModalError(e.message); }
+        }}>Add expense</AsyncButton>
       </div>
-      <div style={{background:'#242424',border:'1px solid #333',borderRadius:16,marginBottom:12}}>
-        <button type="button" onClick={()=>setShowDate(v=>!v)} style={{width:'100%',textAlign:'left',background:'transparent',border:'none',padding:14,color:'#fff',cursor:'pointer'}}><div style={{fontSize:12,color:'#a3a3a3'}}>Date</div><div style={{marginTop:2}}>{date===todayIso() ? `Today · ${fmtDate(date)}` : fmtDate(date)}</div></button>
-        {showDate && <div style={{borderTop:balHairline,padding:14}}><DateField id="exp-date" value={date} onChange={setDate} /></div>}
-      </div>
-      <label>Paid by</label><select style={input} value={payer} onChange={e=>setPayer(e.target.value)}>{group.members.map((m:any)=><option key={m.id} value={m.id}>{m.name}</option>)}</select>
-      {modalError && <p style={{color:'#f87171',fontSize:13,lineHeight:1.4,marginTop:12,marginBottom:0}}>{modalError}</p>}
-      <AsyncButton style={{...primary, width:'100%', padding:'14px', fontSize:16, marginTop:8}} onClick={async()=>{
-        setModalError('');
-        const amountMinor = toMinor(amount, currency); if (amountMinor===null) { setModalError('Enter a valid positive amount'); return; }
-        const body: any = { description, amountMinor, currency, date, paidByMemberId: payer, category, splitType, participants: selected };
-        if (splitType==='percent') body.percents = selected.map(id=>Number(percents[id]||0));
-        if (splitType==='exact') { const arr = selected.map(id=>toMinor(exact[id]||'', currency)); if (arr.some(v=>v===null)) { setModalError('Enter valid exact amounts'); return; } body.exactAmounts = arr; }
-        try { const d = await api(`/api/groups/${group.id}/expenses`,'POST',body); reload(d); } catch(e:any){ setModalError(e.message); }
-      }}>Add expense</AsyncButton>
     </div>
-  </div>);
+    {showCurrencyPicker && <CurrencyPickerSheet current={currency} onClose={()=>setShowCurrencyPicker(false)} onPick={(c:string)=>{setCurrency(c); setShowCurrencyPicker(false);}} />}
+    {showCategoryPicker && <CategoryPickerSheet current={category} onClose={()=>setShowCategoryPicker(false)} onPick={(c:string)=>{setCategory(c); setShowCategoryPicker(false);}} />}
+    {showPayerPicker && <PayerPickerSheet group={group} current={payer} onClose={()=>setShowPayerPicker(false)} onPick={(id:string)=>{setPayer(id); setShowPayerPicker(false);}} />}
+  </>);
 }
 // Expense detail sheet (Chunk 2): the compact list row opens this bottom
 // sheet, following the SettleModal/ConfirmSheet pattern. It is the only
