@@ -330,6 +330,20 @@ export default function App() {
     catch(e:any){ setError(e.message); } finally { setLoading(false); }
   }
   function doLogout() { try { localStorage.removeItem(LAST_GROUP_KEY); } catch { /* ignore */ } setToken(null); setUser(null); setGroup(null); setGroups(null); setAuthState('guest'); }
+  // INVITE LINK (?invite=<token>), Nov 2026: the token survives the
+  // login/register flow because it stays in the URL — a guest sees the
+  // normal Auth screen, and once authed the invite check below shows
+  // the join screen. After joining (or cancelling), the param is
+  // cleared from the URL *and* from state, so a refresh does not
+  // re-show the invite.
+  function clearInviteParam() {
+    try { window.history.replaceState(null, '', window.location.pathname); } catch { /* ignore */ }
+    setUrlParams(new URLSearchParams(window.location.search));
+  }
+  async function handleInviteJoined(groupId: string) {
+    clearInviteParam();
+    await loadGroup(groupId, { skeleton: true });
+  }
   // Destination-aware checking skeleton: during auth checking we do not
   // yet know the user, but we DO know the saved destination synchronously
   // from localStorage. If a group was saved, show a GroupSkeleton from the
@@ -348,9 +362,10 @@ export default function App() {
   // requires the regular token — a reset link must work for a user who
   // is logged out, and an admin login must work in a browser where a
   // regular session already exists.
-  const [urlParams] = useState(() => new URLSearchParams(window.location.search));
+  const [urlParams, setUrlParams] = useState(() => new URLSearchParams(window.location.search));
   const resetToken = urlParams.get('reset');
   const isAdminPage = urlParams.has('admin');
+  const inviteToken = urlParams.get('invite');
   if (resetToken) return <ResetPasswordView token={resetToken} />;
   if (isAdminPage) return <AdminView />;
   if (authError) return (<div style={S}><h1>Don't Ngiao</h1><p style={{color:'var(--muted)'}}>Couldn't check your session — your login is kept, this may just be a network hiccup.</p><p style={{color:'var(--danger-text)'}}>{authError}</p><button style={{...primary, width:'100%'}} onClick={()=>checkAuth()}>Retry</button><p><button style={btn} onClick={()=>{ setToken(null); setUser(null); setAuthError(''); setAuthState('guest'); }}>Use a different account</button></p></div>);
@@ -359,6 +374,7 @@ export default function App() {
     return <HomeSkeleton user={null} />;
   }
   if (authState === 'guest' || !user) return <Auth onAuth={doAuth} error={error} loading={loading} />;
+  if (inviteToken) return <InviteView token={inviteToken} onJoined={handleInviteJoined} onCancel={clearInviteParam} />;
   if (groupLoading) return <GroupSkeleton />;
   // Reload with a detail object when the write already returned one:
   // use it directly instead of refetching (the old reload() always
@@ -819,6 +835,40 @@ function ResetPasswordView({ token }: { token: string }) {
   </div>);
 }
 
+// INVITE LINK (?invite=<token>), Nov 2026: a public link to join a group.
+// Resolves the token (no auth needed to see it), then joins (auth
+// required — a guest sees the normal Auth screen first, and the token
+// survives in the URL, so after login the join screen appears). After
+// joining, onJoined clears the param and opens the group. Joining
+// creates a member from the account (name + email); if the group already
+// has a placeholder with that email, it is claimed instead. Joining is
+// not a money event, so the Log gets no entry for it.
+function InviteView({ token, onJoined, onCancel }: any) {
+  const [state, setState] = useState<'loading'|'ready'|'error'>('loading');
+  const [invite, setInvite] = useState<any>(null);
+  const [error, setError] = useState('');
+  const [joining, setJoining] = useState(false);
+  useEffect(()=>{ let cancelled = false;
+    api(`/api/invites/${encodeURIComponent(token)}`).then((d:any)=>{ if (!cancelled) { setInvite(d); setState('ready'); } }).catch((e:any)=>{ if (!cancelled) { setError(e.message || 'This invite link is invalid or has been revoked'); setState('error'); } });
+    return ()=>{ cancelled = true; };
+  }, [token]);
+  async function join() {
+    setError(''); setJoining(true);
+    try { const d = await api(`/api/invites/${encodeURIComponent(token)}/join`, 'POST'); onJoined(d.group.id); }
+    catch(e:any){ setError(e.message); } finally { setJoining(false); }
+  }
+  if (state === 'loading') return (<div style={S}><h1>Don't Ngiao</h1><p style={{color:'var(--muted)'}}>Checking your invite…</p></div>);
+  if (state === 'error') return (<div style={S}><h1>Invite link</h1><div style={homeCard}><p style={{marginTop:0}}>{error}</p><p style={{fontSize:13,color:'var(--muted)'}}>The link may have been revoked, or the group may have been deleted or archived.</p><button style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={onCancel}>Go to Home</button></div></div>);
+  return (<div style={S}><h1>You're invited</h1><div style={homeCard}>
+    <div style={{fontSize:20,fontWeight:700}}>{invite.groupName}</div>
+    <p style={{color:'var(--muted)',marginTop:4}}>{invite.inviterName} invited you to join this group.</p>
+    {error && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4}}>{error}</p>}
+    <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} disabled={joining} onClick={join}>{joining ? 'Joining…' : 'Join group'}</AsyncButton>
+    <div style={{marginTop:12}}><button style={{...btn,width:'100%',padding:'14px',fontSize:16}} onClick={onCancel}>Not now</button></div>
+    <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,marginTop:12}}>Joining creates a member for you in this group, using your account name and email. If the group already has a placeholder with your email, you'll claim it instead.</p>
+  </div></div>);
+}
+
 function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError, theme, setTheme }: any) {
   const [showExpense, setShowExpense] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -1128,7 +1178,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         </div>
         {tappable && <span style={{color:'var(--muted)',flexShrink:0}}>›</span>}
       </div>);})}</div>}
-      {!group.isArchived && <div style={{marginTop:12}}><AddMember groupId={group.id} reload={reload} /></div>}
+      {!group.isArchived && <div style={{display:'flex',flexDirection:'column',gap:12,marginTop:12}}><InviteMember groupId={group.id} setConfirm={setConfirm} /><AddMember groupId={group.id} reload={reload} /></div>}
     </>}
     {detailMember && (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) setDetailMember(null); }}>
       <div style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto',transform:memberDrag.dragY?`translateY(${memberDrag.dragY}px)`:undefined,transition:memberDrag.dragging?'none':'transform 0.2s ease-out'}}>
@@ -1202,6 +1252,69 @@ function AddMember({ groupId, reload }: any) {
         <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,marginTop:0}}>Email is optional — add a placeholder now and attach an email later to link their account.</p>
         {addError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{addError}</p>}
         <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={async()=>{setAddError(''); try{const d = await api(`/api/groups/${groupId}/members`,'POST',{name,email:email||null}); reload(d); setShow(false);}catch(e:any){setAddError(e.message);}}}>Add member</AsyncButton>
+      </div>
+    </div>)}
+  </>);
+}
+
+// INVITE LINK, Nov 2026: any member can generate the group's invite link
+// (one active link per group, multi-use, no expiry, revocable). The sheet
+// follows the Add member sheet (same grabber / backdrop / swipe / X) and
+// the admin reset-link pattern (readonly input + Copy button + status).
+// The link is built from the app's own origin, like the reset link.
+// Revoke asks for confirmation (ConfirmSheet, like Remove) and leaves no
+// link until a new one is generated.
+function InviteMember({ groupId, setConfirm }: any) {
+  const [show, setShow] = useState(false);
+  const [token, setToken] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState('');
+  const [copyStatus, setCopyStatus] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const drag = useSheetDrag(()=>setShow(false));
+  const link = token ? `${window.location.origin}/?invite=${token}` : '';
+  async function loadInvite() {
+    setError('');
+    try { const d = await api(`/api/groups/${groupId}/invite`); setToken(d.token); } catch(e:any){ setError(e.message); } finally { setLoaded(true); }
+  }
+  async function generate() {
+    setError(''); setCopyStatus(''); setGenerating(true);
+    try {
+      const d = await api(`/api/groups/${groupId}/invite`, 'POST'); setToken(d.token);
+      const l = `${window.location.origin}/?invite=${d.token}`;
+      try { await navigator.clipboard.writeText(l); setCopyStatus('Copied to clipboard — share it with whoever you want to invite.'); }
+      catch { setCopyStatus('Link created — tap Copy link to copy it.'); }
+    } catch(e:any){ setError(e.message); } finally { setGenerating(false); }
+  }
+  async function copyLink() {
+    setCopyStatus('');
+    try { await navigator.clipboard.writeText(link); setCopyStatus('Copied to clipboard.'); }
+    catch { setCopyStatus('Could not copy automatically — select the link above and copy it manually.'); }
+  }
+  function revoke() {
+    setConfirm({ title: 'Revoke invite link?', message: 'The current link will stop working immediately. Anyone who has it will no longer be able to join.', confirmLabel: 'Revoke', onError: (msg: string) => setError(msg), action: async () => {
+      await api(`/api/groups/${groupId}/invite`, 'DELETE'); setToken(null); setCopyStatus('');
+    }});
+  }
+  return (<>
+    <button style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={()=>{ setError(''); setCopyStatus(''); setLoaded(false); setShow(true); loadInvite(); }}>Share invite link</button>
+    {show && (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) setShow(false); }}>
+      <div style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
+        <div style={{width:36,height:4,borderRadius:99,background:'var(--border)',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><h2 style={{margin:0}}>Invite members</h2><button type="button" aria-label="Close" title="Close" onClick={()=>setShow(false)} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
+        <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,marginTop:12}}>Anyone with this link can join the group. It doesn't expire — revoke it any time to stop it working.</p>
+        {error && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{error}</p>}
+        {!loaded && <p style={{fontSize:13,color:'var(--muted)'}}>Loading…</p>}
+        {loaded && token && <>
+          <input readOnly style={input} value={link} onFocus={e=>e.target.select()} aria-label="Invite link" />
+          <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={copyLink}><span style={{display:'inline-flex',alignItems:'center',gap:8}}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>Copy link</span></AsyncButton>
+          {copyStatus && <p style={{fontSize:13,color:'var(--muted)',marginTop:8,marginBottom:0}}>{copyStatus}</p>}
+          <div style={{marginTop:20}}><AsyncButton style={{...btn,width:'100%',padding:'14px',fontSize:16,background:'var(--danger-bg)',borderColor:'var(--danger-bg)',color:'var(--danger-text)'}} onClick={revoke}>Revoke link</AsyncButton></div>
+        </>}
+        {loaded && !token && <>
+          <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} disabled={generating} onClick={generate}>{generating ? 'Generating…' : 'Generate invite link'}</AsyncButton>
+          {copyStatus && <p style={{fontSize:13,color:'var(--muted)',marginTop:8,marginBottom:0}}>{copyStatus}</p>}
+        </>}
       </div>
     </div>)}
   </>);

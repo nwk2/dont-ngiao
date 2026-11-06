@@ -309,6 +309,60 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       return json({ ok: true }, 200, origin);
     }
 
+    // ---- Group invite links (public resolve + join) ----
+    // An invite link is a bearer token for JOINING a group (not account
+    // access). The token is stored in PLAINTEXT in group_invites (see
+    // migration 0007) so any member can view and copy the current link
+    // at any time — a hash would make the link unrecoverable. It is 32
+    // random bytes (newResetToken), unguessable, and revocable.
+    const inv = path.match(/^\/api\/invites\/([^/]+)(?:\/(.*))?$/);
+    if (inv) {
+      const token = decodeURIComponent(inv[1]); const sub = inv[2] || '';
+      const invite = await env.DB.prepare('SELECT * FROM group_invites WHERE token=?').bind(token).first<Row>();
+      if (!invite) return err('This invite link is invalid or has been revoked', 404, origin);
+      const g = await env.DB.prepare('SELECT * FROM groups WHERE id=?').bind(invite.group_id).first<Row>();
+      if (!g || g.is_archived) return err('This invite link is invalid or has been revoked', 404, origin);
+      if (sub === '' && req.method === 'GET') {
+        // Resolve the inviter's name: the member name if they are still
+        // in the group, else their account name, else a generic label.
+        let inviterName = 'Someone';
+        if (invite.created_by_member_id) {
+          const m = await env.DB.prepare('SELECT name FROM group_members WHERE id=?').bind(invite.created_by_member_id).first<Row>();
+          if (m) inviterName = String(m.name);
+        }
+        if (inviterName === 'Someone' && invite.created_by_user_id) {
+          const u = await env.DB.prepare('SELECT name FROM users WHERE id=?').bind(invite.created_by_user_id).first<Row>();
+          if (u) inviterName = String(u.name);
+        }
+        return json({ groupId: g.id, groupName: g.name, inviterName }, 200, origin);
+      }
+      if (sub === 'join' && req.method === 'POST') {
+        const user = await authUser(req, env); if (!user) return err('Unauthorized', 401, origin);
+        // Already a member? Join is a no-op — return the group detail
+        // so the frontend can open the group.
+        const existing = await env.DB.prepare('SELECT * FROM group_members WHERE group_id=? AND user_id=?').bind(g.id, user.id).first<Row>();
+        if (existing) return json({ ok: true, alreadyMember: true, group: await groupDetail(env, g, user.id) }, 200, origin);
+        // A placeholder with this email? Claim it (set user_id, keep
+        // the placeholder's name — the same claim login performs).
+        const ph = await env.DB.prepare('SELECT * FROM group_members WHERE group_id=? AND email=? AND user_id IS NULL').bind(g.id, String(user.email).toLowerCase()).first<Row>();
+        if (ph) {
+          await env.DB.prepare('UPDATE group_members SET user_id=? WHERE id=?').bind(user.id, ph.id).run();
+          return json({ ok: true, claimed: true, group: await groupDetail(env, g, user.id) }, 200, origin);
+        }
+        // Otherwise create a member row from the account (name + email).
+        // The UNIQUE(group_id, email) backstop handles a double-tap
+        // race: if the INSERT fails, re-check — a member row now exists.
+        try {
+          await env.DB.prepare('INSERT INTO group_members (id,group_id,user_id,name,email,created_at) VALUES (?,?,?,?,?,?)').bind(uid(), g.id, user.id, user.name, String(user.email).toLowerCase(), nowIso()).run();
+        } catch {
+          const again = await env.DB.prepare('SELECT * FROM group_members WHERE group_id=? AND user_id=?').bind(g.id, user.id).first<Row>();
+          if (!again) throw new Error('Could not join this group');
+        }
+        return json({ ok: true, group: await groupDetail(env, g, user.id) }, 200, origin);
+      }
+      return err('Not found', 404, origin);
+    }
+
     // ---- Admin (separate user, separate page) ----
     if (path === '/api/admin/login' && req.method === 'POST') {
       const { email, password } = body;
@@ -462,6 +516,29 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       if (sub === 'restore' && req.method === 'POST') {
         await env.DB.prepare('UPDATE groups SET is_archived=0 WHERE id=?').bind(groupId).run();
         return json(await groupDetail(env, { ...g, is_archived: 0 }, user.id), 200, origin);
+      }
+      // ---- Group invite link (any member) ----
+      // One active link per group, multi-use, no expiry, revocable.
+      // GET returns the current token (or null); POST creates (or
+      // replaces) it; DELETE revokes it. The token is stored in
+      // plaintext (see migration 0007) so any member can copy the
+      // current link. The archived-group guard above already blocks
+      // POST/DELETE on an archived group; GET is read-only.
+      if (sub === 'invite' && req.method === 'GET') {
+        const row = await env.DB.prepare('SELECT token FROM group_invites WHERE group_id=?').bind(groupId).first<Row>();
+        return json({ token: row ? String(row.token) : null }, 200, origin);
+      }
+      if (sub === 'invite' && req.method === 'POST') {
+        const token = newResetToken();
+        await env.DB.batch([
+          env.DB.prepare('DELETE FROM group_invites WHERE group_id=?').bind(groupId),
+          env.DB.prepare('INSERT INTO group_invites (id,group_id,token,created_by_user_id,created_by_member_id,created_at) VALUES (?,?,?,?,?,?)').bind(uid(), groupId, token, user.id, member.id, nowIso()),
+        ]);
+        return json({ token }, 200, origin);
+      }
+      if (sub === 'invite' && req.method === 'DELETE') {
+        await env.DB.prepare('DELETE FROM group_invites WHERE group_id=?').bind(groupId).run();
+        return json({ ok: true }, 200, origin);
       }
       if (sub === 'leave' && req.method === 'POST') {
         const blocked = await hasAnyExpense(env, groupId, member.id);
