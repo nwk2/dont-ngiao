@@ -3,7 +3,7 @@ import { api, setToken, getToken, CURRENCIES, CATEGORIES, fmt, toMinor, fromMino
 import { DateField, fmtDate, todayIso } from './calendar';
 import { Pie, DailyBar } from './pie';
 
-const S = { maxW: 640, margin: '0 auto', padding: '16px', paddingBottom: 90 } as const;
+const S = { maxWidth: 640, margin: '0 auto', padding: '16px', paddingBottom: 90 } as const; // DESKTOP CAP, Nov 2026: maxW was a typo (not a real CSS property), so the 640px cap never applied and the main content stretched full-width on desktop. maxWidth makes every view using S a centred 640px column on wide screens, matching the sheets (which already cap at 640) — on a phone (<640px) it is full-width as before.
 const card: React.CSSProperties = { background:'var(--card)', border:'1px solid var(--hairline)', borderRadius:16, padding:14, marginBottom:12, color:'var(--text)', lineHeight:1.45 };
 const rowCard: React.CSSProperties = { ...card, padding:'12px 14px', lineHeight:1.4 };
 // BALANCES REVAMP 2026-11-05 (dark only, restyle only): rows inside one
