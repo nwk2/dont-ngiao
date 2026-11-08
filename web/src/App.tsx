@@ -1186,9 +1186,18 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
           </div>);
         });
       })()}
+      {(() => {
+        // SETTLE UP IS YOURS ONLY, Nov 2026 (Wai): the Settle up section
+        // shows only the debts involving the current user (as debtor or
+        // creditor). Debts between two other members are hidden — they
+        // are not yours to settle. The per-currency balance cards above
+        // still show the whole group's balances, and Recorded payments
+        // below is unchanged (the audit log shows every payment).
+        const mySuggestions = group.suggestions.filter((s:any)=>s.fromMemberId===group.myMemberId || s.toMemberId===group.myMemberId);
+        return (<>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:12,margin:'20px 0 8px'}}><h3 style={{margin:0,fontSize:17}}>Settle up</h3><span style={{fontSize:13,color:'var(--muted)'}}>Simplified debts</span></div>
-      {group.suggestions.length===0 && <p>All settled.</p>}
-      {group.suggestions.length>0 && <div style={balCard}>{group.suggestions.map((s:any,i:number)=>{
+      {mySuggestions.length===0 && <p>{group.suggestions.length===0 ? 'All settled.' : "You're all settled."}</p>}
+      {mySuggestions.length>0 && <div style={balCard}>{mySuggestions.map((s:any,i:number)=>{
         const from = personDisplay(group, s.fromMemberId, s.fromName);
         const to = personDisplay(group, s.toMemberId, s.toName);
         // SETTLE AUTH, Nov 2026: mirror the server rule in the UI — only
@@ -1199,7 +1208,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         // Settle button (same pattern as the Leave grey-out).
         const toMember = group.members.find((m:any)=>m.id===s.toMemberId);
         const canSettle = group.myMemberId === s.toMemberId || (toMember && !toMember.hasAccount && group.myMemberId === s.fromMemberId);
-        return (<div key={i} style={{...balRow,justifyContent:'space-between',borderBottom:i===group.suggestions.length-1?'none':balHairline}}>
+        return (<div key={i} style={{...balRow,justifyContent:'space-between',borderBottom:i===mySuggestions.length-1?'none':balHairline}}>
           {/* Settle rows now match Recorded payments (2026-11-05): overlapping
           avatar pair, debtor first, creditor second, in memberDotColor —
           the single debtor dot is dropped, since avatars now carry the
@@ -1212,7 +1221,9 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
           {!group.isArchived && <button style={{...primary,flexShrink:0,background:canSettle?'var(--accent)':'var(--accent-disabled)',borderColor:canSettle?'var(--accent)':'var(--accent-disabled)',color:canSettle?'var(--accent-text)':'var(--accent-text-disabled)',cursor:canSettle?'pointer':'not-allowed'}} disabled={!canSettle} onClick={()=>setSettle(s)}>Settle</button>}
         </div>);
       })}</div>}
-      <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,margin:'8px 0 0'}}>Only the creditor can settle a debt — if a Settle button is dark, you're not part of that pair. Settling records a payment between the two people — partial amounts are fine, edit the amount in the sheet.</p>
+      <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,margin:'8px 0 0'}}>Only the creditor can settle a debt — if a Settle button is dark, you're the one who owes, so only the other person can settle it. Settling records a payment between the two people — partial amounts are fine, edit the amount in the sheet.</p>
+        </>);
+      })()}
       <h3 style={{margin:'20px 0 8px',fontSize:17}}>Recorded payments</h3>
       {group.payments.length>0 ? <div style={balCard}>{group.payments.map((p:any,pi:number)=>{
         const from = personDisplay(group, p.from_member_id, p.fromName);
