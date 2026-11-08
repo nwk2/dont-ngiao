@@ -26,12 +26,21 @@ export function minorToMajor(minor: number, currency: string): number {
   return isZeroDecimal(currency) ? minor : minor/100;
 }
 
-// Equal split: remainder cents go to the first members in order (deterministic).
-export function equalSplit(total: number, count: number): number[] {
+// Equal split: remainder cents go to the PAYER first, then the next
+// members in order (wrapping). The payer fronted the odd total, so they
+// absorb the rounding; over many expenses with different payers it
+// spreads out, instead of always landing on the first member (the old
+// behaviour — Wai spotted it on Bagel brunch, 2026-11-08: S$60.43/6
+// gave Kevyn, first in the list, S$10.08 while everyone else got
+// S$10.07). payerIndex is the payer's position in the participants
+// array; if they are not a participant (out of range) the remainder
+// starts at the first participant.
+export function equalSplit(total: number, count: number, payerIndex = 0): number[] {
   if (count <= 0) return [];
   const base = Math.floor(total / count);
   const rem = total - base*count;
-  return Array.from({length: count}, (_,i) => base + (i < rem ? 1 : 0));
+  const first = payerIndex >= 0 && payerIndex < count ? payerIndex : 0;
+  return Array.from({length: count}, (_,i) => base + (((i - first + count) % count) < rem ? 1 : 0));
 }
 // Percent split: floor each share, distribute remainder to largest fractional parts.
 export function percentSplit(total: number, percents: number[]): number[] {

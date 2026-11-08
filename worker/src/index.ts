@@ -857,7 +857,7 @@ async function addExpense(env: Env, g: Row, user: Row, body: any, origin: string
   const participants: string[] = Array.isArray(body.participants) ? body.participants.filter((id:string)=>memberIds.has(id)) : [];
   if (participants.length === 0) return err('At least one split participant is required', 400, origin);
   let amounts: number[];
-  if (splitType === 'equal') amounts = equalSplit(amountMinor, participants.length);
+  if (splitType === 'equal') amounts = equalSplit(amountMinor, participants.length, participants.indexOf(paidBy));
   else if (splitType === 'percent') {
     const percents = (body.percents || []) as number[];
     if (percents.length !== participants.length || Math.abs(percents.reduce((a:number,b:number)=>a+b,0) - 100) > 0.001) return err('Percentages must cover all participants and sum to 100', 400, origin);
@@ -908,7 +908,7 @@ async function editExpense(env: Env, g: Row, user: Row, e: Row, body: any, origi
   const participants: string[] = Array.isArray(body.participants) ? body.participants.filter((id:string)=>memberIds.has(id)) : [];
   if (participants.length === 0) return err('At least one split participant is required', 400, origin);
   let amounts: number[];
-  if (splitType === 'equal') amounts = equalSplit(amountMinor, participants.length);
+  if (splitType === 'equal') amounts = equalSplit(amountMinor, participants.length, participants.indexOf(paidBy));
   else if (splitType === 'percent') {
     const percents = (body.percents || []) as number[];
     if (percents.length !== participants.length || Math.abs(percents.reduce((a:number,b:number)=>a+b,0) - 100) > 0.001) return err('Percentages must cover all participants and sum to 100', 400, origin);
