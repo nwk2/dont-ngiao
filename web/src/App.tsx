@@ -1124,7 +1124,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         <div style={{flex:1,minWidth:0,lineHeight:1.4}}><div style={{fontWeight:600}}>{e.description}</div><div style={{fontSize:13,color:'var(--muted)'}}>Paid by {e.payerName} · {fmtDate(e.date)}</div></div>
         <div style={{textAlign:'right',flexShrink:0,lineHeight:1.4}}><strong style={{whiteSpace:'nowrap'}}>{e.display}</strong><div style={{fontSize:13,color:'var(--muted)'}}>{mySplit ? `your share ${fmt(mySplit.amount_minor,e.currency)}` : 'Not involved'}</div></div>
       </div>);})}</div>}
-      {!showExpense && !group.isArchived && <div style={{position:'fixed',left:0,right:0,bottom:0,background:'var(--card)',borderTop:'1px solid var(--border)',padding:12,textAlign:'center'}}><button style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={()=>setShowExpense(true)}>+ Add expense</button></div>}
+      {!showExpense && !group.isArchived && <div style={{position:'fixed',left:0,right:0,bottom:0,maxWidth:640,margin:'0 auto',background:'var(--card)',borderTop:'1px solid var(--border)',padding:12,textAlign:'center'}}><button style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={()=>setShowExpense(true)}>+ Add expense</button></div>}
     </>}
     {tab==='balances' && <>
       {/* EMPTY STATE, 2026-11-05: a group with no balances, no settle
