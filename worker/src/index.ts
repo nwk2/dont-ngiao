@@ -138,16 +138,16 @@ async function rateClear(env: Env, kind: string, key: string): Promise<void> {
 // when) never change, only the display label does. actor_name/detail are
 // still written as fallback for rows whose member is gone, and old rows
 // (all three ids NULL) keep rendering from those strings.
-// MONEY EVENTS ONLY: only expense_added/expense_deleted/
-// payment_recorded/payment_deleted are written. Group/member admin
-// entries (group_created, member_added, ...) are not money and are no
-// longer logged.
+// MONEY EVENTS ONLY: only expense_added/expense_edited/
+// expense_deleted/payment_recorded/payment_deleted are written.
+// Group/member admin entries (group_created, member_added, ...) are
+// not money and are no longer logged.
 // MEDIUM FIX, Nov 2026: batched writes need the activity INSERT as a
 // prepared statement, not an executed one, so it can go into the same
 // env.DB.batch() call as the main write. D1 batch() runs its statements
 // in a single transaction: if any statement fails, all roll back —
 // that is what makes the batched writes below atomic, not just faster.
-const MONEY_ACTIVITY_TYPES_SQL = "'expense_added','expense_deleted','payment_recorded','payment_deleted'";
+const MONEY_ACTIVITY_TYPES_SQL = "'expense_added','expense_edited','expense_deleted','payment_recorded','payment_deleted'";
 function activityStmt(env: Env, groupId: string, actorId: string | null, actorName: string, type: string, amountMinor: number | null, currency: string | null, detail: string, fromId: string | null = null, toId: string | null = null) {
   return env.DB.prepare('INSERT INTO activity_log (id, group_id, actor_member_id, actor_name, from_member_id, to_member_id, type, amount_minor, currency, detail, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
     .bind(uid(), groupId, actorId, actorName, fromId, toId, type, amountMinor, currency, detail, nowIso());
@@ -700,6 +700,12 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         ]);
         return json(await groupDetail(env, g, user.id), 200, origin);
       }
+      const pe = sub.match(/^expenses\/([^/]+)$/);
+      if (pe && req.method === 'PATCH') {
+        const e = await env.DB.prepare('SELECT * FROM expenses WHERE id=? AND group_id=?').bind(decodeURIComponent(pe[1]), groupId).first<Row>();
+        if (!e) return err('Expense not found', 404, origin);
+        return editExpense(env, g, user, e, body, origin);
+      }
       if (sub === 'payments' && req.method === 'POST') return recordPayment(env, g, user, body, origin);
       const dp = sub.match(/^payments\/([^/]+)$/);
       if (dp && req.method === 'DELETE') {
@@ -875,6 +881,54 @@ async function addExpense(env: Env, g: Row, user: Row, body: any, origin: string
     activityStmt(env, g.id, myMember?.id || null, user.name, 'expense_added', amountMinor, currency, description),
   ]);
   return json(await groupDetail(env, g, user.id), 201, origin);
+}
+
+// EDIT EXPENSE, Nov 2026: any member may edit any expense (same rule
+// as delete — payments are not linked to specific expenses and balances
+// are derived, so editing cannot break a settlement linkage; the audit
+// trail is the safety net). Validation mirrors addExpense exactly. The
+// expense row is UPDATED in place (no updated_at column — the activity
+// log is the audit trail), its splits are replaced wholesale, and an
+// expense_edited event is logged with the new description plus old ->
+// new amount when the amount changed. One batch() = one transaction.
+async function editExpense(env: Env, g: Row, user: Row, e: Row, body: any, origin: string | null = null) {
+  const members = await env.DB.prepare('SELECT * FROM group_members WHERE group_id=?').bind(g.id).all<Row>();
+  const memberIds = new Set((members.results||[]).map(m=>m.id));
+  const myMember = (members.results||[]).find((m:any)=>m.user_id===user.id);
+  const currency = String(body.currency || g.default_currency);
+  if (!(CURRENCIES as readonly string[]).includes(currency)) return err('Invalid currency', 400, origin);
+  const amountMinor = typeof body.amountMinor === 'number' ? body.amountMinor : null;
+  if (!amountMinor || amountMinor <= 0) return err('Amount must be positive', 400, origin);
+  const paidBy = String(body.paidByMemberId || '');
+  if (!memberIds.has(paidBy)) return err('Payer must be a group member', 400, origin);
+  const description = String(body.description || '').trim(); if (!description) return err('Description is required', 400, origin);
+  const category = (CATEGORIES as readonly string[]).includes(body.category) ? body.category : 'Other';
+  const date = String(body.date || '').slice(0,10); if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return err('Date must be YYYY-MM-DD', 400, origin);
+  const splitType = body.splitType || 'equal';
+  const participants: string[] = Array.isArray(body.participants) ? body.participants.filter((id:string)=>memberIds.has(id)) : [];
+  if (participants.length === 0) return err('At least one split participant is required', 400, origin);
+  let amounts: number[];
+  if (splitType === 'equal') amounts = equalSplit(amountMinor, participants.length);
+  else if (splitType === 'percent') {
+    const percents = (body.percents || []) as number[];
+    if (percents.length !== participants.length || Math.abs(percents.reduce((a:number,b:number)=>a+b,0) - 100) > 0.001) return err('Percentages must cover all participants and sum to 100', 400, origin);
+    amounts = percentSplit(amountMinor, percents);
+  } else if (splitType === 'exact') {
+    const exact = (body.exactAmounts || []) as number[];
+    if (exact.length !== participants.length || exact.reduce((a:number,b:number)=>a+b,0) !== amountMinor) return err('Exact amounts must cover all participants and sum to the total', 400, origin);
+    amounts = exact;
+  } else return err('Split type must be equal, exact or percent (shares are not supported)', 400, origin);
+  if (amounts.reduce((a,b)=>a+b,0) !== amountMinor) return err('Splits do not sum to the total', 400, origin);
+  const amountChanged = amountMinor !== e.amount_minor || currency !== e.currency;
+  const detail = amountChanged ? `${description} \u00b7 ${formatAmount(e.amount_minor, e.currency)} \u2192 ${formatAmount(amountMinor, currency)}` : description;
+  await env.DB.batch([
+    env.DB.prepare('UPDATE expenses SET paid_by_member_id=?, description=?, amount_minor=?, currency=?, category=?, date=? WHERE id=?')
+      .bind(paidBy, description, amountMinor, currency, category, date, e.id),
+    env.DB.prepare('DELETE FROM expense_splits WHERE expense_id=?').bind(e.id),
+    ...participants.map((pid, i) => env.DB.prepare('INSERT INTO expense_splits (id,expense_id,member_id,amount_minor) VALUES (?,?,?,?)').bind(uid(), e.id, pid, amounts[i])),
+    activityStmt(env, g.id, myMember?.id || null, user.name, 'expense_edited', amountMinor, currency, detail),
+  ]);
+  return json(await groupDetail(env, g, user.id), 200, origin);
 }
 
 async function recordPayment(env: Env, g: Row, user: Row, body: any, origin: string | null = null) {

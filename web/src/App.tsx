@@ -58,6 +58,7 @@ function logIcon(type: string) {
     expense_deleted: (<><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></>),
     payment_recorded: (<><line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" /></>),
     payment_deleted: (<><circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></>),
+    expense_edited: (<><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></>),
   };
   return (<span style={{width:28,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><svg {...common}>{paths[type] || paths['expense_added']}</svg></span>);
 }
@@ -929,6 +930,7 @@ function InviteView({ token, onJoined, onCancel }: any) {
 
 function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError, theme, setTheme }: any) {
   const [showExpense, setShowExpense] = useState(false);
+  const [editExpense, setEditExpense] = useState<any>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [detailExpense, setDetailExpense] = useState<any>(null);
   const [settle, setSettle] = useState<any>(null);
@@ -1281,15 +1283,16 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
       {!activityMore && displayedActivity.length>0 && <p style={{fontSize:13,color:'var(--muted)'}}>That's all the log for this group.</p>}
       {activityError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{activityError}</p>}
     </>}
-    {detailExpense && <ExpenseDetailSheet group={group} expense={detailExpense} onClose={()=>setDetailExpense(null)} setConfirm={setConfirm} reload={reload} />}
+    {detailExpense && <ExpenseDetailSheet group={group} expense={detailExpense} onClose={()=>setDetailExpense(null)} setConfirm={setConfirm} reload={reload} onEdit={()=>{setDetailExpense(null); setEditExpense(detailExpense);}} />}
     {showExpense && <ExpenseModal group={group} onClose={()=>setShowExpense(false)} reload={(d?:any)=>{setShowExpense(false); reload(d);}} />}
+    {editExpense && <ExpenseModal group={group} expense={editExpense} onClose={()=>setEditExpense(null)} reload={(d?:any)=>{setEditExpense(null); reload(d);}} />}
     {settle && <SettleModal group={group} suggestion={settle} onClose={()=>setSettle(null)} reload={(d?:any)=>{setSettle(null); reload(d);}} setError={setError} />}
     {showSettings && <SettingsModal group={group} onClose={()=>setShowSettings(false)} reload={(d?:any)=>{setShowSettings(false); reload(d);}} back={back} />}
     {confirm && <ConfirmSheet title={confirm.title} message={confirm.message} confirmLabel={confirm.confirmLabel} onCancel={()=>setConfirm(null)} onConfirm={async()=>{try{await confirm.action();}catch(er:any){if (confirm.onError) confirm.onError(er.message); else setError(er.message);}finally{setConfirm(null);}}} />}
   </div>);
 }
 function activityTitle(a:any) {
-  const map: Record<string,string> = { expense_added:'Expense added', expense_deleted:'Expense deleted', payment_recorded:'Payment recorded', payment_deleted:'Payment deleted' };
+  const map: Record<string,string> = { expense_added:'Expense added', expense_edited:'Expense edited', expense_deleted:'Expense deleted', payment_recorded:'Payment recorded', payment_deleted:'Payment deleted' };
   return map[a.type] || a.type;
 }
 function AddMember({ groupId, reload }: any) {
@@ -1471,7 +1474,7 @@ function PayerPickerSheet({ group, current, onPick, onClose }: any) {
     })}</div>
   </PickerSheet>);
 }
-function ExpenseModal({ group, onClose, reload }: any) {
+function ExpenseModal({ group, expense, onClose, reload }: any) {
   // Add expense as a BOTTOM SHEET (revamp, dark only). REDESIGN 2026-11-06:
   // one grouped card with hairline rows (Description, Category, Currency,
   // Paid by, Split, Date) — a single field language, replacing the three
@@ -1485,11 +1488,16 @@ function ExpenseModal({ group, onClose, reload }: any) {
   //   The input is sized to its content (ch) so the symbol + digits
   //   centre as one group (2026-11-06).
   const [modalError, setModalError] = useState('');
-  const [description, setDescription] = useState(''); const [amount, setAmount] = useState(''); const [currency, setCurrency] = useState(group.defaultCurrency);
-  const [date, setDate] = useState(todayIso()); const [payer, setPayer] = useState(group.myMemberId || group.members[0]?.id || ''); const [category, setCategory] = useState('Other');
-  const [splitType, setSplitType] = useState<'equal'|'exact'|'percent'>('equal');
-  const [selected, setSelected] = useState<string[]>(group.members.map((m:any)=>m.id));
-  const [percents, setPercents] = useState<Record<string,string>>({}); const [exact, setExact] = useState<Record<string,string>>({});
+  // EDIT, Nov 2026: when `expense` is passed, every field pre-fills from
+  // it. The original split mode is not stored on the expense row, so an
+  // edit always starts as 'exact' with the stored per-person amounts —
+  // the faithful reproduction of the split; switching to Equal/Percent
+  // re-derives it. Any member may edit any expense (same rule as delete).
+  const [description, setDescription] = useState(expense ? expense.description : ''); const [amount, setAmount] = useState(expense ? fromMinor(expense.amount_minor, expense.currency) : ''); const [currency, setCurrency] = useState(expense ? expense.currency : group.defaultCurrency);
+  const [date, setDate] = useState(expense ? expense.date : todayIso()); const [payer, setPayer] = useState(expense ? expense.paid_by_member_id : (group.myMemberId || group.members[0]?.id || '')); const [category, setCategory] = useState(expense ? expense.category : 'Other');
+  const [splitType, setSplitType] = useState<'equal'|'exact'|'percent'>(expense ? 'exact' : 'equal');
+  const [selected, setSelected] = useState<string[]>(expense ? expense.splits.map((s:any)=>s.member_id) : group.members.map((m:any)=>m.id));
+  const [percents, setPercents] = useState<Record<string,string>>({}); const [exact, setExact] = useState<Record<string,string>>(expense ? Object.fromEntries(expense.splits.map((s:any)=>[s.member_id, fromMinor(s.amount_minor, expense.currency)])) : {});
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false); const [showCategoryPicker, setShowCategoryPicker] = useState(false); const [showPayerPicker, setShowPayerPicker] = useState(false); const [showSplit, setShowSplit] = useState(false); const [showDate, setShowDate] = useState(false);
   const toggle = (id:string)=> setSelected(s=> s.includes(id) ? s.filter(x=>x!==id) : [...s, id]);
   const splitLabel = splitType==='equal' ? 'Equally' : splitType==='exact' ? 'Exact amounts' : 'Percentages';
@@ -1501,7 +1509,7 @@ function ExpenseModal({ group, onClose, reload }: any) {
     <div role="dialog" aria-modal="true" style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
       <div style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
         <div style={{width:36,height:4,borderRadius:99,background:'var(--border)',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><h2 style={{margin:0}}>Add expense</h2><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><h2 style={{margin:0}}>{expense ? 'Edit expense' : 'Add expense'}</h2><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
         <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'12px 0 4px'}}><span style={{fontSize:36,fontWeight:700,lineHeight:1}}>{sym(currency)}</span><input style={{width:`${Math.max((amount || '0.00').length, 1)}ch`,background:'transparent',border:'none',color:'var(--text)',fontSize:36,fontWeight:700,lineHeight:1,padding:0,textAlign:'center',outline:'none'}} inputMode="decimal" placeholder="0.00" value={amount} onChange={e=>setAmount(e.target.value)} onFocus={e=>e.target.select()} aria-label="Amount" /></div>
         <div style={{...balCard,marginBottom:12}}>
           <label style={{display:'flex',alignItems:'center',gap:12,padding:'13px 14px'}}><span style={{fontSize:15,color:'var(--muted)',flexShrink:0}}>Description</span><input style={{flex:1,minWidth:0,background:'transparent',border:'none',outline:'none',color:'var(--text)',fontSize:16,padding:0,textAlign:'right'}} placeholder="What was it for?" value={description} onChange={e=>setDescription(e.target.value)} aria-label="Description" /></label>
@@ -1525,6 +1533,7 @@ function ExpenseModal({ group, onClose, reload }: any) {
           <button type="button" onClick={()=>setShowDate(v=>!v)} style={rowBtn}><span style={{fontSize:15,color:'var(--muted)',flexShrink:0}}>Date</span><span style={{flex:1}} /><span style={{fontSize:15}}>{date===todayIso() ? `Today · ${fmtDate(date)}` : fmtDate(date)}</span><Chev open={showDate} /></button>
           {showDate && <div style={{borderTop:balHairline,padding:14}}><DateField id="exp-date" value={date} onChange={setDate} autoOpen /></div>}
         </div>
+        {expense && group.payments && group.payments.length > 0 && <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,marginTop:12,marginBottom:0}}>People have already settled in this group — editing this expense will change balances.</p>}
         {modalError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:12,marginBottom:0}}>{modalError}</p>}
         <AsyncButton style={{...primary, width:'100%', padding:'14px', fontSize:16, marginTop:8}} onClick={async()=>{
           setModalError('');
@@ -1532,7 +1541,7 @@ function ExpenseModal({ group, onClose, reload }: any) {
           const body: any = { description, amountMinor, currency, date, paidByMemberId: payer, category, splitType, participants: selected };
           if (splitType==='percent') body.percents = selected.map(id=>Number(percents[id]||0));
           if (splitType==='exact') { const arr = selected.map(id=>toMinor(exact[id]||'', currency)); if (arr.some(v=>v===null)) { setModalError('Enter valid exact amounts'); return; } body.exactAmounts = arr; }
-          try { const d = await api(`/api/groups/${group.id}/expenses`,'POST',body); reload(d); } catch(e:any){ setModalError(e.message); }
+          try { const d = expense ? await api(`/api/groups/${group.id}/expenses/${expense.id}`,'PATCH',body) : await api(`/api/groups/${group.id}/expenses`,'POST',body); reload(d); } catch(e:any){ setModalError(e.message); }
         }}>Save</AsyncButton>
       </div>
     </div>
@@ -1544,12 +1553,14 @@ function ExpenseModal({ group, onClose, reload }: any) {
 // Expense detail sheet (Chunk 2): the compact list row opens this bottom
 // sheet, following the SettleModal/ConfirmSheet pattern. It is the only
 // place Delete expense lives — the list card has no splits line and no
-// Delete button. Delete here opens the Chunk 1 ConfirmSheet, so nothing
+// Delete button. EDIT, Nov 2026: the Edit button lives here too — it
+// opens ExpenseModal pre-filled (GroupView's editExpense state).
+// Delete here opens the Chunk 1 ConfirmSheet, so nothing
 // is deleted directly from the sheet either; on a confirmed delete the
 // detail sheet closes and the group reloads. Cancel on the confirm sheet
 // leaves this sheet open (the GroupView confirm wrapper only clears the
 // confirm state). The sheet scrolls internally so a 10-person split fits.
-function ExpenseDetailSheet({ group, expense: e, onClose, setConfirm, reload }: any) {
+function ExpenseDetailSheet({ group, expense: e, onClose, setConfirm, reload, onEdit }: any) {
   // Chunk 4: a failed confirmed delete shows here, inside the sheet, and
   // the sheet stays open (the action throws before onClose(), so the
   // confirm wrapper's onError is what displays it — not the global error).
@@ -1565,6 +1576,7 @@ function ExpenseDetailSheet({ group, expense: e, onClose, setConfirm, reload }: 
         <strong style={{color:isMine?'var(--tint-text)':'var(--text)',whiteSpace:'nowrap',flexShrink:0}}>{fmt(s.amount_minor,e.currency)}</strong>
       </div>);})}</div>
       {sheetError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:12,marginBottom:0}}>{sheetError}</p>}
+      {!group.isArchived && <button style={{...btn,width:'100%',padding:'14px',fontSize:16,marginTop:12}} onClick={onEdit}>Edit expense</button>}
       {!group.isArchived && <button style={{...btn,width:'100%',padding:'14px',fontSize:16,marginTop:12,background:'var(--danger-bg)',borderColor:'var(--danger-bg)',color:'var(--danger-text)'}} onClick={()=>setConfirm({title:'Delete expense?',message:`Delete '${e.description}' (${e.display})? This will also remove its splits. This cannot be undone.`,onError:(msg:string)=>setSheetError(msg),action:async()=>{const d = await api(`/api/groups/${group.id}/expenses/${e.id}`,'DELETE'); onClose(); reload(d);}})}>Delete expense</button>}
     </div>
   </div>);
