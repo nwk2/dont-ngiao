@@ -39,8 +39,14 @@ export function equalSplit(total: number, count: number, payerIndex = 0): number
   if (count <= 0) return [];
   const base = Math.floor(total / count);
   const rem = total - base*count;
-  const first = payerIndex >= 0 && payerIndex < count ? payerIndex : 0;
-  return Array.from({length: count}, (_,i) => base + (((i - first + count) % count) < rem ? 1 : 0));
+  const payer = payerIndex >= 0 && payerIndex < count ? payerIndex : 0;
+  // ALL-REMAINDER-TO-PAYER, Nov 2026 (Wai): the payer absorbs the entire
+  // remainder (up to count-1 cents) instead of it being spread from the
+  // payer forward. The non-payers all pay exactly base, so the split is
+  // truly equal for them, and there is no "next person" for the cents to
+  // accumulate on. The payer is a role, not a fixed person, so it spreads
+  // across whoever pays. (Replaces the distribute-from-payer rule.)
+  return Array.from({length: count}, (_,i) => base + (i === payer ? rem : 0));
 }
 // Percent split: floor each share, distribute remainder to largest fractional parts.
 export function percentSplit(total: number, percents: number[]): number[] {
