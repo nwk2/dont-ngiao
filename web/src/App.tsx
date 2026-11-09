@@ -1112,6 +1112,18 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
   const isGroupCreator = !!group.createdByUserId && group.myMemberId === creatorMemberId;
   const canRemoveMember = (m:any) => !group.isArchived && m.id !== group.myMemberId && (!m.hasAccount || !group.createdByUserId || isGroupCreator);
   const [catView, setCatView] = useState<'group'|'mine'|'members'>('group');
+  // EXPENSE SEARCH & FILTER, Nov 2026 (item 1): frontend-only. The
+  // group detail already loads every expense, so the filter is a pure
+  // function over group.expenses — no BE endpoint (a BE filter only
+  // earns its keep with pagination, not needed at ~30 expenses). Text
+  // matches the description (substring, case-insensitive); category
+  // and payer are exact (null = All). The chart is NOT filtered — it
+  // stays the group totals; only the expense list narrows.
+  const [expSearch, setExpSearch] = useState('');
+  const [expCat, setExpCat] = useState<string | null>(null);
+  const [expPayer, setExpPayer] = useState<string | null>(null);
+  const [showExpCat, setShowExpCat] = useState(false);
+  const [showExpPayer, setShowExpPayer] = useState(false);
   const [catChart, setCatChart] = useState<'pie'|'bar'>('pie');
   // Activity pagination, 50/page: group.activity is the first page from
   // groupDetail, extraActivity holds older pages appended below it.
@@ -1208,6 +1220,13 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
     return rows;
   })();
   const memberGrandTotal = memberTotals.reduce((a, r) => a + r.total, 0);
+  const expFiltersActive = expSearch.trim() !== '' || expCat !== null || expPayer !== null;
+  const filteredExpenses = (group.expenses || []).filter((e: any) => {
+    if (expSearch.trim() && !String(e.description || '').toLowerCase().includes(expSearch.trim().toLowerCase())) return false;
+    if (expCat && e.category !== expCat) return false;
+    if (expPayer && e.paid_by_member_id !== expPayer) return false;
+    return true;
+  });
   return (<div style={S}>
     {/* Top bar, Nov 2026: ← Groups stays left alone; Settings moves to
     the right as a gear icon only, grouped with the theme toggle
@@ -1308,12 +1327,28 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         {catView==='members' && <p style={{fontSize:12,color:'var(--muted)'}}>Members = total paid by each member (gross, not net balance).</p>}
       </div>
       {group.expenses.length===0 && <p>No expenses yet.</p>}
-      {group.expenses.length>0 && <div style={balCard}>{group.expenses.map((e:any,ei:number,arr:any[])=>{const mySplit = group.myMemberId ? e.splits.find((s:any)=>s.member_id===group.myMemberId) : null; return (<div key={e.id} style={{...balRow,cursor:'pointer',borderBottom:ei===arr.length-1?'none':balHairline}} onClick={()=>setDetailExpense(e)}>
+      {group.expenses.length>0 && (<div style={{marginBottom:12}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,background:'var(--field)',borderRadius:10,padding:'10px 12px'}}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" style={{flexShrink:0}}><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+          <input style={{flex:1,minWidth:0,background:'transparent',border:'none',outline:'none',color:'var(--text)',fontSize:16,padding:0}} placeholder="Search expenses" value={expSearch} onChange={e=>setExpSearch(e.target.value)} aria-label="Search expenses" />
+          {expSearch && <button type="button" aria-label="Clear search" onClick={()=>setExpSearch('')} style={{background:'transparent',border:'none',color:'var(--muted)',cursor:'pointer',fontSize:18,lineHeight:1,padding:0}}>×</button>}
+        </div>
+        <div style={{display:'flex',gap:8,marginTop:8,flexWrap:'wrap'}}>
+          <button style={btn} onClick={()=>setShowExpCat(true)}>Category: {expCat || 'All'} ▾</button>
+          <button style={btn} onClick={()=>setShowExpPayer(true)}>Paid by: {expPayer ? personDisplay(group, expPayer, null).label : 'All'} ▾</button>
+          {expFiltersActive && <button style={btn} onClick={()=>{setExpSearch(''); setExpCat(null); setExpPayer(null);}}>Clear filters</button>}
+        </div>
+        {expFiltersActive && <p style={{fontSize:13,color:'var(--muted)',marginTop:8,marginBottom:0}}>{filteredExpenses.length} of {group.expenses.length} expenses</p>}
+      </div>)}
+      {group.expenses.length>0 && filteredExpenses.length===0 && <div style={{textAlign:'center',padding:'16px 0'}}><p style={{color:'var(--muted)'}}>No expenses match your filters.</p><button style={btn} onClick={()=>{setExpSearch(''); setExpCat(null); setExpPayer(null);}}>Clear filters</button></div>}
+      {group.expenses.length>0 && filteredExpenses.length>0 && <div style={balCard}>{filteredExpenses.map((e:any,ei:number,arr:any[])=>{const mySplit = group.myMemberId ? e.splits.find((s:any)=>s.member_id===group.myMemberId) : null; return (<div key={e.id} style={{...balRow,cursor:'pointer',borderBottom:ei===arr.length-1?'none':balHairline}} onClick={()=>setDetailExpense(e)}>
         <span style={{width:36,height:36,borderRadius:10,background:EXP_CAT_COLORS[e.category] || 'var(--muted)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{catIcon(e.category)}</span>
         <div style={{flex:1,minWidth:0,lineHeight:1.4}}><div style={{fontWeight:600}}>{e.description}</div><div style={{fontSize:13,color:'var(--muted)'}}>Paid by {e.payerName} · {fmtDate(e.date)}</div></div>
         <div style={{textAlign:'right',flexShrink:0,lineHeight:1.4}}><strong style={{whiteSpace:'nowrap'}}>{e.display}</strong><div style={{fontSize:13,color:'var(--muted)'}}>{mySplit ? `your share ${fmt(mySplit.amount_minor,e.currency)}` : 'Not involved'}</div></div>
       </div>);})}</div>}
       {!showExpense && !group.isArchived && <div style={{position:'fixed',left:0,right:0,bottom:0,maxWidth:640,margin:'0 auto',background:'var(--card)',borderTop:'1px solid var(--border)',padding:12,textAlign:'center'}}><button style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={()=>setShowExpense(true)}>+ Add expense</button></div>}
+      {showExpCat && <CategoryPickerSheet current={expCat} allowAll onPick={(c:any)=>{setExpCat(c); setShowExpCat(false);}} onClose={()=>setShowExpCat(false)} />}
+      {showExpPayer && <PayerPickerSheet group={group} current={expPayer} allowAll onPick={(m:any)=>{setExpPayer(m); setShowExpPayer(false);}} onClose={()=>setShowExpPayer(false)} />}
     </>}
     {tab==='balances' && <>
       {/* EMPTY STATE, 2026-11-05: a group with no balances, no settle
@@ -1659,18 +1694,32 @@ function CurrencyPickerSheet({ current, onPick, onClose }: any) {
     </button>))}
   </PickerSheet>);
 }
-function CategoryPickerSheet({ current, onPick, onClose }: any) {
+function CategoryPickerSheet({ current, onPick, onClose, allowAll }: any) {
+  // FILTER, Nov 2026: allowAll adds an 'All categories' row at the top
+  // (onPick(null)) so the expense filter can clear the category. The
+  // Add expense form does not pass allowAll, so it is unaffected.
+  const rows: (string | null)[] = allowAll ? [null, ...CATEGORIES] : [...CATEGORIES];
   return (<PickerSheet title="Category" onClose={onClose}>
-    <div style={{marginTop:6}}>{CATEGORIES.map((c, i) => (<button key={c} type="button" onClick={()=>onPick(c)} style={{display:'flex',alignItems:'center',gap:12,width:'100%',background:'transparent',border:'none',borderTop:i===0?'none':balHairline,padding:'12px 0',color:'var(--text)',cursor:'pointer',textAlign:'left'}}>
-      <span style={{width:36,height:36,borderRadius:10,background:EXP_CAT_COLORS[c] || 'var(--muted)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{catIcon(c)}</span>
-      <span style={{flex:1,minWidth:0,fontWeight:600}}>{c}</span>
+    <div style={{marginTop:6}}>{rows.map((c, i) => (<button key={c || '__all'} type="button" onClick={()=>onPick(c)} style={{display:'flex',alignItems:'center',gap:12,width:'100%',background:'transparent',border:'none',borderTop:i===0?'none':balHairline,padding:'12px 0',color:'var(--text)',cursor:'pointer',textAlign:'left'}}>
+      {c ? (<><span style={{width:36,height:36,borderRadius:10,background:EXP_CAT_COLORS[c] || 'var(--muted)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{catIcon(c)}</span><span style={{flex:1,minWidth:0,fontWeight:600}}>{c}</span></>) : (<><span style={{width:36,height:36,borderRadius:10,background:'var(--field)',flexShrink:0}} /><span style={{flex:1,minWidth:0,fontWeight:600}}>All categories</span></>)}
       {c===current && pickCheck}
     </button>))}</div>
   </PickerSheet>);
 }
-function PayerPickerSheet({ group, current, onPick, onClose }: any) {
+function PayerPickerSheet({ group, current, onPick, onClose, allowAll }: any) {
+  // FILTER, Nov 2026: allowAll adds an 'All members' row at the top
+  // (onPick(null)) so the expense filter can clear the payer. The Add
+  // expense form does not pass allowAll, so it is unaffected.
+  const rows: (any | null)[] = allowAll ? [null, ...(group.members || [])] : [...(group.members || [])];
   return (<PickerSheet title="Paid by" onClose={onClose}>
-    <div style={{marginTop:6}}>{group.members.map((m:any, i:number) => {
+    <div style={{marginTop:6}}>{rows.map((m, i) => {
+      if (m === null) {
+        return (<button key="__all" type="button" onClick={()=>onPick(null)} style={{display:'flex',alignItems:'center',gap:12,width:'100%',background:'transparent',border:'none',borderTop:i===0?'none':balHairline,padding:'12px 0',color:'var(--text)',cursor:'pointer',textAlign:'left'}}>
+          <span style={{...avatar,width:36,height:36,fontSize:14,background:'var(--field)'}} />
+          <span style={{flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>All members</span>
+          {current===null && pickCheck}
+        </button>);
+      }
       const p = personDisplay(group, m.id, m.name);
       return (<button key={m.id} type="button" onClick={()=>onPick(m.id)} style={{display:'flex',alignItems:'center',gap:12,width:'100%',background:'transparent',border:'none',borderTop:i===0?'none':balHairline,padding:'12px 0',color:'var(--text)',cursor:'pointer',textAlign:'left'}}>
         <span style={{...avatar,width:36,height:36,fontSize:14,background:memberDotColor(group,m.id)}}>{initials(m.name)}</span>
