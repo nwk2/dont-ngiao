@@ -1251,6 +1251,22 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
     if (expPayer && e.paid_by_member_id !== expPayer) return false;
     return true;
   });
+  // FILTER COUNTS, Nov 2026: faceted counts for the filter pickers. Each
+  // count respects the OTHER active filters (search + the other picker)
+  // but not the dimension being picked, so it predicts how many expenses
+  // you get if you tap that row. E.g. with search "Bagel" active, the
+  // Category picker shows Food & Drink 5 (not the group total 13).
+  // Counts are expense counts only, so currency never matters.
+  const expSearchQ = expSearch.trim().toLowerCase();
+  const catCounts: Record<string, number> = {};
+  let allCatCount = 0;
+  const payerCounts: Record<string, number> = {};
+  let allPayerCount = 0;
+  (group.expenses || []).forEach((e: any) => {
+    if (expSearchQ && !String(e.description || '').toLowerCase().includes(expSearchQ)) return;
+    if (!expPayer || e.paid_by_member_id === expPayer) { allCatCount++; catCounts[e.category] = (catCounts[e.category] || 0) + 1; }
+    if (!expCat || e.category === expCat) { allPayerCount++; payerCounts[e.paid_by_member_id] = (payerCounts[e.paid_by_member_id] || 0) + 1; }
+  });
   return (<div style={S}>
     {/* Top bar, Nov 2026: ← Groups stays left alone; Settings moves to
     the right as a gear icon only, grouped with the theme toggle
@@ -1371,8 +1387,8 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         <div style={{textAlign:'right',flexShrink:0,lineHeight:1.4}}><strong style={{whiteSpace:'nowrap'}}>{e.display}</strong><div style={{fontSize:13,color:'var(--muted)'}}>{mySplit ? `your share ${fmt(mySplit.amount_minor,e.currency)}` : 'Not involved'}</div></div>
       </div>);})}</div>}
       {!showExpense && !group.isArchived && <div style={{position:'fixed',left:0,right:0,bottom:0,maxWidth:640,margin:'0 auto',background:'var(--card)',borderTop:'1px solid var(--border)',padding:12,textAlign:'center'}}><button style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={()=>setShowExpense(true)}>+ Add expense</button></div>}
-      {showExpCat && <CategoryPickerSheet current={expCat} allowAll onPick={(c:any)=>{setExpCat(c); setShowExpCat(false);}} onClose={()=>setShowExpCat(false)} />}
-      {showExpPayer && <PayerPickerSheet group={group} current={expPayer} allowAll onPick={(m:any)=>{setExpPayer(m); setShowExpPayer(false);}} onClose={()=>setShowExpPayer(false)} />}
+      {showExpCat && <CategoryPickerSheet current={expCat} allowAll counts={catCounts} allCount={allCatCount} onPick={(c:any)=>{setExpCat(c); setShowExpCat(false);}} onClose={()=>setShowExpCat(false)} />}
+      {showExpPayer && <PayerPickerSheet group={group} current={expPayer} allowAll counts={payerCounts} allCount={allPayerCount} onPick={(m:any)=>{setExpPayer(m); setShowExpPayer(false);}} onClose={()=>setShowExpPayer(false)} />}
     </>}
     {tab==='balances' && <>
       {/* EMPTY STATE, 2026-11-05: a group with no balances, no settle
@@ -1718,29 +1734,39 @@ function CurrencyPickerSheet({ current, onPick, onClose }: any) {
     </button>))}
   </PickerSheet>);
 }
-function CategoryPickerSheet({ current, onPick, onClose, allowAll }: any) {
+// FILTER COUNT, Nov 2026: muted right-aligned count in a picker row.
+const pickCount: React.CSSProperties = { color:'var(--muted)', fontSize:13, fontVariantNumeric:'tabular-nums', flexShrink:0 };
+function CategoryPickerSheet({ current, onPick, onClose, allowAll, counts, allCount }: any) {
   // FILTER, Nov 2026: allowAll adds an 'All categories' row at the top
   // (onPick(null)) so the expense filter can clear the category. The
-  // Add expense form does not pass allowAll, so it is unaffected.
+  // Add expense form does not pass allowAll (or counts), so it is
+  // unaffected. COUNTS, Nov 2026: when `counts` is passed (filter only),
+  // each row shows a muted faceted count (see GroupView: it respects the
+  // other active filters). The All row has a grid icon — it had none,
+  // which read as a broken/missing icon.
   const rows: (string | null)[] = allowAll ? [null, ...CATEGORIES] : [...CATEGORIES];
   return (<PickerSheet title="Category" onClose={onClose}>
     <div style={{marginTop:6}}>{rows.map((c, i) => (<button key={c || '__all'} type="button" onClick={()=>onPick(c)} style={{display:'flex',alignItems:'center',gap:12,width:'100%',background:'transparent',border:'none',borderTop:i===0?'none':balHairline,padding:'12px 0',color:'var(--text)',cursor:'pointer',textAlign:'left'}}>
-      {c ? (<><span style={{width:36,height:36,borderRadius:10,background:EXP_CAT_COLORS[c] || 'var(--muted)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{catIcon(c)}</span><span style={{flex:1,minWidth:0,fontWeight:600}}>{c}</span></>) : (<><span style={{width:36,height:36,borderRadius:10,background:'var(--field)',flexShrink:0}} /><span style={{flex:1,minWidth:0,fontWeight:600}}>All categories</span></>)}
+      {c ? (<><span style={{width:36,height:36,borderRadius:10,background:EXP_CAT_COLORS[c] || 'var(--muted)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{catIcon(c)}</span><span style={{flex:1,minWidth:0,fontWeight:600}}>{c}</span>{counts && <span style={pickCount}>{counts[c] || 0}</span>}</>) : (<><span style={{width:36,height:36,borderRadius:10,background:'var(--field)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg></span><span style={{flex:1,minWidth:0,fontWeight:600}}>All categories</span>{counts && <span style={pickCount}>{allCount ?? 0}</span>}</>)}
       {c===current && pickCheck}
     </button>))}</div>
   </PickerSheet>);
 }
-function PayerPickerSheet({ group, current, onPick, onClose, allowAll }: any) {
+function PayerPickerSheet({ group, current, onPick, onClose, allowAll, counts, allCount }: any) {
   // FILTER, Nov 2026: allowAll adds an 'All members' row at the top
   // (onPick(null)) so the expense filter can clear the payer. The Add
-  // expense form does not pass allowAll, so it is unaffected.
+  // expense form does not pass allowAll (or counts), so it is unaffected.
+  // COUNTS, Nov 2026: when `counts` is passed (filter only), each row
+  // shows a muted faceted count (see GroupView). The All row has a users
+  // icon — it had none, which read as a broken/missing icon.
   const rows: (any | null)[] = allowAll ? [null, ...(group.members || [])] : [...(group.members || [])];
   return (<PickerSheet title="Paid by" onClose={onClose}>
     <div style={{marginTop:6}}>{rows.map((m, i) => {
       if (m === null) {
         return (<button key="__all" type="button" onClick={()=>onPick(null)} style={{display:'flex',alignItems:'center',gap:12,width:'100%',background:'transparent',border:'none',borderTop:i===0?'none':balHairline,padding:'12px 0',color:'var(--text)',cursor:'pointer',textAlign:'left'}}>
-          <span style={{...avatar,width:36,height:36,fontSize:14,background:'var(--field)'}} />
+          <span style={{...avatar,width:36,height:36,fontSize:14,background:'var(--field)'}}><svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg></span>
           <span style={{flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>All members</span>
+          {counts && <span style={pickCount}>{allCount ?? 0}</span>}
           {current===null && pickCheck}
         </button>);
       }
@@ -1748,6 +1774,7 @@ function PayerPickerSheet({ group, current, onPick, onClose, allowAll }: any) {
       return (<button key={m.id} type="button" onClick={()=>onPick(m.id)} style={{display:'flex',alignItems:'center',gap:12,width:'100%',background:'transparent',border:'none',borderTop:i===0?'none':balHairline,padding:'12px 0',color:'var(--text)',cursor:'pointer',textAlign:'left'}}>
         <span style={{...avatar,width:36,height:36,fontSize:14,background:memberDotColor(group,m.id)}}>{initials(m.name)}</span>
         <span style={{flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.label}</span>
+        {counts && <span style={pickCount}>{counts[m.id] || 0}</span>}
         {m.id===current && pickCheck}
       </button>);
     })}</div>
