@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { api, setToken, getToken, CURRENCIES, CATEGORIES, fmt, toMinor, fromMinor, VAPID_PUBLIC_KEY } from './api';
+import { api, setToken, getToken, CURRENCIES, CATEGORIES, fmt, toMinor, fromMinor, VAPID_PUBLIC_KEY, isStandalone, installPlatform, pushSupported, getPushSubscription, subscribePush } from './api';
 import { DateField, fmtDate, todayIso } from './calendar';
 import { Pie, DailyBar } from './pie';
 
@@ -264,6 +264,11 @@ export default function App() {
   const [authState, setAuthState] = useState<'checking'|'guest'|'authed'>(()=> getToken() ? 'checking' : 'guest');
   const [groups, setGroups] = useState<any>(null);
   const [group, setGroup] = useState<any>(null);
+  // ONBOARDING, Nov 2026: set when the user joins via an invite link, so
+  // GroupView shows the Add-to-Home-Screen / Enable-notifications prompt
+  // right after joining. Cleared when they leave the group (back) or open
+  // a different group, so it does not reappear on a later visit.
+  const [justJoinedId, setJustJoinedId] = useState<string | null>(null);
   const [groupLoading, setGroupLoading] = useState(false);
   const loadSeq = useRef(0);
   const restoredRef = useRef(false);
@@ -372,6 +377,7 @@ export default function App() {
   }
   async function handleInviteJoined(groupId: string) {
     clearInviteParam();
+    setJustJoinedId(groupId);
     await loadGroup(groupId, { skeleton: true });
   }
   // Destination-aware checking skeleton: during auth checking we do not
@@ -413,7 +419,7 @@ export default function App() {
   // Members landed back on Expenses, hiding the updated data). Refetch
   // (keepTab) is only the fallback for writes that return no detail
   // (archive/restore/leave from Settings, Home restore via loadGroups).
-  if (group) return <GroupView group={group} setGroup={setGroup} tab={tab} setTab={setTab} back={()=>{setGroup(null); loadGroups();}} reload={(detail?: any)=> detail && detail.id ? (setGroup(detail), setError(''), Promise.resolve(true)) : loadGroup(group.id, { keepTab: true })} error={error} setError={setError}  theme={theme} setTheme={setTheme} />;
+  if (group) return <GroupView group={group} setGroup={setGroup} tab={tab} setTab={setTab} justJoined={justJoinedId === group.id} back={()=>{setJustJoinedId(null); setGroup(null); loadGroups();}} reload={(detail?: any)=> detail && detail.id ? (setGroup(detail), setError(''), Promise.resolve(true)) : loadGroup(group.id, { keepTab: true })} error={error} setError={setError}  theme={theme} setTheme={setTheme} />;
   if (!groups) return <HomeSkeleton user={user} />;
   return <Home user={user} setUser={setUser} onLogout={doLogout} setAuthNotice={setAuthNotice} groups={groups} loadGroups={loadGroups} loadGroup={(id: string)=>loadGroup(id, { skeleton: true })} error={error} setError={setError}  theme={theme} setTheme={setTheme} />;
 }
@@ -506,6 +512,80 @@ function groupBalancesByVerb(items: any[]) {
   }
   return groups;
 }
+// ONBOARDING PROMPTS (Add to Home Screen + Enable notifications), Nov 2026.
+// Two-stage setup for new family members, shown on Home and right after
+// joining a group:
+// Stage 1 (NOT standalone): "Add to Home Screen" — the prerequisite on
+// iPhone, where push only works from the Home Screen app. Platform-
+// specific steps. Dismissible per session.
+// Stage 2 (standalone, push supported, not subscribed, permission not
+// denied): "Enable notifications" — one tap on Enable, then Allow on the
+// system prompt. Dismissible per session (reappears on next visit); the
+// You > Notifications toggle is the permanent fallback.
+// Dismissal is stored in sessionStorage (one key per stage), so it hides
+// for the rest of this browser session and comes back on the next visit.
+// When permission is 'denied' the Stage 2 banner hides — the app cannot
+// fix a browser-level denial, and the You toggle explains it instead.
+// (YouView keeps its own inline toggle logic, already verified — this
+// component uses the shared subscribePush/getPushSubscription helpers in
+// api.ts rather than refactoring it.)
+const A2HS_DISMISS_KEY = 'dont-ngiao-a2hs-dismissed';
+const PUSH_PROMPT_DISMISS_KEY = 'dont-ngiao-push-prompt-dismissed';
+function OnboardingPrompts() {
+  const [dismissedA2hs, setDismissedA2hs] = useState(() => { try { return sessionStorage.getItem(A2HS_DISMISS_KEY) === '1'; } catch { return false; } });
+  const [dismissedPush, setDismissedPush] = useState(() => { try { return sessionStorage.getItem(PUSH_PROMPT_DISMISS_KEY) === '1'; } catch { return false; } });
+  const [pushEnabled, setPushEnabled] = useState<boolean | null>(null);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState('');
+  const standalone = isStandalone();
+  const supported = pushSupported();
+  useEffect(() => {
+    if (!standalone || !supported) { setPushEnabled(false); return; }
+    let cancelled = false;
+    getPushSubscription().then((sub) => { if (!cancelled) setPushEnabled(!!sub); }).catch(() => { if (!cancelled) setPushEnabled(false); });
+    return () => { cancelled = true; };
+  }, [standalone, supported]);
+  function dismissA2hs() { try { sessionStorage.setItem(A2HS_DISMISS_KEY, '1'); } catch { /* ignore */ } setDismissedA2hs(true); }
+  function dismissPush() { try { sessionStorage.setItem(PUSH_PROMPT_DISMISS_KEY, '1'); } catch { /* ignore */ } setDismissedPush(true); }
+  async function enablePush() {
+    if (pushBusy) return;
+    setPushError(''); setPushBusy(true);
+    try { await subscribePush(); setPushEnabled(true); }
+    catch (e: any) { setPushError(e?.message || 'Could not enable notifications.'); }
+    finally { setPushBusy(false); }
+  }
+  // Stage 1: not standalone — Add to Home Screen comes first. On iPhone
+  // push cannot work from Safari, so there is no notification prompt here.
+  if (!standalone && !dismissedA2hs) {
+    const platform = installPlatform();
+    const steps = platform === 'ios'
+      ? 'Tap the Share button (square with an arrow) at the bottom of Safari, then "Add to Home Screen", then Add.'
+      : platform === 'android'
+      ? 'Tap the three dots in Chrome, then "Add to Home screen", then Add.'
+      : 'Use your browser\'s menu to add this site to your Home Screen.';
+    return (<div style={{...homeCard, background:'var(--tint-bg)', marginBottom:12}}>
+      <strong>Add Don&apos;t Ngiao to your Home Screen</strong>
+      <p style={{fontSize:13, color:'var(--muted)', margin:'6px 0 12px'}}>{steps} Then open it from the new icon (the teal ÷) — notifications only work when it&apos;s launched from the Home Screen.</p>
+      <div style={{display:'flex', gap:8}}><button style={{...btn, flex:1}} onClick={dismissA2hs}>Not now</button></div>
+    </div>);
+  }
+  // Stage 2: standalone, push supported, not yet subscribed, permission
+  // not denied — the one-tap Enable prompt. Hidden when already on,
+  // when push is unsupported, when permission is denied (the You toggle
+  // explains the browser-level block), or when dismissed this session.
+  if (!standalone || !supported || pushEnabled !== false || dismissedPush) return null;
+  if (typeof Notification !== 'undefined' && Notification.permission === 'denied') return null;
+  return (<div style={{...homeCard, background:'var(--tint-bg)', marginBottom:12}}>
+    <strong>Get notified when someone adds an expense</strong>
+    <p style={{fontSize:13, color:'var(--muted)', margin:'6px 0 12px'}}>New expense, edited / deleted, and settle — only for groups you&apos;re in. One tap here, then Allow.</p>
+    {pushError && <p style={{color:'var(--danger-text)', fontSize:13}}>{pushError}</p>}
+    <div style={{display:'flex', gap:8}}>
+      <AsyncButton style={{...primary, flex:1, padding:'12px', fontSize:16}} disabled={pushBusy} onClick={enablePush}>{pushBusy ? 'Enabling…' : 'Enable notifications'}</AsyncButton>
+      <button style={btn} onClick={dismissPush}>Not now</button>
+    </div>
+  </div>);
+}
+
 function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, loadGroup, error, setError, theme, setTheme }: any) {
   const [showCreate, setShowCreate] = useState(false);
   const [showYou, setShowYou] = useState(false);
@@ -529,6 +609,7 @@ function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, load
       </div>
     </div>
     {error && <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:12}}><span style={{color:'var(--danger-text)'}}>{error}</span><button style={btn} onClick={()=>loadGroups()}>Retry</button></div>}
+    <OnboardingPrompts />
     <div style={{background:'linear-gradient(135deg,#0f766e,#059669,#10b981)',borderRadius:24,padding:20,marginBottom:20,color:'#fff'}}>
       <div style={{fontSize:12,letterSpacing:1.5,color:'#ccfbf1',fontWeight:600}}>ALL ACROSS {(groups?.active?.length ?? 0)} {((groups?.active?.length ?? 0) === 1) ? 'GROUP' : 'GROUPS'}</div>
       {totals.length === 0 || totals.every((t:any)=>t.balance===0) ? (<p style={{margin:'12px 0 0'}}>All settled.</p>) : groupBalancesByVerb(totals).map((g:any,gi:number)=>g.items.map((t:any,i:number)=>(<div key={t.currency} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:12,marginTop:10,...(i===0 && gi>0 ? {borderTop:'1px solid rgba(255,255,255,0.25)',paddingTop:10} : {})}}>
@@ -1217,7 +1298,7 @@ function InviteView({ token, onJoined, onCancel }: any) {
   </div></div>);
 }
 
-function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError, theme, setTheme }: any) {
+function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError, theme, setTheme, justJoined }: any) {
   const [showExpense, setShowExpense] = useState(false);
   const [editExpense, setEditExpense] = useState<any>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -1409,6 +1490,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         <button type="button" aria-label="Group settings" title="Group settings" onClick={()=>setShowSettings(true)} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg></button>
       </span>
     </div>
+    {justJoined && <OnboardingPrompts />}
     <h1 style={{marginBottom:2}}>{group.name}</h1>
     {group.isArchived && <p style={{background:'var(--danger-bg)',padding:8,borderRadius:8}}>This group is archived. Restore it from Settings or You → Groups → Archive Groups to edit it again.</p>}
     {/* Sub-header as a metadata row, not a sentence (2026-11-05):

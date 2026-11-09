@@ -34,6 +34,61 @@ export const CATEGORIES = ['Food & Drink','Transport','Accommodation','Activitie
 // PushManager.subscribe as the applicationServerKey string (the Push
 // API accepts the base64url key directly, no byte conversion needed).
 export const VAPID_PUBLIC_KEY = 'BDpvEhNXtb2WZt6aaAOiac_uhut9H0006cTKpmspwcWWmSrsVeZAmF-SjIAzWkBLHoErrNG24FYXgnAlrF7HxAg';
+// ONBOARDING, Nov 2026: two-stage setup for new family members.
+// Stage 1 is Add to Home Screen (the prerequisite on iPhone, where
+// push only works from the Home Screen app); Stage 2 is Enable
+// notifications (only once the app is launched from the Home Screen).
+// isStandalone() tells them apart: iOS exposes navigator.standalone,
+// and the standard display-mode media query covers Android + modern iOS.
+export function isStandalone(): boolean {
+  if (typeof window === 'undefined') return false;
+  if ((window.navigator as any).standalone === true) return true;
+  try { return window.matchMedia('(display-mode: standalone)').matches; } catch { return false; }
+}
+// Rough platform detection, only for the Add-to-Home-Screen steps
+// (Share -> Add to Home Screen on iOS, menu -> Add to Home screen on
+// Android). Falls back to the generic wording when it cannot tell.
+export function installPlatform(): 'ios' | 'android' | 'other' {
+  if (typeof navigator === 'undefined') return 'other';
+  const ua = navigator.userAgent || '';
+  if (/iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1)) return 'ios';
+  if (/Android/.test(ua)) return 'android';
+  return 'other';
+}
+export function pushSupported(): boolean {
+  return typeof navigator !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window;
+}
+// The current push subscription on THIS device/browser, or null.
+// A subscription existing means notifications are on for this device.
+export async function getPushSubscription(): Promise<PushSubscription | null> {
+  if (!pushSupported()) return null;
+  const reg = await navigator.serviceWorker.ready;
+  return reg.pushManager.getSubscription();
+}
+// Subscribe this device to push: request permission, subscribe with the
+// VAPID public key, and store the subscription on the server. Throws
+// when permission is denied/blocked or the subscribe fails, so callers
+// can show the message. The browser permission prompt only appears on
+// a user gesture — there is no way to trigger it without a tap.
+export async function subscribePush(): Promise<PushSubscription> {
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') throw new Error(permission === 'denied' ? 'Notifications are blocked — allow them in your browser settings, then try again.' : 'Notifications were not allowed.');
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: VAPID_PUBLIC_KEY });
+  await api('/api/me/push-subscription', 'POST', sub.toJSON());
+  return sub;
+}
+// Unsubscribe this device from push: remove the server row, then drop
+// the browser subscription. The server delete runs first so a row is
+// never left behind when the browser unsubscribe fails.
+export async function unsubscribePush(): Promise<void> {
+  if (!pushSupported()) return;
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  if (!sub) return;
+  try { await api('/api/me/push-subscription', 'DELETE', { endpoint: sub.endpoint }); } catch { /* server row may already be gone */ }
+  await sub.unsubscribe();
+}
 const SYM: Record<string,string> = { SGD:'S$', USD:'$', EUR:'€', GBP:'£', AUD:'A$', CAD:'C$', JPY:'¥', KRW:'₩', VND:'₫', HKD:'HK$', TWD:'NT$', CNY:'¥', INR:'₹', MYR:'RM', THB:'฿', IDR:'Rp', PHP:'₱', NZD:'NZ$', CHF:'CHF ' };
 export function fmt(minor: number, cur: string) {
   const zero = ['JPY','KRW','VND'].includes(cur);
