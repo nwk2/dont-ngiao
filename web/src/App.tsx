@@ -339,6 +339,11 @@ export default function App() {
   // the same check instead of losing the session. Log out and
   // post-reset 401s still clear the token, as before.
   const [authError, setAuthError] = useState('');
+  // AUTH NOTICE, Nov 2026: a one-line message shown on the Auth screen
+  // after a forced logout (e.g. a password change logs you out
+  // immediately). Set by the flow that logs you out; cleared on a
+  // successful login so it never goes stale.
+  const [authNotice, setAuthNotice] = useState('');
   async function checkAuth() {
     if (!getToken()) return;
     setAuthError('');
@@ -351,7 +356,7 @@ export default function App() {
   useEffect(()=>{ checkAuth(); }, []);
   async function doAuth(mode: 'login'|'register', name: string, email: string, password: string) {
     setError(''); setLoading(true);
-    try { const d = await api(`/api/auth/${mode}`, 'POST', mode==='register' ? {name,email,password} : {email,password}); setToken(d.token); setUser(d.user); setAuthState('authed'); await loadGroups(); await restoreSaved(); }
+    try { const d = await api(`/api/auth/${mode}`, 'POST', mode==='register' ? {name,email,password} : {email,password}); setToken(d.token); setUser(d.user); setAuthState('authed'); setAuthNotice(''); await loadGroups(); await restoreSaved(); }
     catch(e:any){ setError(e.message); } finally { setLoading(false); }
   }
   function doLogout() { try { localStorage.removeItem(LAST_GROUP_KEY); } catch { /* ignore */ } setToken(null); setUser(null); setGroup(null); setGroups(null); setAuthState('guest'); }
@@ -398,7 +403,7 @@ export default function App() {
     if (readSavedGroup()) return <GroupSkeleton />;
     return <HomeSkeleton user={null} />;
   }
-  if (authState === 'guest' || !user) return <Auth onAuth={doAuth} error={error} loading={loading} inviteToken={inviteToken} onInvalidInvite={clearInviteParam} />;
+  if (authState === 'guest' || !user) return <Auth onAuth={doAuth} error={error} loading={loading} notice={authNotice} inviteToken={inviteToken} onInvalidInvite={clearInviteParam} />;
   if (inviteToken) return <InviteView token={inviteToken} onJoined={handleInviteJoined} onCancel={clearInviteParam} />;
   if (groupLoading) return <GroupSkeleton />;
   // Reload with a detail object when the write already returned one:
@@ -410,7 +415,7 @@ export default function App() {
   // (archive/restore/leave from Settings, Home restore via loadGroups).
   if (group) return <GroupView group={group} setGroup={setGroup} tab={tab} setTab={setTab} back={()=>{setGroup(null); loadGroups();}} reload={(detail?: any)=> detail && detail.id ? (setGroup(detail), setError(''), Promise.resolve(true)) : loadGroup(group.id, { keepTab: true })} error={error} setError={setError}  theme={theme} setTheme={setTheme} />;
   if (!groups) return <HomeSkeleton user={user} />;
-  return <Home user={user} setUser={setUser} onLogout={doLogout} groups={groups} loadGroups={loadGroups} loadGroup={(id: string)=>loadGroup(id, { skeleton: true })} error={error} setError={setError}  theme={theme} setTheme={setTheme} />;
+  return <Home user={user} setUser={setUser} onLogout={doLogout} setAuthNotice={setAuthNotice} groups={groups} loadGroups={loadGroups} loadGroup={(id: string)=>loadGroup(id, { skeleton: true })} error={error} setError={setError}  theme={theme} setTheme={setTheme} />;
 }
 
 // Skeleton screens: grey blocks in the exact shape of the content that is
@@ -501,7 +506,7 @@ function groupBalancesByVerb(items: any[]) {
   }
   return groups;
 }
-function Home({ user, setUser, onLogout, groups, loadGroups, loadGroup, error, setError, theme, setTheme }: any) {
+function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, loadGroup, error, setError, theme, setTheme }: any) {
   const [showCreate, setShowCreate] = useState(false);
   const [showYou, setShowYou] = useState(false);
   // BUG FIX, 2026-11-05: YouView used to render inline at the BOTTOM of
@@ -510,7 +515,7 @@ function Home({ user, setUser, onLogout, groups, loadGroups, loadGroup, error, s
   // Home, then You, then scrolling back to Home. It now replaces Home
   // via an early return, like App replaces Home with GroupView and like
   // YouView replaces itself with the archived view.
-  if (showYou) return <YouView user={user} setUser={setUser} onLogout={onLogout} groups={groups} loadGroups={loadGroups} loadGroup={loadGroup} onBack={()=>setShowYou(false)} setError={setError}  theme={theme} setTheme={setTheme} />;
+  if (showYou) return <YouView user={user} setUser={setUser} onLogout={onLogout} setAuthNotice={setAuthNotice} groups={groups} loadGroups={loadGroups} loadGroup={loadGroup} onBack={()=>setShowYou(false)} setError={setError}  theme={theme} setTheme={setTheme} />;
     const totals: any[] = groups?.totals || [];
   return (<div style={S}>
     <div style={{marginBottom:16}}>
@@ -562,7 +567,7 @@ function Home({ user, setUser, onLogout, groups, loadGroups, loadGroup, error, s
 }
 
 
-function YouView({ user, setUser, onLogout, groups, loadGroups, loadGroup, onBack, setError, theme, setTheme }: any) {
+function YouView({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, loadGroup, onBack, setError, theme, setTheme }: any) {
   const [showArchived, setShowArchived] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(user.name || '');
@@ -580,7 +585,6 @@ function YouView({ user, setUser, onLogout, groups, loadGroups, loadGroup, onBac
   const [cpConfirm, setCpConfirm] = useState('');
   const [cpShow, setCpShow] = useState(false);
   const [cpError, setCpError] = useState('');
-  const [cpDone, setCpDone] = useState(false);
   const archived: any[] = groups?.archived || [];
   const totalGroups = (groups?.active?.length || 0) + archived.length;
   const since = user.created_at ? (()=>{ const d = new Date(user.created_at); return `${d.toLocaleString('en-GB',{month:'short'})}, ${d.getFullYear()}`; })() : null;
@@ -603,7 +607,7 @@ function YouView({ user, setUser, onLogout, groups, loadGroups, loadGroup, onBac
     <h3 style={{marginBottom:8}}>Account</h3>
     <div style={{...homeCard,display:'flex',flexDirection:'column',gap:8}}>
       <button style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}} onClick={()=>{setNameDraft(user.name); setEditError(''); setEditingName(true);}}><span>Edit name <span style={{color:'var(--muted)'}}>· Shown to your groups</span></span><span style={{color:'var(--muted)'}}>›</span></button>
-      <button style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}} onClick={()=>{setCpCurrent(''); setCpNew(''); setCpConfirm(''); setCpError(''); setCpDone(false); setShowChangePassword(true);}}><span>Change password</span><span style={{color:'var(--muted)'}}>›</span></button>
+      <button style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}} onClick={()=>{setCpCurrent(''); setCpNew(''); setCpConfirm(''); setCpError(''); setShowChangePassword(true);}}><span>Change password</span><span style={{color:'var(--muted)'}}>›</span></button>
     </div>
     <h3 style={{marginBottom:8}}>Groups</h3>
     <div style={{...homeCard,display:'flex',flexDirection:'column',gap:8}}>
@@ -622,17 +626,20 @@ function YouView({ user, setUser, onLogout, groups, loadGroups, loadGroup, onBac
     {showChangePassword && (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
       <div style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h2 style={{margin:0}}>Change password</h2><button type="button" aria-label="Close" title="Close" onClick={()=>setShowChangePassword(false)} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
-        {cpDone ? (<>
-          <p style={{fontSize:13,color:'var(--muted)'}}>Your password has been changed. You have been logged out everywhere — please log in again with your new password.</p>
-          <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={async()=>{setShowChangePassword(false); onLogout();}}>Log in again</AsyncButton>
-        </>) : (<>
-          <p style={{fontSize:13,color:'var(--muted)'}}>You will be logged out everywhere after changing your password.</p>
-          <label>Current password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={cpShow ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={cpCurrent} onChange={e=>setCpCurrent(e.target.value)} aria-label="Current password" /><button type="button" aria-label={cpShow ? 'Hide password' : 'Show password'} aria-pressed={cpShow} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onClick={()=>setCpShow(v=>!v)}>{cpShow ? '🙈' : '👁️'}</button></div>
-          <label>New password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={cpShow ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={cpNew} onChange={e=>setCpNew(e.target.value)} aria-label="New password" /><button type="button" aria-label={cpShow ? 'Hide password' : 'Show password'} aria-pressed={cpShow} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onClick={()=>setCpShow(v=>!v)}>{cpShow ? '🙈' : '👁️'}</button></div>
-          <label>Confirm new password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={cpShow ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={cpConfirm} onChange={e=>setCpConfirm(e.target.value)} aria-label="Confirm new password" /><button type="button" aria-label={cpShow ? 'Hide password' : 'Show password'} aria-pressed={cpShow} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onClick={()=>setCpShow(v=>!v)}>{cpShow ? '🙈' : '👁️'}</button></div>
-          {cpError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{cpError}</p>}
-          <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={async()=>{setCpError(''); if (!cpCurrent || !cpNew || !cpConfirm) { setCpError('Please fill in all three fields'); return; } if (cpNew.length < 6) { setCpError('New password must be at least 6 characters'); return; } if (cpNew !== cpConfirm) { setCpError('New passwords do not match'); return; } if (cpNew === cpCurrent) { setCpError('New password must be different from the current password'); return; } try { await api('/api/me/password','POST',{currentPassword:cpCurrent,newPassword:cpNew}); setCpDone(true); } catch (e:any) { setCpError(e.message); }}}>Save</AsyncButton>
-        </>)}
+        {/* LOGOUT-ON-SUCCESS, Nov 2026: the sheet used to show a success
+        state with a 'Log in again' button, but the X still closed the
+        sheet without logging out — the session was already dead
+        server-side, so the app sat in a stale signed-in state until
+        the next API call 401'd (a refresh kicked you out). Now a
+        successful change logs out immediately (onLogout) and sets an
+        auth notice, so Auth explains why you are logged out. There is
+        no success state in the sheet and no way to stay in the app. */}
+        <p style={{fontSize:13,color:'var(--muted)'}}>You will be logged out everywhere after changing your password.</p>
+        <label>Current password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={cpShow ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={cpCurrent} onChange={e=>setCpCurrent(e.target.value)} aria-label="Current password" /><button type="button" aria-label={cpShow ? 'Hide password' : 'Show password'} aria-pressed={cpShow} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onClick={()=>setCpShow(v=>!v)}>{cpShow ? '🙈' : '👁️'}</button></div>
+        <label>New password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={cpShow ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={cpNew} onChange={e=>setCpNew(e.target.value)} aria-label="New password" /><button type="button" aria-label={cpShow ? 'Hide password' : 'Show password'} aria-pressed={cpShow} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onClick={()=>setCpShow(v=>!v)}>{cpShow ? '🙈' : '👁️'}</button></div>
+        <label>Confirm new password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={cpShow ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={cpConfirm} onChange={e=>setCpConfirm(e.target.value)} aria-label="Confirm new password" /><button type="button" aria-label={cpShow ? 'Hide password' : 'Show password'} aria-pressed={cpShow} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onClick={()=>setCpShow(v=>!v)}>{cpShow ? '🙈' : '👁️'}</button></div>
+        {cpError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{cpError}</p>}
+        <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={async()=>{setCpError(''); if (!cpCurrent || !cpNew || !cpConfirm) { setCpError('Please fill in all three fields'); return; } if (cpNew.length < 6) { setCpError('New password must be at least 6 characters'); return; } if (cpNew !== cpConfirm) { setCpError('New passwords do not match'); return; } if (cpNew === cpCurrent) { setCpError('New password must be different from the current password'); return; } try { await api('/api/me/password','POST',{currentPassword:cpCurrent,newPassword:cpNew}); setShowChangePassword(false); if (setAuthNotice) setAuthNotice('Your password was changed — please log in again with your new password.'); onLogout(); } catch (e:any) { setCpError(e.message); }}}>Save</AsyncButton>
       </div>
     </div>)}
   </div>);
@@ -762,7 +769,7 @@ function AuthCorgi({ focus, value, eyesClosed, oneEyePeek }: any) {
   </div>);
 }
 
-function Auth({ onAuth, error, loading, inviteToken, onInvalidInvite }: any) {
+function Auth({ onAuth, error, loading, notice, inviteToken, onInvalidInvite }: any) {
   const [mode, setMode] = useState<'login'|'register'>('login');
   const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -797,6 +804,7 @@ function Auth({ onAuth, error, loading, inviteToken, onInvalidInvite }: any) {
   const oneEyePeek = showPassword && (pwFocused || lastField === 'password');
   const pet = mode==='login' ? <AuthCorgi focus={focus} value={focusValue} eyesClosed={eyesClosed} oneEyePeek={oneEyePeek} /> : <AuthBear focus={focus} value={focusValue} eyesClosed={eyesClosed} oneEyePeek={oneEyePeek} />;
   return (<div style={S}><h1>Don't Ngiao</h1><p style={{color:'var(--muted)',marginTop:0}}>Mai ngiao, mai drama.</p>
+    {notice && <div style={{...homeCard,background:'var(--tint-bg)',marginBottom:16}}><div style={{fontSize:14,lineHeight:1.45}}>{notice}</div></div>}
     {inviteToken && inviteState==='loading' && <p style={{color:'var(--muted)',fontSize:13}}>Checking your invite…</p>}
     {inviteToken && inviteState==='ready' && invite && <div style={{...homeCard,background:'var(--tint-bg)',marginBottom:16}}>
       <div style={{fontSize:18,fontWeight:700,lineHeight:1.3}}>You're invited to join {invite.groupName}</div>
