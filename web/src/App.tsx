@@ -589,7 +589,7 @@ function OnboardingPrompts() {
     <p style={{fontSize:13, color:'var(--muted)', margin:'6px 0 12px'}}>New expense, edited / deleted, and settle — only for groups you&apos;re in. One tap here, then Allow.</p>
     {pushError && <p style={{color:'var(--danger-text)', fontSize:13}}>{pushError}</p>}
     <div style={{display:'flex', gap:8}}>
-      <AsyncButton style={{...primary, flex:1, padding:'12px', fontSize:16}} disabled={pushBusy} onClick={enablePush}>{pushBusy ? 'Enabling…' : 'Enable notifications'}</AsyncButton>
+      <AsyncButton style={{...primary, flex:1, padding:'9px 14px', fontSize:15}} disabled={pushBusy} onClick={enablePush}>{pushBusy ? 'Enabling…' : 'Enable notifications'}</AsyncButton>
       <button style={btn} onClick={dismissPush}>Not now</button>
     </div>
   </div>);
