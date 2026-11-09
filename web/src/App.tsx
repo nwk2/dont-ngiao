@@ -759,7 +759,7 @@ function YouView({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, l
     <div style={{...homeCard,display:'flex',flexDirection:'column',gap:8}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
         <span>Push notifications <span style={{color:'var(--muted)'}}>· New expense, edited / deleted, settle — only for groups you're in</span></span>
-        <button type="button" role="switch" aria-checked={!!pushEnabled} aria-label="Push notifications" disabled={!pushSupported || pushBusy || pushEnabled === null} onClick={togglePush} style={{flexShrink:0,width:52,height:32,borderRadius:999,border:'1px solid var(--border)',background:pushEnabled ? 'var(--tint)' : 'var(--field)',cursor:(!pushSupported || pushBusy || pushEnabled === null) ? 'default' : 'pointer',opacity:(!pushSupported || pushBusy || pushEnabled === null) ? 0.5 : 1,padding:0,position:'relative'}}>
+        <button type="button" role="switch" aria-checked={!!pushEnabled} aria-label="Push notifications" disabled={!pushSupported || pushBusy || pushEnabled === null} onClick={togglePush} style={{flexShrink:0,width:52,height:32,borderRadius:999,border:'1px solid var(--border)',background:pushEnabled ? 'var(--accent)' : 'var(--field)',cursor:(!pushSupported || pushBusy || pushEnabled === null) ? 'default' : 'pointer',opacity:(!pushSupported || pushBusy || pushEnabled === null) ? 0.5 : 1,padding:0,position:'relative'}}>
           <span style={{position:'absolute',top:3,left:pushEnabled ? 25 : 3,width:24,height:24,borderRadius:'50%',background:'#fff',boxShadow:'0 1px 3px rgba(0,0,0,0.3)'}} />
         </button>
       </div>
