@@ -608,6 +608,14 @@ function YouView({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, l
     <div style={{...homeCard,display:'flex',flexDirection:'column',gap:8}}>
       <button style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}} onClick={()=>{setNameDraft(user.name); setEditError(''); setEditingName(true);}}><span>Edit name <span style={{color:'var(--muted)'}}>· Shown to your groups</span></span><span style={{color:'var(--muted)'}}>›</span></button>
       <button style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}} onClick={()=>{setCpCurrent(''); setCpNew(''); setCpConfirm(''); setCpError(''); setShowChangePassword(true);}}><span>Change password</span><span style={{color:'var(--muted)'}}>›</span></button>
+      {/* ADMIN BUTTON, Nov 2026: the admin screen was only reachable by
+      typing ?admin. An Admin row now sits in the Account card, visible
+      only when the current user is an admin (user.is_admin comes from
+      /api/me — no BE change). It just navigates to ?admin; the admin
+      session restore (or the admin login form) handles access from
+      there, and the admin sign-in stays separate — this button does NOT
+      promote the app session to admin. Non-admins never see it. */}
+      {user.is_admin ? (<button style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}} onClick={()=>{ window.location.href = '/?admin'; }}><span>Admin</span><span style={{color:'var(--muted)'}}>›</span></button>) : null}
     </div>
     <h3 style={{marginBottom:8}}>Groups</h3>
     <div style={{...homeCard,display:'flex',flexDirection:'column',gap:8}}>
