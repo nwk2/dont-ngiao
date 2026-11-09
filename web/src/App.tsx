@@ -2025,6 +2025,38 @@ function ExpenseModal({ group, expense, onClose, reload }: any) {
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false); const [showCategoryPicker, setShowCategoryPicker] = useState(false); const [showPayerPicker, setShowPayerPicker] = useState(false); const [showSplit, setShowSplit] = useState(false); const [showDate, setShowDate] = useState(false);
   const toggle = (id:string)=> setSelected(s=> s.includes(id) ? s.filter(x=>x!==id) : [...s, id]);
   const splitLabel = splitType==='equal' ? 'Equally' : splitType==='exact' ? 'Exact amounts' : 'Percentages';
+  // RESCALE, Nov 2026: in 'exact' mode the per-person amounts are frozen
+  // at the values they had when the split was set, so changing the total
+  // used to break the sum (116.50 + 116.50 != 1.00) and the server
+  // rejected the save with 'Exact amounts must cover all participants
+  // and sum to the total'. Now, when the total changes, the exact
+  // amounts re-scale proportionally to the new total — the ratio is
+  // preserved, an equal split stays equal, and the rounding remainder
+  // goes to the payer (same rule as equalSplit). The base is the SUM of
+  // the current exact amounts, not the previous total, so it still works
+  // when the user clears the field first (select-all + delete leaves the
+  // amount temporarily empty/invalid — the exact amounts still encode
+  // the old total via their sum). Skips when the new total is invalid,
+  // when any selected participant lacks a valid exact amount, or when
+  // the old sum is zero. Only applies in 'exact' mode — 'equal' and
+  // 'percent' already re-derive from the total at save time.
+  const rescaleExact = (newAmountStr: string) => {
+    if (splitType !== 'exact') return;
+    const newTotal = toMinor(newAmountStr, currency);
+    if (newTotal === null) return;
+    const ids = selected;
+    const oldMinors = ids.map(id => toMinor(exact[id] || '', currency));
+    if (oldMinors.some(v => v === null)) return;
+    const oldSum = (oldMinors as number[]).reduce((a, b) => a + b, 0);
+    if (oldSum <= 0) return;
+    const scaled = (oldMinors as number[]).map(v => Math.round(v * newTotal / oldSum));
+    const diff = newTotal - scaled.reduce((a, b) => a + b, 0);
+    const adjustIdx = ids.indexOf(payer) >= 0 ? ids.indexOf(payer) : 0;
+    scaled[adjustIdx] += diff;
+    const next: Record<string, string> = { ...exact };
+    ids.forEach((id, i) => { next[id] = fromMinor(scaled[i], currency); });
+    setExact(next);
+  };
   const sym = (cur:string) => CURRENCY_INFO[cur]?.sym || cur;
   const drag = useSheetDrag(onClose);
   const payerPerson = personDisplay(group, payer, group.members.find((m:any)=>m.id===payer)?.name);
@@ -2034,7 +2066,7 @@ function ExpenseModal({ group, expense, onClose, reload }: any) {
       <div style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
         <div style={{width:36,height:4,borderRadius:99,background:'var(--border)',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><h2 style={{margin:0}}>{expense ? 'Edit expense' : 'Add expense'}</h2><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
-        <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'12px 0 4px'}}><span style={{fontSize:36,fontWeight:700,lineHeight:1}}>{sym(currency)}</span><input style={{width:`${Math.max((amount || '0.00').length, 1)}ch`,background:'transparent',border:'none',color:'var(--text)',fontSize:36,fontWeight:700,lineHeight:1,padding:0,textAlign:'center',outline:'none'}} inputMode="decimal" placeholder="0.00" value={amount} onChange={e=>setAmount(e.target.value)} onFocus={e=>e.target.select()} aria-label="Amount" /></div>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'12px 0 4px'}}><span style={{fontSize:36,fontWeight:700,lineHeight:1}}>{sym(currency)}</span><input style={{width:`${Math.max((amount || '0.00').length, 1)}ch`,background:'transparent',border:'none',color:'var(--text)',fontSize:36,fontWeight:700,lineHeight:1,padding:0,textAlign:'center',outline:'none'}} inputMode="decimal" placeholder="0.00" value={amount} onChange={e=>{ setAmount(e.target.value); rescaleExact(e.target.value); }} onFocus={e=>e.target.select()} aria-label="Amount" /></div>
         <div style={{...balCard,marginBottom:12}}>
           <label style={{display:'flex',alignItems:'center',gap:12,padding:'13px 14px'}}><span style={{fontSize:15,color:'var(--muted)',flexShrink:0}}>Description</span><input style={{flex:1,minWidth:0,background:'transparent',border:'none',outline:'none',color:'var(--text)',fontSize:16,padding:0,textAlign:'right'}} placeholder="What was it for?" value={description} onChange={e=>setDescription(e.target.value)} aria-label="Description" /></label>
           <button type="button" onClick={()=>setShowCategoryPicker(true)} style={rowBtn}><span style={{fontSize:15,color:'var(--muted)',flexShrink:0}}>Category</span><span style={{flex:1}} /><span style={{display:'flex',alignItems:'center',gap:8}}><span style={{width:28,height:28,borderRadius:8,background:EXP_CAT_COLORS[category] || 'var(--muted)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{catIcon(category)}</span><span style={{fontSize:15}}>{category}</span></span><Chev /></button>
