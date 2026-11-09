@@ -866,16 +866,15 @@ function AdminView() {
       catch { setCopyStatus('Could not copy automatically — select the link below and copy it manually.'); }
     } catch (e: any) { setError(e.message); } finally { setResettingId(null); }
   }
-  return (<div style={S}><h1>Admin</h1><p style={{color:'var(--muted)'}}>Signed in as {adminUser.name} ({adminUser.email}) · Modules: Users</p>
-    {/* ADMIN MODULE BAR, Nov 2026: two rows. Row 1 is the module tabs as
-        their own full-width segmented control (like the group tabs in the
-        main app) so more modules slot in later with no layout change.
-        Row 2 is the actions (Log out / Back to app) as standard btn
-        buttons. They used to share one row, which mixed a tabTrack with
-        standalone buttons — different heights/fonts and a stray track
-        margin — and it would have crowded once a second module arrived. */}
+  return (<div style={S}><div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',marginBottom:8}}><h1 style={{margin:0}}>Admin</h1><div style={{display:'flex',gap:8,flexShrink:0}}><button style={btn} onClick={doAdminLogout}>Log out</button><button style={btn} onClick={()=>{ window.location.href = '/'; }}>← Back to app</button></div></div><p style={{color:'var(--muted)'}}>Signed in as {adminUser.name} ({adminUser.email}) · Modules: Users</p>
+    {/* ADMIN MODULE BAR, Nov 2026: the module tabs are their own
+        full-width segmented control row (like the group tabs in the main
+        app) so more modules slot in later with no layout change. The
+        actions (Log out / Back to app) live inline with the Admin title
+        above, not in the tab row — they used to share a row with the
+        tabTrack, which mixed a tab with standalone buttons (different
+        heights/fonts, stray track margin). */}
     <div style={tabTrack}><button style={tabPillActive}>Users</button></div>
-    <div style={{display:'flex',gap:8,marginBottom:16}}><button style={btn} onClick={doAdminLogout}>Log out</button><button style={btn} onClick={()=>{ window.location.href = '/'; }}>← Back to app</button></div>
     {error && <p style={{color:'var(--danger-text)'}}>{error}</p>}
     {resetResult && <div style={homeCard}><strong>Reset link for {resetResult.user.name} ({resetResult.user.email})</strong><p style={{fontSize:13,color:'var(--muted)'}}>Single-use, expires {new Date(resetResult.expiresAt).toLocaleString()}. Send this link to the user yourself — the app does not email it.</p><input readOnly style={input} value={resetResult.link} onFocus={e=>e.target.select()} /><button style={btn} onClick={async()=>{ try { await navigator.clipboard.writeText(resetResult.link); setCopyStatus('Copied to clipboard.'); } catch { setCopyStatus('Could not copy automatically.'); } }}>Copy link again</button>{copyStatus && <p style={{fontSize:13,color:'var(--muted)'}}>{copyStatus}</p>}</div>}
     <label>Search users</label><input style={input} placeholder="Name or email (fuzzy: wk matches Wai Kit)" value={search} onChange={e=>setSearch(e.target.value)} />
