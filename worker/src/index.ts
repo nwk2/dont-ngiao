@@ -392,6 +392,18 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       await env.DB.prepare('INSERT INTO sessions (token,user_id,created_at) VALUES (?,?,?)').bind(token, u.id, nowIso()).run();
       return json({ user: { id: u.id, name: u.name, email: u.email }, token }, 200, origin);
     }
+    // ADMIN SESSION RESTORE, Nov 2026: the admin token persists in
+    // localStorage but adminUser was only ever set by a fresh login, so
+    // a reload always dropped the admin back to the login form (the
+    // stored token was never used to restore the session). The frontend
+    // now calls this on load when a token exists: it validates the
+    // token (authAdmin) and returns the admin user, so a reload keeps
+    // the admin signed in. A dead token gets a 403 and the frontend
+    // clears it, same as before.
+    if (path === '/api/admin/me' && req.method === 'GET') {
+      const admin = await authAdmin(req, env); if (!admin) return err('Admin access required', 403, origin);
+      return json({ user: { id: admin.id, name: admin.name, email: admin.email } }, 200, origin);
+    }
     if (path === '/api/admin/users' && req.method === 'GET') {
       const admin = await authAdmin(req, env); if (!admin) return err('Admin access required', 403, origin);
       const users = await env.DB.prepare('SELECT id, name, email, is_admin, created_at FROM users WHERE LENGTH(password_hash) > 0 ORDER BY created_at').bind().all<Row>();

@@ -827,6 +827,7 @@ function fuzzyMatch(query: string, text: string): boolean {
 function AdminView() {
   const [adminUser, setAdminUser] = useState<any>(null);
   const [adminToken, setAdminTokenState] = useState<string | null>(() => getAdminToken());
+  const [adminChecking, setAdminChecking] = useState<boolean>(() => !!getAdminToken());
   const [users, setUsers] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [showPassword, setShowPassword] = useState(false);
@@ -850,7 +851,14 @@ function AdminView() {
   async function loadUsers(tok: string) { const d = await adminApi('/api/admin/users', 'GET', undefined, tok); setUsers(d.users || []); }
   useEffect(() => {
     if (!adminToken) return;
-    adminApi('/api/admin/users', 'GET', undefined, adminToken).then(d => setUsers(d.users || [])).catch(() => { setAdminToken(null); setAdminTokenState(null); setAdminUser(null); });
+    // ADMIN SESSION RESTORE, Nov 2026: the token persists in
+    // localStorage but adminUser was only ever set by a fresh login, so
+    // a reload always dropped the admin back to the login form. Now the
+    // stored token is validated via /api/admin/me on load and the admin
+    // user is restored, so a reload keeps the admin signed in. A dead
+    // token clears itself, as before. adminChecking avoids flashing the
+    // login form while the restore is in flight.
+    adminApi('/api/admin/me', 'GET', undefined, adminToken).then(async (d) => { setAdminUser(d.user); await loadUsers(adminToken); }).catch(() => { setAdminToken(null); setAdminTokenState(null); setAdminUser(null); }).finally(() => setAdminChecking(false));
   }, []);
   async function doAdminLogin() {
     setError(''); setLoading(true);
@@ -909,6 +917,7 @@ function AdminView() {
     } catch (e: any) { setError(e.message); }
     finally { setGroupBusy(null); }
   }
+  if (adminChecking) return (<div style={S}><p style={{color:'var(--muted)'}}>Loading…</p></div>);
   if (!adminUser) return (<div style={S}><h1>Admin</h1><p style={{color:'var(--muted)'}}>Separate admin login — this is not the regular Don't Ngiao login. Only an admin account can sign in here.</p>
     <div style={homeCard}>
     {error && <p style={{color:'var(--danger-text)',marginTop:0}}>{error}</p>}
