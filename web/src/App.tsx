@@ -1209,10 +1209,18 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
   // is not reset when a new group loads), so a currency picked in one
   // group could be absent from the next, rendering a blank chart with
   // no explanation. Clamp per render: use the picked currency only if
-  // this group actually has it, otherwise fall back to the group's
-  // first currency. The preference itself is kept (not cleared), so
-  // returning to a group that has that currency restores it.
-  const cur = (catCur && currencies.includes(catCur)) ? catCur : (currencies[0] || group.defaultCurrency);
+  // this group actually has it, otherwise fall back. The preference
+  // itself is kept (not cleared), so returning to a group that has
+  // that currency restores it.
+  // CHART DEFAULT, Nov 2026 (Wai picked group default): the fallback
+  // used to be currencies[0] — whichever currency appears first in
+  // the category data, an accident of expense order (KL 2026 showed
+  // SGD while the group default is MYR). Now the fallback prefers the
+  // group's defaultCurrency when the group has data in it, and only
+  // falls back to the first currency with data when the default has
+  // none (so the chart is never blank). An empty group shows the
+  // default currency (currencies is empty, so the last fallback wins).
+  const cur = (catCur && currencies.includes(catCur)) ? catCur : (currencies.includes(group.defaultCurrency) ? group.defaultCurrency : (currencies[0] || group.defaultCurrency));
   const catData = (catView==='group' ? group.categoryGroup?.[cur] : group.categoryMine?.[cur]) || {};
   // BY MEMBER VIEW, Nov 2026: per-member total PAID (gross) in the
   // selected currency, computed from the loaded expenses (no BE change
