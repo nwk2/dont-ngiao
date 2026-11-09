@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { api, setToken, getToken, CURRENCIES, CATEGORIES, fmt, toMinor, fromMinor } from './api';
+import { api, setToken, getToken, CURRENCIES, CATEGORIES, fmt, toMinor, fromMinor, VAPID_PUBLIC_KEY } from './api';
 import { DateField, fmtDate, todayIso } from './calendar';
 import { Pie, DailyBar } from './pie';
 
@@ -585,6 +585,54 @@ function YouView({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, l
   const [cpConfirm, setCpConfirm] = useState('');
   const [cpShow, setCpShow] = useState(false);
   const [cpError, setCpError] = useState('');
+  // PUSH NOTIFICATIONS, Nov 2026: one global on/off toggle per user
+  // (not per group — v1 scope is new expense / edited / deleted /
+  // settle, only for groups the user is in). Presence of a push
+  // subscription row on the server IS the opt-in; turning it off
+  // deletes the row. On iOS this only works when the app is added to
+  // the Home Screen and launched standalone (iOS 16.4+).
+  const pushSupported = typeof navigator !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window;
+  const [pushEnabled, setPushEnabled] = useState<boolean | null>(null);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState('');
+  useEffect(() => {
+    if (!pushSupported) { setPushEnabled(false); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        if (!cancelled) setPushEnabled(!!sub);
+      } catch { if (!cancelled) setPushEnabled(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [pushSupported]);
+  async function togglePush() {
+    if (!pushSupported || pushBusy) return;
+    setPushError('');
+    setPushBusy(true);
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      if (pushEnabled) {
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          try { await api('/api/me/push-subscription', 'DELETE', { endpoint: sub.endpoint }); } catch { /* server row may already be gone */ }
+          await sub.unsubscribe();
+        }
+        setPushEnabled(false);
+      } else {
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') { setPushError(permission === 'denied' ? 'Notifications are blocked — allow them in your browser settings, then try again.' : 'Notifications were not allowed.'); setPushBusy(false); return; }
+        const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: VAPID_PUBLIC_KEY });
+        await api('/api/me/push-subscription', 'POST', sub.toJSON());
+        setPushEnabled(true);
+      }
+    } catch (e: any) {
+      setPushError(e?.message || 'Could not change notification settings.');
+    } finally {
+      setPushBusy(false);
+    }
+  }
   const archived: any[] = groups?.archived || [];
   const totalGroups = (groups?.active?.length || 0) + archived.length;
   const since = user.created_at ? (()=>{ const d = new Date(user.created_at); return `${d.toLocaleString('en-GB',{month:'short'})}, ${d.getFullYear()}`; })() : null;
@@ -616,6 +664,17 @@ function YouView({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, l
       there, and the admin sign-in stays separate — this button does NOT
       promote the app session to admin. Non-admins never see it. */}
       {user.is_admin ? (<button style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}} onClick={()=>{ window.location.href = '/?admin'; }}><span>Admin</span><span style={{color:'var(--muted)'}}>›</span></button>) : null}
+    </div>
+    <h3 style={{marginBottom:8}}>Notifications</h3>
+    <div style={{...homeCard,display:'flex',flexDirection:'column',gap:8}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
+        <span>Push notifications <span style={{color:'var(--muted)'}}>· New expense, edited / deleted, settle — only for groups you're in</span></span>
+        <button type="button" role="switch" aria-checked={!!pushEnabled} aria-label="Push notifications" disabled={!pushSupported || pushBusy || pushEnabled === null} onClick={togglePush} style={{flexShrink:0,width:52,height:32,borderRadius:999,border:'1px solid var(--border)',background:pushEnabled ? 'var(--tint)' : 'var(--field)',cursor:(!pushSupported || pushBusy || pushEnabled === null) ? 'default' : 'pointer',opacity:(!pushSupported || pushBusy || pushEnabled === null) ? 0.5 : 1,padding:0,position:'relative'}}>
+          <span style={{position:'absolute',top:3,left:pushEnabled ? 25 : 3,width:24,height:24,borderRadius:'50%',background:'#fff',boxShadow:'0 1px 3px rgba(0,0,0,0.3)'}} />
+        </button>
+      </div>
+      {pushError && <div style={{color:'var(--danger-text)',fontSize:13}}>{pushError}</div>}
+      {!pushSupported && <div style={{color:'var(--muted)',fontSize:13}}>Push notifications are not supported in this browser. On iPhone, add the app to your Home Screen first (iOS 16.4+).</div>}
     </div>
     <h3 style={{marginBottom:8}}>Groups</h3>
     <div style={{...homeCard,display:'flex',flexDirection:'column',gap:8}}>

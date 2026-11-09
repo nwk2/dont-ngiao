@@ -27,6 +27,13 @@ export async function api(path: string, method = 'GET', body?: any) {
 }
 export const CURRENCIES = ['SGD','USD','EUR','GBP','AUD','CAD','JPY','KRW','VND','HKD','TWD','CNY','INR','MYR','THB','IDR','PHP','NZD','CHF'];
 export const CATEGORIES = ['Food & Drink','Transport','Accommodation','Activities','Shopping','Other'];
+// PUSH NOTIFICATIONS (Web Push), Nov 2026: the VAPID public key the
+// browser subscribes with. PUBLIC by design — it is not a secret. The
+// matching private key is the VAPID_PRIVATE_KEY Worker secret (runtime
+// secret, never in the repo or the frontend). Pass it to
+// PushManager.subscribe as the applicationServerKey string (the Push
+// API accepts the base64url key directly, no byte conversion needed).
+export const VAPID_PUBLIC_KEY = 'BDpvEhNXtb2WZt6aaAOiac_uhut9H0006cTKpmspwcWWmSrsVeZAmF-SjIAzWkBLHoErrNG24FYXgnAlrF7HxAg';
 const SYM: Record<string,string> = { SGD:'S$', USD:'$', EUR:'€', GBP:'£', AUD:'A$', CAD:'C$', JPY:'¥', KRW:'₩', VND:'₫', HKD:'HK$', TWD:'NT$', CNY:'¥', INR:'₹', MYR:'RM', THB:'฿', IDR:'Rp', PHP:'₱', NZD:'NZ$', CHF:'CHF ' };
 export function fmt(minor: number, cur: string) {
   const zero = ['JPY','KRW','VND'].includes(cur);

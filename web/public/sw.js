@@ -43,3 +43,42 @@ self.addEventListener('fetch', (e) => {
     })
   );
 });
+
+// ---- Push notifications (Nov 2026) ----
+// The Worker sends an encrypted Web Push (RFC 8291 + 8292) to this
+// device's subscription when a money event happens in a group the user
+// is in. The payload is JSON { title, body, url, tag }. Every push
+// shows a notification (browsers require it); tapping it opens the
+// app at the payload's URL (the group), or Home when there is none.
+// `tag` collapses repeats of the same event into one notification.
+self.addEventListener('push', (e) => {
+  let data = {};
+  try { data = e.data ? e.data.json() : {}; } catch { data = {}; }
+  const title = data.title || "Don't Ngiao";
+  const body = data.body || '';
+  const url = data.url || '/';
+  const tag = data.tag || undefined;
+  e.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      tag,
+      data: { url },
+    })
+  );
+});
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || '/';
+  const fullUrl = new URL(url, self.location.origin).href;
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if (client.url === fullUrl && 'focus' in client) return client.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(fullUrl);
+      return undefined;
+    })
+  );
+});

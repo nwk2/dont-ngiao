@@ -3,8 +3,9 @@
 // All money is integer minor units; zero-decimal currencies in whole units.
 // Balances/suggestions are per currency, never converted. Activity log is append-only.
 import { CURRENCIES, CATEGORIES, equalSplit, percentSplit, balanceOf, simplify, formatAmount } from './logic';
+import { notifyGroupMembers, notifyUsers } from './push';
 
-export interface Env { DB: D1Database; TURNSTILE_SECRET?: string; }
+export interface Env { DB: D1Database; TURNSTILE_SECRET?: string; VAPID_PRIVATE_KEY?: string; }
 type Row = Record<string, any>;
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 const nowIso = () => new Date().toISOString();
@@ -196,7 +197,7 @@ async function hashToken(token: string): Promise<string> {
 }
 const RESET_TTL_MS = 24 * 60 * 60 * 1000;
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     // Outer catch: without this, ANY throw inside a handler (e.g. a D1
     // error on a write) becomes a Cloudflare 500 HTML page with NO CORS
     // headers, which the browser blocks and Safari reports as only
@@ -204,11 +205,11 @@ export default {
     // returns a JSON error WITH the frontend origin, so the app shows
     // the actual message (e.g. "no such column: groups.icon") instead.
     // This does not fix a failing write; it makes the failure readable.
-    try { return await handleRequest(req, env); }
+    try { return await handleRequest(req, env, ctx); }
     catch (e: any) { return err(e?.message || 'Internal error', 500, req.headers.get('Origin')); }
   }
 };
-async function handleRequest(req: Request, env: Env): Promise<Response> {
+async function handleRequest(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const origin = req.headers.get('Origin');
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(origin) });
     const url = new URL(req.url);
@@ -347,6 +348,33 @@ async function verifyTurnstile(env: Env, token: string | undefined, ip: string, 
         env.DB.prepare('UPDATE users SET password_salt=?, password_hash=? WHERE id=?').bind(salt, hash, user.id),
         env.DB.prepare('DELETE FROM sessions WHERE user_id=?').bind(user.id),
       ]);
+      return json({ ok: true }, 200, origin);
+    }
+
+    // ---- Push subscriptions (authenticated) ----
+    // POST /api/me/push-subscription { endpoint, keys: { p256dh, auth } }
+    // Saves one device's Web Push subscription for the signed-in user.
+    // A user may have several rows (phone + desktop); the endpoint is
+    // unique per device. Upsert by endpoint so re-subscribing the same
+    // device replaces its keys instead of duplicating the row.
+    // DELETE /api/me/push-subscription { endpoint }
+    // Removes one device's subscription (turning notifications off).
+    // Scoped to the signed-in user, so a user can only delete their own.
+    // Presence of a row IS the opt-in — no separate enabled flag.
+    if (path === '/api/me/push-subscription' && req.method === 'POST') {
+      const user = await authUser(req, env); if (!user) return err('Unauthorized', 401, origin);
+      const endpoint = String(body.endpoint || '');
+      const p256dh = String(body.keys?.p256dh || '');
+      const auth = String(body.keys?.auth || '');
+      if (!endpoint.startsWith('https://') || !p256dh || !auth) return err('A valid push subscription is required', 400, origin);
+      await env.DB.prepare('INSERT INTO push_subscriptions (id, user_id, endpoint, p256dh, auth, created_at) VALUES (?,?,?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id, p256dh=excluded.p256dh, auth=excluded.auth, created_at=excluded.created_at').bind(uid(), user.id, endpoint, p256dh, auth, nowIso()).run();
+      return json({ ok: true }, 200, origin);
+    }
+    if (path === '/api/me/push-subscription' && req.method === 'DELETE') {
+      const user = await authUser(req, env); if (!user) return err('Unauthorized', 401, origin);
+      const endpoint = String(body.endpoint || '');
+      if (!endpoint) return err('An endpoint is required', 400, origin);
+      await env.DB.prepare('DELETE FROM push_subscriptions WHERE endpoint=? AND user_id=?').bind(endpoint, user.id).run();
       return json({ ok: true }, 200, origin);
     }
 
@@ -838,7 +866,7 @@ async function verifyTurnstile(env: Env, token: string | undefined, ip: string, 
         await env.DB.prepare('DELETE FROM group_members WHERE id=?').bind(targetId).run();
         return json(await groupDetail(env, g, user.id), 200, origin);
       }
-      if (sub === 'expenses' && req.method === 'POST') return addExpense(env, g, user, body, origin);
+      if (sub === 'expenses' && req.method === 'POST') return addExpense(env, g, user, body, origin, ctx);
       const de = sub.match(/^expenses\/([^/]+)$/);
       if (de && req.method === 'DELETE') {
         const e = await env.DB.prepare('SELECT * FROM expenses WHERE id=? AND group_id=?').bind(decodeURIComponent(de[1]), groupId).first<Row>();
@@ -847,15 +875,19 @@ async function verifyTurnstile(env: Env, token: string | undefined, ip: string, 
           env.DB.prepare('DELETE FROM expenses WHERE id=?').bind(e.id),
           activityStmt(env, groupId, member.id, user.name, 'expense_deleted', e.amount_minor, e.currency, e.description),
         ]);
+        // PUSH, Nov 2026: notify the other members of this group that an
+        // expense was deleted. Runs after the response (waitUntil) so the
+        // delete is never delayed by a slow push service.
+        ctx.waitUntil(notifyGroupMembers(env, groupId, user.id, { title: `Expense deleted in ${g.name}`, body: `${user.name} deleted ${e.description} · ${formatAmount(e.amount_minor, e.currency)}`, url: `/?group=${groupId}`, tag: `expense-${e.id}` }));
         return json(await groupDetail(env, g, user.id), 200, origin);
       }
       const pe = sub.match(/^expenses\/([^/]+)$/);
       if (pe && req.method === 'PATCH') {
         const e = await env.DB.prepare('SELECT * FROM expenses WHERE id=? AND group_id=?').bind(decodeURIComponent(pe[1]), groupId).first<Row>();
         if (!e) return err('Expense not found', 404, origin);
-        return editExpense(env, g, user, e, body, origin);
+        return editExpense(env, g, user, e, body, origin, ctx);
       }
-      if (sub === 'payments' && req.method === 'POST') return recordPayment(env, g, user, body, origin);
+      if (sub === 'payments' && req.method === 'POST') return recordPayment(env, g, user, body, origin, ctx);
       const dp = sub.match(/^payments\/([^/]+)$/);
       if (dp && req.method === 'DELETE') {
         const p = await env.DB.prepare('SELECT * FROM payments WHERE id=? AND group_id=?').bind(decodeURIComponent(dp[1]), groupId).first<Row>();
@@ -1032,7 +1064,7 @@ async function groupDetail(env: Env, g: Row, userId: string) {
   };
 }
 
-async function addExpense(env: Env, g: Row, user: Row, body: any, origin: string | null = null) {
+async function addExpense(env: Env, g: Row, user: Row, body: any, origin: string | null = null, ctx?: ExecutionContext) {
   const members = await env.DB.prepare('SELECT * FROM group_members WHERE group_id=?').bind(g.id).all<Row>();
   const memberIds = new Set((members.results||[]).map(m=>m.id));
   const myMember = (members.results||[]).find((m:any)=>m.user_id===user.id);
@@ -1072,6 +1104,10 @@ async function addExpense(env: Env, g: Row, user: Row, body: any, origin: string
     ...participants.map((pid, i) => env.DB.prepare('INSERT INTO expense_splits (id,expense_id,member_id,amount_minor) VALUES (?,?,?,?)').bind(uid(), eid, pid, amounts[i])),
     activityStmt(env, g.id, myMember?.id || null, user.name, 'expense_added', amountMinor, currency, description),
   ]);
+  // PUSH, Nov 2026: notify the other members of this group. Runs after
+  // the response (waitUntil) so the add is never delayed by a slow push
+  // service. The actor is never notified about their own expense.
+  if (ctx) ctx.waitUntil(notifyGroupMembers(env, g.id, user.id, { title: `New expense in ${g.name}`, body: `${user.name} added ${description} · ${formatAmount(amountMinor, currency)}`, url: `/?group=${g.id}`, tag: `expense-${eid}` }));
   return json(await groupDetail(env, g, user.id), 201, origin);
 }
 
@@ -1083,7 +1119,7 @@ async function addExpense(env: Env, g: Row, user: Row, body: any, origin: string
 // log is the audit trail), its splits are replaced wholesale, and an
 // expense_edited event is logged with the new description plus old ->
 // new amount when the amount changed. One batch() = one transaction.
-async function editExpense(env: Env, g: Row, user: Row, e: Row, body: any, origin: string | null = null) {
+async function editExpense(env: Env, g: Row, user: Row, e: Row, body: any, origin: string | null = null, ctx?: ExecutionContext) {
   const members = await env.DB.prepare('SELECT * FROM group_members WHERE group_id=?').bind(g.id).all<Row>();
   const memberIds = new Set((members.results||[]).map(m=>m.id));
   const myMember = (members.results||[]).find((m:any)=>m.user_id===user.id);
@@ -1120,10 +1156,14 @@ async function editExpense(env: Env, g: Row, user: Row, e: Row, body: any, origi
     ...participants.map((pid, i) => env.DB.prepare('INSERT INTO expense_splits (id,expense_id,member_id,amount_minor) VALUES (?,?,?,?)').bind(uid(), e.id, pid, amounts[i])),
     activityStmt(env, g.id, myMember?.id || null, user.name, 'expense_edited', amountMinor, currency, detail),
   ]);
+  // PUSH, Nov 2026: notify the other members of this group. Runs after
+  // the response (waitUntil). The body mirrors the Log detail (old ->
+  // new amount when it changed).
+  if (ctx) ctx.waitUntil(notifyGroupMembers(env, g.id, user.id, { title: `Expense updated in ${g.name}`, body: `${user.name} edited ${detail}`, url: `/?group=${g.id}`, tag: `expense-${e.id}` }));
   return json(await groupDetail(env, g, user.id), 200, origin);
 }
 
-async function recordPayment(env: Env, g: Row, user: Row, body: any, origin: string | null = null) {
+async function recordPayment(env: Env, g: Row, user: Row, body: any, origin: string | null = null, ctx?: ExecutionContext) {
   const members = await env.DB.prepare('SELECT gm.*, u.name, (LENGTH(u.password_hash) > 0) AS hasAccount FROM group_members gm JOIN users u ON u.id = gm.user_id WHERE gm.group_id=?').bind(g.id).all<Row>();
   const ids = new Set((members.results||[]).map(m=>m.id));
   const from = String(body.fromMemberId||''); const to = String(body.toMemberId||'');
@@ -1163,5 +1203,17 @@ async function recordPayment(env: Env, g: Row, user: Row, body: any, origin: str
       .bind(pid, g.id, from, to, amountMinor, currency, date, nowIso(), user.id),
     activityStmt(env, g.id, myMemberRow?.id || null, user.name, 'payment_recorded', amountMinor, currency, `${summary.members.find((m:any)=>m.id===from)?.name} -> ${summary.members.find((m:any)=>m.id===to)?.name}`, from, to),
   ]);
+  // PUSH, Nov 2026: notify the OTHER party to this payment (the debtor
+  // if the creditor recorded it, or the creditor if the debtor recorded
+  // it in the placeholder case). The actor is never notified about
+  // their own payment. Runs after the response (waitUntil).
+  if (ctx) {
+    const fromMember = (members.results || []).find((m: any) => m.id === from);
+    const toMember = (members.results || []).find((m: any) => m.id === to);
+    const otherUserIds = [fromMember?.user_id, toMember?.user_id].filter((id: string) => id && id !== user.id);
+    const fromName = fromMember?.name || from;
+    const toName = toMember?.name || to;
+    ctx.waitUntil(notifyUsers(env, otherUserIds, { title: `Payment in ${g.name}`, body: `${user.name} recorded ${formatAmount(amountMinor, currency)} · ${fromName} → ${toName}`, url: `/?group=${g.id}`, tag: `payment-${pid}` }));
+  }
   return json(await groupDetail(env, g, user.id), 201, origin);
 }
