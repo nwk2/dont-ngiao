@@ -1081,7 +1081,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
   const creatorMemberId = group.createdByUserId ? (group.members.find((m:any)=>m.user_id===group.createdByUserId)?.id || null) : null;
   const isGroupCreator = !!group.createdByUserId && group.myMemberId === creatorMemberId;
   const canRemoveMember = (m:any) => !group.isArchived && m.id !== group.myMemberId && (!m.hasAccount || !group.createdByUserId || isGroupCreator);
-  const [catView, setCatView] = useState<'group'|'mine'>('group');
+  const [catView, setCatView] = useState<'group'|'mine'|'members'>('group');
   const [catChart, setCatChart] = useState<'pie'|'bar'>('pie');
   // Activity pagination, 50/page: group.activity is the first page from
   // groupDetail, extraActivity holds older pages appended below it.
@@ -1156,6 +1156,28 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
   // returning to a group that has that currency restores it.
   const cur = (catCur && currencies.includes(catCur)) ? catCur : (currencies[0] || group.defaultCurrency);
   const catData = (catView==='group' ? group.categoryGroup?.[cur] : group.categoryMine?.[cur]) || {};
+  // BY MEMBER VIEW, Nov 2026: per-member total PAID (gross) in the
+  // selected currency, computed from the loaded expenses (no BE change
+  // — group.expenses already carries payer + amount + currency).
+  // Sorted descending, so the member who fronted the most is first.
+  // This is gross paid, NOT the net balance (Balances shows net); a
+  // member can have paid the most and still owe money.
+  const memberTotals: { memberId: string; name: string; total: number; count: number }[] = (() => {
+    const byId = new Map<string, { total: number; count: number }>();
+    for (const e of (group.expenses || [])) {
+      if (e.currency !== cur) continue;
+      const p = e.paid_by_member_id; if (!p) continue;
+      const acc = byId.get(p) || { total: 0, count: 0 };
+      acc.total += e.amount_minor || 0; acc.count += 1; byId.set(p, acc);
+    }
+    const rows: { memberId: string; name: string; total: number; count: number }[] = (group.members || []).map((m: any) => {
+      const t = byId.get(m.id) || { total: 0, count: 0 };
+      return { memberId: m.id, name: m.name, total: t.total, count: t.count };
+    });
+    rows.sort((a, b) => b.total - a.total);
+    return rows;
+  })();
+  const memberGrandTotal = memberTotals.reduce((a, r) => a + r.total, 0);
   return (<div style={S}>
     {/* Top bar, Nov 2026: ← Groups stays left alone; Settings moves to
     the right as a gear icon only, grouped with the theme toggle
@@ -1186,7 +1208,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
       {(['expenses','balances','members','log'] as const).map(t=>(<button key={t} onClick={()=>changeTab(t)} style={{flex:1,padding:'10px 4px',fontSize:14,color:tab===t?'#0f172a':'var(--muted)',background:tab===t?'#fff':'transparent',border:'none',borderRadius:999,fontWeight:tab===t?600:400,textTransform:'capitalize'}}>{t}</button>))}
     </div>
     {tab==='expenses' && <>
-      <div style={card}><h3 style={{marginTop:0}}>Spend by category</h3>
+      <div style={card}><h3 style={{marginTop:0}}>{catView==='members' ? 'Paid by member' : 'Spend by category'}</h3>
         {/* Chart controls, 2026-11-05: Group/Mine now use the same segmented
         pill language as the group tabs and Auth tabs (dark track, white
         active pill) instead of the old separate teal rectangles — the
@@ -1201,9 +1223,17 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
           <div style={{display:'flex',background:'var(--field)',borderRadius:999,padding:3,flexShrink:0}}>
             <button style={catView==='group'?{...tabPillActive,flex:'none',padding:'8px 16px'}:{...tabPill,flex:'none',padding:'8px 16px'}} onClick={()=>setCatView('group')}>Group</button>
             <button style={catView==='mine'?{...tabPillActive,flex:'none',padding:'8px 16px'}:{...tabPill,flex:'none',padding:'8px 16px'}} onClick={()=>setCatView('mine')}>Mine</button>
+            <button style={catView==='members'?{...tabPillActive,flex:'none',padding:'8px 16px'}:{...tabPill,flex:'none',padding:'8px 16px'}} onClick={()=>setCatView('members')}>Members</button>
           </div>
           {currencies.length>1 && <span style={{display:'flex',alignItems:'center',gap:4,marginLeft:'auto'}}><select aria-label="Chart currency" style={{background:'transparent',border:'none',color:'var(--text)',fontSize:14,padding:'8px 0',appearance:'none',cursor:'pointer',outline:'none'}} value={cur} onChange={e=>setCatCur(e.target.value)}>{currencies.map(c=><option key={c}>{c}</option>)}</select><span aria-hidden="true" style={{color:'var(--muted)',pointerEvents:'none'}}>▾</span></span>}
         </div>
+        {/* BY MEMBER VIEW, Nov 2026: the pie/bar carousel is category-
+        specific, so it (and the dots) are hidden when Members is
+        selected and replaced by a ranked per-member list. The carousel
+        stays mounted for Group/Mine only, so DailyBar's view prop
+        (typed 'group' | 'mine') still type-checks — TypeScript narrows
+        catView inside the catView!=='members' branch. */}
+        {catView!=='members' && (<>
         {/* Carousel, swipe (and dots): both panels stay mounted in a
         200%-wide flex track, so tapping a dot slides the track, and a
         horizontal swipe on the chart does the same (left: pie -> bar,
@@ -1222,11 +1252,30 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
           <button type="button" aria-label="Show pie chart" style={{width:8,height:8,borderRadius:'50%',border:'none',padding:0,cursor:'pointer',background:catChart==='pie' ? 'var(--accent)' : 'var(--border)'}} onClick={()=>setCatChart('pie')} />
           <button type="button" aria-label="Show bar chart" style={{width:8,height:8,borderRadius:'50%',border:'none',padding:0,cursor:'pointer',background:catChart==='bar' ? 'var(--accent)' : 'var(--border)'}} onClick={()=>setCatChart('bar')} />
         </div>
+        </>)}
+        {catView==='members' && (<div style={{width:'100%',maxWidth:360}}>
+          {memberGrandTotal===0 ? <p style={{color:'var(--muted)'}}>No spend in {cur} yet.</p> : memberTotals.map((r) => {
+            const pct = (r.total / memberGrandTotal) * 100;
+            const label = (group.myMemberId && r.memberId===group.myMemberId) ? 'You' : r.name;
+            return (<div key={r.memberId} style={{padding:'6px 0'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
+                <span style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
+                  <span style={{width:10,height:10,borderRadius:'50%',background:memberDotColor(group, r.memberId),flexShrink:0}} />
+                  <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{label}</span>
+                  <span style={{fontSize:12,color:'var(--muted)',whiteSpace:'nowrap'}}>· {r.count} {r.count===1 ? 'expense' : 'expenses'}</span>
+                </span>
+                <span style={{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'}}>{fmt(r.total, cur)} ({pct.toFixed(1)}%)</span>
+              </div>
+              <div style={{height:6,borderRadius:999,background:'var(--field)',marginTop:4,overflow:'hidden'}}><div style={{height:'100%',width:`${pct}%`,background:memberDotColor(group, r.memberId),borderRadius:999}} /></div>
+            </div>);
+          })}
+        </div>)}
         {/* Chart explanation paragraph REMOVED 2026-11-05: it restated
         what was already visible (Group/Mine labels, dots, currency
         picker). Only the non-obvious Mine distinction is kept, shortened
         to one clause — Group needs no explanation at all. */}
         {catView==='mine' && <p style={{fontSize:12,color:'var(--muted)'}}>Mine = your shares only.</p>}
+        {catView==='members' && <p style={{fontSize:12,color:'var(--muted)'}}>Members = total paid by each member (gross, not net balance).</p>}
       </div>
       {group.expenses.length===0 && <p>No expenses yet.</p>}
       {group.expenses.length>0 && <div style={balCard}>{group.expenses.map((e:any,ei:number,arr:any[])=>{const mySplit = group.myMemberId ? e.splits.find((s:any)=>s.member_id===group.myMemberId) : null; return (<div key={e.id} style={{...balRow,cursor:'pointer',borderBottom:ei===arr.length-1?'none':balHairline}} onClick={()=>setDetailExpense(e)}>
