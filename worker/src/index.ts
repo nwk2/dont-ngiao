@@ -417,6 +417,88 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       return json({ user: { id: target.id, name: target.name, email: target.email }, token, expiresAt }, 200, origin);
     }
 
+    // ---- Admin: Groups module ----
+    // The admin sees and manages EVERY group (not just their own), for
+    // cleanup and stuck-member fixes. All endpoints require the admin
+    // token (authAdmin). Delete follows the Option A rule: it never
+    // destroys money history (hard-delete if clean, archive if the
+    // group has expenses/payments). Remove reuses the member-facing
+    // money guards (the admin does not bypass those) but overrides the
+    // 'only the creator can remove account members' role check; the
+    // creator still cannot be removed, and the admin cannot remove
+    // their own membership here (that goes through Leave).
+    if (path === '/api/admin/groups' && req.method === 'GET') {
+      const admin = await authAdmin(req, env); if (!admin) return err('Admin access required', 403, origin);
+      const [groupsRes, memRes, expRes, payRes] = await Promise.all([
+        env.DB.prepare('SELECT g.*, u.name AS creator_name FROM groups g LEFT JOIN users u ON u.id = g.created_by_user_id ORDER BY g.created_at DESC').bind().all<Row>(),
+        env.DB.prepare('SELECT group_id, COUNT(*) AS c FROM group_members GROUP BY group_id').bind().all<Row>(),
+        env.DB.prepare('SELECT group_id, COUNT(*) AS c FROM expenses GROUP BY group_id').bind().all<Row>(),
+        env.DB.prepare('SELECT group_id, COUNT(*) AS c FROM payments GROUP BY group_id').bind().all<Row>(),
+      ]);
+      const countMap = (rows: Row[]) => { const m: Record<string, number> = {}; for (const r of rows) m[String(r.group_id)] = Number(r.c || 0); return m; };
+      const memCount = countMap(memRes.results || []); const expCount = countMap(expRes.results || []); const payCount = countMap(payRes.results || []);
+      const groups = (groupsRes.results || []).map((g: any) => ({ id: g.id, name: g.name, defaultCurrency: g.default_currency, isArchived: !!g.is_archived, createdAt: g.created_at, createdByUserId: g.created_by_user_id, creatorName: g.creator_name || 'Someone', memberCount: memCount[g.id] || 0, expenseCount: expCount[g.id] || 0, paymentCount: payCount[g.id] || 0 }));
+      return json({ groups }, 200, origin);
+    }
+    const ag = path.match(/^\/api\/admin\/groups\/([^/]+)(?:\/(.*))?$/);
+    if (ag) {
+      const admin = await authAdmin(req, env); if (!admin) return err('Admin access required', 403, origin);
+      const groupId = decodeURIComponent(ag[1]); const sub = ag[2] || '';
+      const g = await env.DB.prepare('SELECT * FROM groups WHERE id=?').bind(groupId).first<Row>();
+      if (!g) return err('Group not found', 404, origin);
+      if (sub === '' && req.method === 'GET') {
+        const detail = await adminGroupDetail(env, groupId, admin.id);
+        if (!detail) return err('Group not found', 404, origin);
+        return json(detail, 200, origin);
+      }
+      if (sub === 'archive' && req.method === 'POST') {
+        await env.DB.prepare('UPDATE groups SET is_archived=1 WHERE id=?').bind(groupId).run();
+        return json(await adminGroupDetail(env, groupId, admin.id), 200, origin);
+      }
+      if (sub === 'restore' && req.method === 'POST') {
+        await env.DB.prepare('UPDATE groups SET is_archived=0 WHERE id=?').bind(groupId).run();
+        return json(await adminGroupDetail(env, groupId, admin.id), 200, origin);
+      }
+      if (sub === '' && req.method === 'DELETE') {
+        const exps = await env.DB.prepare('SELECT COUNT(*) AS c FROM expenses WHERE group_id=?').bind(groupId).first<Row>();
+        const pays = await env.DB.prepare('SELECT COUNT(*) AS c FROM payments WHERE group_id=?').bind(groupId).first<Row>();
+        if (Number(exps?.c || 0) === 0 && Number(pays?.c || 0) === 0) {
+          await env.DB.prepare('DELETE FROM groups WHERE id=?').bind(groupId).run();
+          return json({ deleted: true }, 200, origin);
+        }
+        await env.DB.prepare('UPDATE groups SET is_archived=1 WHERE id=?').bind(groupId).run();
+        return json({ archived: true }, 200, origin);
+      }
+      if (sub === 'invite/revoke' && req.method === 'POST') {
+        // Revoke + regenerate, same as the member flow: the old link
+        // stops working at once and a fresh link is returned. The admin
+        // is not a member, so created_by_member_id is NULL (nullable).
+        const token = newResetToken();
+        await env.DB.batch([
+          env.DB.prepare('DELETE FROM group_invites WHERE group_id=?').bind(groupId),
+          env.DB.prepare('INSERT INTO group_invites (id,group_id,token,created_by_user_id,created_by_member_id,created_at) VALUES (?,?,?,?,?,?)').bind(uid(), groupId, token, admin.id, null, nowIso()),
+        ]);
+        return json({ token }, 200, origin);
+      }
+      const arm = sub.match(/^members\/([^/]+)$/);
+      if (arm && req.method === 'DELETE') {
+        const targetId = decodeURIComponent(arm[1]);
+        const target = await env.DB.prepare('SELECT gm.*, u.password_hash FROM group_members gm JOIN users u ON u.id = gm.user_id WHERE gm.id=? AND gm.group_id=?').bind(targetId, groupId).first<Row>();
+        if (!target) return err('Member not found', 404, origin);
+        if (target.user_id === admin.id) return err('Use Leave group in Settings to remove yourself from a group', 400, origin);
+        if (g.created_by_user_id && target.user_id === g.created_by_user_id) return err('The group creator cannot be removed', 403, origin);
+        if (await hasAnyExpense(env, groupId, targetId)) return err('Member has expenses and cannot be removed', 403, origin);
+        const payCount = await env.DB.prepare('SELECT COUNT(*) AS c FROM payments WHERE group_id=? AND (from_member_id=? OR to_member_id=?)').bind(groupId, targetId, targetId).first<Row>();
+        if (Number(payCount?.c || 0) > 0) return err('Member has payments and cannot be removed', 403, origin);
+        const summary = await groupSummary(env, groupId, admin.id);
+        const bal = summary.balances.find((b: any) => b.memberId === targetId);
+        if (bal && bal.balance !== 0) return err('Member must have a zero balance to be removed', 403, origin);
+        await env.DB.prepare('DELETE FROM group_members WHERE id=?').bind(targetId).run();
+        return json(await adminGroupDetail(env, groupId, admin.id), 200, origin);
+      }
+      return err('Not found', 404, origin);
+    }
+
     // ---- Groups list / create ----
     if (path === '/api/groups' && req.method === 'GET') {
       const user = await authUser(req, env); if (!user) return err('Unauthorized', 401, origin);
@@ -792,6 +874,49 @@ async function groupSummary(env: Env, groupId: string, _userId: string) {
   }
   return { members, expenses, payments, balances, splitsByExpense };
 
+}
+
+// ADMIN GROUP DETAIL, Nov 2026 (Groups module): the admin sees every
+// group, not just their own. Summary-only money: counts + totals per
+// currency, never individual expense rows, per-member balances, or the
+// activity log — enough to act, not friends' individual expenses in
+// groups the admin is not a member of. Per-member remove guards are
+// computed from the summary data (no extra queries): a member has an
+// expense if they paid one or are a split participant; a payment if
+// they are from/to on one; a non-zero balance if any balance row is
+// non-zero. isClean (no expenses, no payments) drives whether the UI
+// shows Delete.
+async function adminGroupDetail(env: Env, groupId: string, adminUserId: string) {
+  const g = await env.DB.prepare('SELECT g.*, u.name AS creator_name FROM groups g LEFT JOIN users u ON u.id = g.created_by_user_id WHERE g.id=?').bind(groupId).first<Row>();
+  if (!g) return null;
+  const s = await groupSummary(env, groupId, '');
+  const inv = await env.DB.prepare('SELECT token FROM group_invites WHERE group_id=?').bind(groupId).first<Row>();
+  const totals: Record<string, number> = {};
+  for (const e of s.expenses) totals[e.currency] = (totals[e.currency] || 0) + e.amount_minor;
+  const paidBy = new Set(s.expenses.map((e: any) => e.paid_by_member_id));
+  const splitBy = new Set<string>(); for (const k of Object.keys(s.splitsByExpense)) for (const sp of s.splitsByExpense[k]) splitBy.add(sp.member_id);
+  const payBy = new Set<string>(); for (const p of s.payments) { payBy.add(p.from_member_id); payBy.add(p.to_member_id); }
+  const nonZero = new Set(s.balances.filter((b: any) => b.balance !== 0).map((b: any) => b.memberId));
+  const members = s.members.map((m: any) => {
+    const hasExpense = paidBy.has(m.id) || splitBy.has(m.id);
+    const hasPayment = payBy.has(m.id);
+    const hasBalance = nonZero.has(m.id);
+    const isCreator = !!g.created_by_user_id && m.user_id === g.created_by_user_id;
+    let removeBlocked: string | null = null;
+    if (m.user_id === adminUserId) removeBlocked = 'Use Leave group to remove yourself';
+    else if (isCreator) removeBlocked = 'The group creator cannot be removed';
+    else if (hasExpense) removeBlocked = 'Member has expenses and cannot be removed';
+    else if (hasPayment) removeBlocked = 'Member has payments and cannot be removed';
+    else if (hasBalance) removeBlocked = 'Member must have a zero balance to be removed';
+    return { id: m.id, userId: m.user_id, name: m.name, email: m.email, hasAccount: !!m.hasAccount, isCreator, createdAt: m.created_at, canRemove: !removeBlocked, removeBlocked };
+  });
+  return {
+    id: g.id, name: g.name, defaultCurrency: g.default_currency, isArchived: !!g.is_archived,
+    createdAt: g.created_at, createdByUserId: g.created_by_user_id, creatorName: g.creator_name || 'Someone',
+    memberCount: members.length, expenseCount: s.expenses.length, paymentCount: s.payments.length,
+    totals, members, inviteToken: inv ? String(inv.token) : null,
+    isClean: s.expenses.length === 0 && s.payments.length === 0,
+  };
 }
 
 async function groupDetail(env: Env, g: Row, userId: string) {

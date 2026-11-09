@@ -833,6 +833,20 @@ function AdminView() {
   const [error, setError] = useState(''); const [loading, setLoading] = useState(false);
   const [resettingId, setResettingId] = useState<string | null>(null);
   const [resetResult, setResetResult] = useState<any>(null); const [copyStatus, setCopyStatus] = useState('');
+  // GROUPS MODULE, Nov 2026: adminModule switches the tab; groups is
+  // the list (loaded on first visit to the tab); selectedGroup is the
+  // detail object (null = list). groupBusy names the in-flight admin
+  // action ('archive' | 'restore' | 'delete' | 'revoke' |
+  // 'remove:<memberId>') so its button can disable + show progress.
+  const [adminModule, setAdminModule] = useState<'users'|'groups'>('users');
+  const [groups, setGroups] = useState<any[]>([]);
+  const [groupSearch, setGroupSearch] = useState('');
+  const [groupFilter, setGroupFilter] = useState<'all'|'active'|'archived'>('all');
+  const [selectedGroup, setSelectedGroup] = useState<any>(null);
+  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [groupBusy, setGroupBusy] = useState<string | null>(null);
+  const [inviteStatus, setInviteStatus] = useState('');
+  const [confirm, setConfirm] = useState<any>(null);
   async function loadUsers(tok: string) { const d = await adminApi('/api/admin/users', 'GET', undefined, tok); setUsers(d.users || []); }
   useEffect(() => {
     if (!adminToken) return;
@@ -845,7 +859,56 @@ function AdminView() {
       setAdminToken(d.token); setAdminTokenState(d.token); setAdminUser(d.user); await loadUsers(d.token);
     } catch (e: any) { setError(e.message); } finally { setLoading(false); }
   }
-  function doAdminLogout() { setAdminToken(null); setAdminTokenState(null); setAdminUser(null); setUsers([]); setResetResult(null); }
+  function doAdminLogout() { setAdminToken(null); setAdminTokenState(null); setAdminUser(null); setUsers([]); setResetResult(null); setGroups([]); setSelectedGroup(null); setAdminModule('users'); }
+  async function loadGroups() {
+    setGroupsLoading(true);
+    try { const d = await adminApi('/api/admin/groups', 'GET'); setGroups(d.groups || []); }
+    catch (e: any) { setError(e.message); }
+    finally { setGroupsLoading(false); }
+  }
+  async function openGroup(id: string) {
+    setError(''); setInviteStatus('');
+    try { const d = await adminApi(`/api/admin/groups/${id}`, 'GET'); setSelectedGroup(d); }
+    catch (e: any) { setError(e.message); }
+  }
+  async function doArchiveGroup(g: any) {
+    setGroupBusy('archive'); setError('');
+    try { const d = await adminApi(`/api/admin/groups/${g.id}/archive`, 'POST'); setSelectedGroup(d); await loadGroups(); }
+    catch (e: any) { setError(e.message); }
+    finally { setGroupBusy(null); }
+  }
+  async function doRestoreGroup(g: any) {
+    setGroupBusy('restore'); setError('');
+    try { const d = await adminApi(`/api/admin/groups/${g.id}/restore`, 'POST'); setSelectedGroup(d); await loadGroups(); }
+    catch (e: any) { setError(e.message); }
+    finally { setGroupBusy(null); }
+  }
+  async function doDeleteGroup(g: any) {
+    setGroupBusy('delete'); setError('');
+    try {
+      const d = await adminApi(`/api/admin/groups/${g.id}`, 'DELETE');
+      if (d.deleted) { setSelectedGroup(null); await loadGroups(); }
+      else if (d.archived) { const det = await adminApi(`/api/admin/groups/${g.id}`, 'GET'); setSelectedGroup(det); await loadGroups(); }
+    } catch (e: any) { setError(e.message); }
+    finally { setGroupBusy(null); }
+  }
+  async function doRemoveMember(g: any, m: any) {
+    setGroupBusy('remove:' + m.id); setError('');
+    try { const d = await adminApi(`/api/admin/groups/${g.id}/members/${m.id}`, 'DELETE'); setSelectedGroup(d); await loadGroups(); }
+    catch (e: any) { setError(e.message); }
+    finally { setGroupBusy(null); }
+  }
+  async function doInviteRevoke(g: any) {
+    setGroupBusy('revoke'); setError(''); setInviteStatus('');
+    try {
+      const d = await adminApi(`/api/admin/groups/${g.id}/invite/revoke`, 'POST');
+      const link = `${window.location.origin}/?invite=${d.token}`;
+      setSelectedGroup({ ...g, inviteToken: d.token });
+      try { await navigator.clipboard.writeText(link); setInviteStatus('Old link revoked. New link copied to clipboard.'); }
+      catch { setInviteStatus('Old link revoked. New link below — copy it manually.'); }
+    } catch (e: any) { setError(e.message); }
+    finally { setGroupBusy(null); }
+  }
   if (!adminUser) return (<div style={S}><h1>Admin</h1><p style={{color:'var(--muted)'}}>Separate admin login — this is not the regular Don't Ngiao login. Only an admin account can sign in here.</p>
     <div style={homeCard}>
     {error && <p style={{color:'var(--danger-text)',marginTop:0}}>{error}</p>}
@@ -856,6 +919,12 @@ function AdminView() {
     <p><button style={btn} onClick={()=>{ window.location.href = '/'; }}>← Back to Don't Ngiao</button></p>
   </div>);
   const filtered = users.filter((u:any) => fuzzyMatch(search, u.name || '') || fuzzyMatch(search, u.email || ''));
+  const filteredGroups = groups.filter((gr:any) => {
+    if (groupFilter === 'active' && gr.isArchived) return false;
+    if (groupFilter === 'archived' && !gr.isArchived) return false;
+    if (groupSearch.trim() && !fuzzyMatch(groupSearch, gr.name || '')) return false;
+    return true;
+  });
   async function doReset(u: any) {
     setError(''); setCopyStatus(''); setResettingId(u.id);
     try {
@@ -866,7 +935,7 @@ function AdminView() {
       catch { setCopyStatus('Could not copy automatically — select the link below and copy it manually.'); }
     } catch (e: any) { setError(e.message); } finally { setResettingId(null); }
   }
-  return (<div style={S}><div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',marginBottom:8}}><h1 style={{margin:0}}>Admin</h1><div style={{display:'flex',gap:8,flexShrink:0}}><button style={btn} onClick={doAdminLogout}>Log out</button><button style={btn} onClick={()=>{ window.location.href = '/'; }}>← Back to app</button></div></div><p style={{color:'var(--muted)'}}>Signed in as {adminUser.name} ({adminUser.email}) · Modules: Users</p>
+  return (<div style={S}><div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',marginBottom:8}}><h1 style={{margin:0}}>Admin</h1><div style={{display:'flex',gap:8,flexShrink:0}}><button style={btn} onClick={doAdminLogout}>Log out</button><button style={btn} onClick={()=>{ window.location.href = '/'; }}>← Back to app</button></div></div><p style={{color:'var(--muted)'}}>Signed in as {adminUser.name} ({adminUser.email}) · Modules: Users, Groups</p>
     {/* ADMIN MODULE BAR, Nov 2026: the module tabs are their own
         full-width segmented control row (like the group tabs in the main
         app) so more modules slot in later with no layout change. The
@@ -874,12 +943,37 @@ function AdminView() {
         above, not in the tab row — they used to share a row with the
         tabTrack, which mixed a tab with standalone buttons (different
         heights/fonts, stray track margin). */}
-    <div style={tabTrack}><button style={tabPillActive}>Users</button></div>
+    <div style={tabTrack}><button style={adminModule==='users'?tabPillActive:tabPill} onClick={()=>{setAdminModule('users'); setSelectedGroup(null);}}>Users</button><button style={adminModule==='groups'?tabPillActive:tabPill} onClick={()=>{setAdminModule('groups'); setSelectedGroup(null); if (groups.length===0) loadGroups();}}>Groups</button></div>
     {error && <p style={{color:'var(--danger-text)'}}>{error}</p>}
+    {adminModule==='users' && (<>
     {resetResult && <div style={homeCard}><strong>Reset link for {resetResult.user.name} ({resetResult.user.email})</strong><p style={{fontSize:13,color:'var(--muted)'}}>Single-use, expires {new Date(resetResult.expiresAt).toLocaleString()}. Send this link to the user yourself — the app does not email it.</p><input readOnly style={input} value={resetResult.link} onFocus={e=>e.target.select()} /><button style={btn} onClick={async()=>{ try { await navigator.clipboard.writeText(resetResult.link); setCopyStatus('Copied to clipboard.'); } catch { setCopyStatus('Could not copy automatically.'); } }}>Copy link again</button>{copyStatus && <p style={{fontSize:13,color:'var(--muted)'}}>{copyStatus}</p>}</div>}
     <label>Search users</label><input style={input} placeholder="Name or email (fuzzy: wk matches Wai Kit)" value={search} onChange={e=>setSearch(e.target.value)} />
     {filtered.length === 0 && <p style={{color:'var(--muted)'}}>No users match.</p>}
     {filtered.length>0 && <div style={balCard}>{filtered.map((u:any,ui:number,arr:any[])=>(<div key={u.id} style={{...balRow,borderBottom:ui===arr.length-1?'none':balHairline}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,width:'100%'}}><div style={{flex:1,minWidth:0}}><strong>{u.name}</strong>{u.isAdmin ? <span style={{fontSize:12,background:'var(--tint-bg)',padding:'2px 6px',borderRadius:99,marginLeft:8}}>Admin</span> : null}<div style={{fontSize:13,color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.email}</div><div style={{fontSize:13,color:'var(--muted)'}}>Joined {new Date(u.createdAt).toLocaleDateString()}</div></div><button style={{...btn,flexShrink:0}} disabled={resettingId===u.id} onClick={()=>doReset(u)}>{resettingId===u.id ? 'Creating…' : 'Reset'}</button></div></div>))}</div>}
+    </>)}
+    {adminModule==='groups' && !selectedGroup && (<>
+    <div style={tabTrack}><button style={groupFilter==='all'?tabPillActive:tabPill} onClick={()=>setGroupFilter('all')}>All</button><button style={groupFilter==='active'?tabPillActive:tabPill} onClick={()=>setGroupFilter('active')}>Active</button><button style={groupFilter==='archived'?tabPillActive:tabPill} onClick={()=>setGroupFilter('archived')}>Archived</button></div>
+    <label>Search groups</label><input style={input} placeholder="Group name" value={groupSearch} onChange={e=>setGroupSearch(e.target.value)} />
+    {groupsLoading && <p style={{color:'var(--muted)'}}>Loading groups…</p>}
+    {!groupsLoading && filteredGroups.length===0 && <p style={{color:'var(--muted)'}}>No groups match.</p>}
+    {!groupsLoading && filteredGroups.length>0 && <div style={balCard}>{filteredGroups.map((gr:any,gi:number,arr:any[])=>(<div key={gr.id} style={{...balRow,borderBottom:gi===arr.length-1?'none':balHairline,cursor:'pointer'}} onClick={()=>openGroup(gr.id)}><div style={{flex:1,minWidth:0}}><strong>{gr.name}</strong>{gr.isArchived ? <span style={{fontSize:12,background:'var(--tint-bg)',padding:'2px 6px',borderRadius:99,marginLeft:8}}>Archived</span> : null}<div style={{fontSize:13,color:'var(--muted)'}}>{gr.memberCount} member{gr.memberCount===1?'':'s'} · {gr.expenseCount} expense{gr.expenseCount===1?'':'s'} · {gr.paymentCount} payment{gr.paymentCount===1?'':'s'}</div><div style={{fontSize:13,color:'var(--muted)'}}>Created {new Date(gr.createdAt).toLocaleDateString()} by {gr.creatorName}</div></div><span style={{color:'var(--muted)',flexShrink:0}}>›</span></div>))}</div>}
+    </>)}
+    {adminModule==='groups' && selectedGroup && (<>
+    <p><button style={btn} onClick={()=>{setSelectedGroup(null); loadGroups();}}>← Back to groups</button></p>
+    <h2 style={{margin:'0 0 4px'}}>{selectedGroup.name}</h2>
+    <p style={{color:'var(--muted)',marginTop:0}}>Created {new Date(selectedGroup.createdAt).toLocaleDateString()} by {selectedGroup.creatorName} · Default {selectedGroup.defaultCurrency}{selectedGroup.isArchived ? ' · Archived' : ''}</p>
+    <div style={homeCard}><strong>Money</strong><div style={{fontSize:13,color:'var(--muted)',marginTop:4}}>{selectedGroup.expenseCount} expense{selectedGroup.expenseCount===1?'':'s'} · {selectedGroup.paymentCount} payment{selectedGroup.paymentCount===1?'':'s'}</div>{Object.keys(selectedGroup.totals||{}).length===0 ? <div style={{fontSize:13,color:'var(--muted)'}}>No money yet.</div> : Object.keys(selectedGroup.totals).map((cur:string)=>(<div key={cur} style={{display:'flex',justifyContent:'space-between',fontSize:14,marginTop:4}}><span>{cur}</span><strong>{fmt(selectedGroup.totals[cur], cur)}</strong></div>))}</div>
+    <div style={balCard}>{selectedGroup.members.map((m:any,mi:number,arr:any[])=>(<div key={m.id} style={{...balRow,borderBottom:mi===arr.length-1?'none':balHairline}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,width:'100%'}}><div style={{flex:1,minWidth:0}}><strong>{m.name}</strong>{m.isCreator ? <span style={{fontSize:12,background:'var(--tint-bg)',padding:'2px 6px',borderRadius:99,marginLeft:8}}>Creator</span> : null}{!m.hasAccount ? <span style={noAccountChip}>No account yet</span> : null}<div style={{fontSize:13,color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.email || 'No email'}</div><div style={{fontSize:13,color:'var(--muted)'}}>Joined {new Date(m.createdAt).toLocaleDateString()}</div>{m.removeBlocked ? <div style={{fontSize:12,color:'var(--muted)',marginTop:2}}>{m.removeBlocked}</div> : null}</div><button style={{...btn,flexShrink:0}} disabled={!m.canRemove || groupBusy===('remove:'+m.id)} onClick={()=>setConfirm({title:'Remove member?',message:`Remove ${m.name} from '${selectedGroup.name}'? This cannot be undone.`,confirmLabel:'Remove',onError:(msg:string)=>setError(msg),action:async()=>{await doRemoveMember(selectedGroup,m);}})}>{groupBusy===('remove:'+m.id) ? 'Removing…' : 'Remove'}</button></div></div>))}</div>
+    <div style={homeCard}><strong>Invite link</strong>{selectedGroup.inviteToken ? <><p style={{fontSize:13,color:'var(--muted)'}}>Anyone with this link can join the group.</p><input readOnly style={input} value={`${window.location.origin}/?invite=${selectedGroup.inviteToken}`} onFocus={e=>e.target.select()} /><div style={{display:'flex',gap:8}}><button style={btn} onClick={async()=>{ try { await navigator.clipboard.writeText(`${window.location.origin}/?invite=${selectedGroup.inviteToken}`); setInviteStatus('Copied to clipboard.'); } catch { setInviteStatus('Could not copy automatically.'); } }}>Copy link</button><button style={{...btn,background:'var(--danger-bg)',borderColor:'var(--danger-bg)',color:'var(--danger-text)',fontWeight:600}} disabled={groupBusy==='revoke'} onClick={()=>setConfirm({title:'Revoke invite link?',message:'The current link will stop working immediately. A new link will be generated and shown here, so you can share the fresh link.',confirmLabel:'Revoke',onError:(msg:string)=>setError(msg),action:async()=>{await doInviteRevoke(selectedGroup);}})}>{groupBusy==='revoke' ? 'Revoking…' : 'Revoke'}</button></div>{inviteStatus && <p style={{fontSize:13,color:'var(--muted)'}}>{inviteStatus}</p>}</> : <p style={{fontSize:13,color:'var(--muted)'}}>No active invite link. A member can create one from the Members tab.</p>}</div>
+    <div style={{display:'flex',flexDirection:'column',gap:8}}>
+    {selectedGroup.isArchived
+      ? <button style={{...primary,width:'100%',padding:'14px',fontSize:16}} disabled={groupBusy==='restore'} onClick={()=>doRestoreGroup(selectedGroup)}>{groupBusy==='restore' ? 'Restoring…' : 'Restore group'}</button>
+      : <button style={{...btn,width:'100%',padding:'14px',fontSize:16}} disabled={groupBusy==='archive'} onClick={()=>doArchiveGroup(selectedGroup)}>{groupBusy==='archive' ? 'Archiving…' : 'Archive group'}</button>}
+    {selectedGroup.isClean && <button style={{...btn,width:'100%',padding:'14px',fontSize:16,background:'var(--danger-bg)',borderColor:'var(--danger-bg)',color:'var(--danger-text)',fontWeight:600}} disabled={groupBusy==='delete'} onClick={()=>setConfirm({title:'Delete group?',message:`Delete '${selectedGroup.name}'? It has no expenses or payments, so it will be permanently deleted (members, invite link and activity go with it). This cannot be undone.`,confirmLabel:'Delete',onError:(msg:string)=>setError(msg),action:async()=>{await doDeleteGroup(selectedGroup);}})}>{groupBusy==='delete' ? 'Deleting…' : 'Delete group'}</button>}
+    {!selectedGroup.isClean && <p style={{fontSize:13,color:'var(--muted)'}}>Delete is only available for groups with no expenses or payments — this group has money history, so archive it instead.</p>}
+    </div>
+    </>)}
+    {confirm && <ConfirmSheet title={confirm.title} message={confirm.message} confirmLabel={confirm.confirmLabel} onCancel={()=>setConfirm(null)} onConfirm={async()=>{try{await confirm.action();}catch(er:any){if (confirm.onError) confirm.onError(er.message); else setError(er.message);}finally{setConfirm(null);}}} />}
   </div>);
 }
 
