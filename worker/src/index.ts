@@ -4,7 +4,7 @@
 // Balances/suggestions are per currency, never converted. Activity log is append-only.
 import { CURRENCIES, CATEGORIES, equalSplit, percentSplit, balanceOf, simplify, formatAmount } from './logic';
 
-export interface Env { DB: D1Database; }
+export interface Env { DB: D1Database; TURNSTILE_SECRET?: string; }
 type Row = Record<string, any>;
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 const nowIso = () => new Date().toISOString();
@@ -217,9 +217,38 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
     if (req.method !== 'GET') { try { body = await req.json(); } catch { body = {}; } }
 
     // ---- Auth ----
+// TURNSTILE, Nov 2026: verify the Register widget token before an
+// account is created. Fail closed: if the secret is unset, the token is
+// missing, or siteverify says no, the registration is rejected and NO
+// account is created. The secret lives in the TURNSTILE_SECRET Worker
+// secret (never in the repo or the frontend); only the site key is
+// public. Returns an error Response, or null when verification passed.
+async function verifyTurnstile(env: Env, token: string | undefined, ip: string, origin: string | null): Promise<Response | null> {
+  if (!env.TURNSTILE_SECRET) return err('Verification is not configured, try again later', 503, origin);
+  if (!token) return err('Please complete the verification', 400, origin);
+  let res: Response;
+  try {
+    res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ secret: env.TURNSTILE_SECRET, response: token, remoteip: ip }),
+    });
+  } catch {
+    return err('Verification failed, try again', 502, origin);
+  }
+  let data: any = {};
+  try { data = await res.json(); } catch { /* fall through to the success check */ }
+  if (!data || data.success !== true) return err('Verification failed, try again', 400, origin);
+  return null;
+}
     if (path === '/api/auth/register' && req.method === 'POST') {
       const { name, email, password } = body;
       if (!name || !email || !password || String(password).length < 6) return err('Name, email and a password of at least 6 characters are required', 400, origin);
+      // TURNSTILE: verify the widget token BEFORE anything is created
+      // (and before the rate-limit record, so a bot failing the check
+      // does not consume the register quota).
+      const turnstileErr = await verifyTurnstile(env, (body as any).turnstileToken, clientIp(req), origin);
+      if (turnstileErr) return turnstileErr;
       // Rate limit: 5 accounts/hour, 20/day per IP. Fails open if the
       // rate_limits table does not exist yet (migration 0002 not applied).
       {

@@ -354,9 +354,9 @@ export default function App() {
     }
   }
   useEffect(()=>{ checkAuth(); }, []);
-  async function doAuth(mode: 'login'|'register', name: string, email: string, password: string) {
+  async function doAuth(mode: 'login'|'register', name: string, email: string, password: string, turnstileToken?: string | null) {
     setError(''); setLoading(true);
-    try { const d = await api(`/api/auth/${mode}`, 'POST', mode==='register' ? {name,email,password} : {email,password}); setToken(d.token); setUser(d.user); setAuthState('authed'); setAuthNotice(''); await loadGroups(); await restoreSaved(); }
+    try { const d = await api(`/api/auth/${mode}`, 'POST', mode==='register' ? {name,email,password,turnstileToken} : {email,password}); setToken(d.token); setUser(d.user); setAuthState('authed'); setAuthNotice(''); await loadGroups(); await restoreSaved(); }
     catch(e:any){ setError(e.message); } finally { setLoading(false); }
   }
   function doLogout() { try { localStorage.removeItem(LAST_GROUP_KEY); } catch { /* ignore */ } setToken(null); setUser(null); setGroup(null); setGroups(null); setAuthState('guest'); }
@@ -777,12 +777,79 @@ function AuthCorgi({ focus, value, eyesClosed, oneEyePeek }: any) {
   </div>);
 }
 
+// TURNSTILE, Nov 2026: the site key is PUBLIC (it is embedded in the
+// frontend and visible to anyone) — only the secret stays server-side
+// (TURNSTILE_SECRET Worker secret). The widget renders on the Register
+// tab only; the worker verifies the token before creating an account.
+const TURNSTILE_SITE_KEY = '0x4AAAAAAF53lVCZRIHYjqty';
+// Resolves when the Turnstile script (loaded in index.html) is ready.
+// Polls briefly because the script loads async and may land after React
+// mounts; resolves to null if it never arrives (widget stays unrendered
+// and the Register submit stays disabled).
+function waitForTurnstile(): Promise<any> {
+  return new Promise((resolve) => {
+    const w = window as any;
+    if (w.turnstile) return resolve(w.turnstile);
+    let tries = 0;
+    const t = setInterval(() => {
+      tries++;
+      if ((window as any).turnstile) { clearInterval(t); resolve((window as any).turnstile); }
+      else if (tries >= 50) { clearInterval(t); resolve(null); }
+    }, 100);
+  });
+}
 function Auth({ onAuth, error, loading, notice, inviteToken, onInvalidInvite }: any) {
   const [mode, setMode] = useState<'login'|'register'>('login');
   const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [focus, setFocus] = useState<string|null>(null);
   const [lastField, setLastField] = useState<string|null>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [turnstileFailed, setTurnstileFailed] = useState(false);
+  const turnstileBoxRef = useRef<any>(null);
+  const turnstileWidgetRef = useRef<any>(null);
+  // TURNSTILE: render the widget when the Register tab is shown. The
+  // widget is Managed (it may auto-verify silently or show a check);
+  // its callback stores the single-use token, and expiry/error clears
+  // it so the submit stays disabled until a fresh token arrives.
+  useEffect(() => {
+    if (mode !== 'register') return;
+    let cancelled = false;
+    waitForTurnstile().then((ts: any) => {
+      if (cancelled) return;
+      if (!ts || !turnstileBoxRef.current) { setTurnstileFailed(true); return; }
+      setTurnstileFailed(false);
+      try {
+        turnstileWidgetRef.current = ts.render(turnstileBoxRef.current, {
+          sitekey: TURNSTILE_SITE_KEY,
+          callback: (token: string) => setTurnstileToken(token),
+          'expired-callback': () => setTurnstileToken(null),
+          'error-callback': () => setTurnstileToken(null),
+        });
+      } catch { setTurnstileFailed(true); }
+    });
+    return () => {
+      cancelled = true;
+      const ts = (window as any).turnstile;
+      if (ts && turnstileWidgetRef.current != null) {
+        try { ts.remove(turnstileWidgetRef.current); } catch { /* already gone */ }
+        turnstileWidgetRef.current = null;
+      }
+      setTurnstileToken(null);
+      setTurnstileFailed(false);
+    };
+  }, [mode]);
+  // TURNSTILE: a failed register consumes the single-use token, so a
+  // fresh challenge is needed before retrying. Reset the widget (and
+  // clear the token) whenever an error appears on the Register tab.
+  useEffect(() => {
+    if (!error || mode !== 'register') return;
+    const ts = (window as any).turnstile;
+    if (ts && turnstileWidgetRef.current != null) {
+      try { ts.reset(turnstileWidgetRef.current); } catch { /* already gone */ }
+    }
+    setTurnstileToken(null);
+  }, [error, mode]);
   // INVITE BANNER, Nov 2026: a guest opening an invite link used to see
   // only the generic login screen — nothing said they were invited, or
   // to which group, until AFTER they created an account (the join screen
@@ -832,7 +899,8 @@ function Auth({ onAuth, error, loading, notice, inviteToken, onInvalidInvite }: 
     {mode==='register' && <><label>Name</label><input style={input} value={name} onChange={e=>setName(e.target.value)} onFocus={()=>{setFocus('name'); setLastField('name');}} onBlur={()=>setFocus(null)} /></>}
     <label>Email</label><input style={input} value={email} onChange={e=>setEmail(e.target.value)} onFocus={()=>{setFocus('email'); setLastField('email');}} onBlur={()=>setFocus(null)} />
     <label>Password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input ref={passwordRef} type={showPassword ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={password} onChange={e=>setPassword(e.target.value)} onFocus={()=>{setFocus('password'); setLastField('password');}} onBlur={()=>setFocus(null)} /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onMouseDown={e=>e.preventDefault()} onClick={()=>{setShowPassword(v=>!v); passwordRef.current?.focus();}}>{showPassword ? '🙈' : '👁️'}</button></div>
-    <button style={{...primary, width:'100%', padding:'14px', fontSize:16, opacity: loading ? 0.6 : 1, cursor: loading ? 'not-allowed' : 'pointer'}} disabled={loading} onClick={()=>onAuth(mode,name,email,password)}>{loading && <span className="btn-spinner" aria-hidden="true" />}{loading ? (mode==='login' ? 'Logging in…' : 'Creating account…') : (mode==='login' ? 'Log in' : 'Create account')}</button>
+    {mode==='register' && <><div ref={turnstileBoxRef} style={{margin:'4px 0 10px'}} />{turnstileFailed ? <p style={{color:'var(--danger-text)',fontSize:13,margin:'0 0 10px'}}>Verification couldn't load — check your connection and try again.</p> : (!turnstileToken ? <p style={{color:'var(--muted)',fontSize:13,margin:'0 0 10px'}}>Complete the check above to create your account.</p> : null)}</>}
+    <button style={{...primary, width:'100%', padding:'14px', fontSize:16, opacity: (loading || (mode==='register' && !turnstileToken)) ? 0.6 : 1, cursor: (loading || (mode==='register' && !turnstileToken)) ? 'not-allowed' : 'pointer'}} disabled={loading || (mode==='register' && !turnstileToken)} onClick={()=>onAuth(mode,name,email,password,turnstileToken)}>{loading && <span className="btn-spinner" aria-hidden="true" />}{loading ? (mode==='login' ? 'Logging in…' : 'Creating account…') : (mode==='login' ? 'Log in' : 'Create account')}</button>
     </div>
     <p style={{color:'var(--muted)',fontSize:13}}>Forgot your password? Ask the admin for a reset link.</p>
   </div>);
