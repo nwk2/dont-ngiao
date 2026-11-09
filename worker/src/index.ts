@@ -251,7 +251,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       // Include created_at: YouView's "User since" line needs it, and a
       // fresh register session never calls /api/me to fill it in (same
       // omission as login, fixed below).
-      const user = { id, name, email: email.toLowerCase(), created_at: createdAt };
+      const user = { id, name, email: email.toLowerCase(), created_at: createdAt, is_admin: 0 };
       const token = uid();
       await env.DB.prepare('INSERT INTO sessions (token,user_id,created_at) VALUES (?,?,?)').bind(token, id, nowIso()).run();
       return json({ user, token }, 200, origin);
@@ -275,7 +275,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       // Include created_at (u.created_at): same "User since" reason as
       // register — a fresh login session never calls /api/me, so without
       // this the line silently disappears until the next page reload.
-      const user = { id: u.id, name: u.name, email: u.email, created_at: u.created_at };
+      const user = { id: u.id, name: u.name, email: u.email, created_at: u.created_at, is_admin: Number(u.is_admin || 0) };
       const token = uid();
       await env.DB.prepare('INSERT INTO sessions (token,user_id,created_at) VALUES (?,?,?)').bind(token, u.id, nowIso()).run();
       return json({ user, token }, 200, origin);
