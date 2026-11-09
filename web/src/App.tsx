@@ -378,6 +378,15 @@ export default function App() {
   async function handleInviteJoined(groupId: string) {
     clearInviteParam();
     setJustJoinedId(groupId);
+    // HOME REFRESH, Nov 2026 (same pattern as create-group): joining
+    // used to leave the Home list stale — loadGroup(groupId) only sets
+    // the single group detail, never the list, so when the user tapped
+    // back Home showed the pre-join list ("No groups yet" for a fresh
+    // account) until the back-navigation fetch completed or a reload.
+    // Refresh the list HERE, in the background while the user is inside
+    // the newly joined group — by the time they tap back, Home is
+    // already correct. back() still refetches too (belt and braces).
+    loadGroups();
     await loadGroup(groupId, { skeleton: true });
   }
   // Destination-aware checking skeleton: during auth checking we do not
