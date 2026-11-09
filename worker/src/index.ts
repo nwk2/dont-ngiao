@@ -295,6 +295,32 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       return json({ user: { ...user, name: body.name } }, 200, origin);
     }
 
+    // ---- Change password (authenticated) ----
+    // POST /api/me/password { currentPassword, newPassword }
+    // The user changes their own password. Verifies the current
+    // password (PBKDF2, same as login), then stores a new salt +
+    // hash (min 6 chars, must differ from the current password).
+    // Deletes ALL sessions for the user — the change logs them out
+    // everywhere, including the current session, same as the reset
+    // flow, so a lost/stolen session cannot keep working after the
+    // change. The frontend clears the token and shows Auth.
+    if (path === '/api/me/password' && req.method === 'POST') {
+      const user = await authUser(req, env); if (!user) return err('Unauthorized', 401, origin);
+      const { currentPassword, newPassword } = body;
+      if (!currentPassword || !newPassword) return err('Current and new password are required', 400, origin);
+      if (String(newPassword).length < 6) return err('New password must be at least 6 characters', 400, origin);
+      if (String(newPassword) === String(currentPassword)) return err('New password must be different from the current password', 400, origin);
+      const u = await env.DB.prepare('SELECT password_salt, password_hash FROM users WHERE id=?').bind(user.id).first<Row>();
+      if (!u || !u.password_hash || !u.password_salt) return err('Current password is incorrect', 401, origin);
+      if ((await hashPassword(String(currentPassword), u.password_salt)) !== u.password_hash) return err('Current password is incorrect', 401, origin);
+      const salt = newSalt(); const hash = await hashPassword(String(newPassword), salt);
+      await env.DB.batch([
+        env.DB.prepare('UPDATE users SET password_salt=?, password_hash=? WHERE id=?').bind(salt, hash, user.id),
+        env.DB.prepare('DELETE FROM sessions WHERE user_id=?').bind(user.id),
+      ]);
+      return json({ ok: true }, 200, origin);
+    }
+
     // ---- Password reset (public, token is the auth) ----
     // POST /api/auth/reset-password { token, newPassword }
     // Generic error for every failure (unknown / expired / already-used

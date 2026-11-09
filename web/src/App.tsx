@@ -567,6 +567,20 @@ function YouView({ user, setUser, onLogout, groups, loadGroups, loadGroup, onBac
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(user.name || '');
   const [editError, setEditError] = useState('');
+  // CHANGE PASSWORD, Nov 2026: the row was disabled 'Coming soon'.
+  // The sheet mirrors the Edit name sheet in this same view (fixed
+  // container, 20px top radius, X button, input const, primary Save)
+  // and the password fields reuse the Auth/Reset eye-toggle pattern
+  // (one shared show/hide state for all three fields). On success the
+  // sessions are deleted server-side, so the sheet shows a 'Log in
+  // again' button that calls onLogout (clears the token, shows Auth).
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [cpCurrent, setCpCurrent] = useState('');
+  const [cpNew, setCpNew] = useState('');
+  const [cpConfirm, setCpConfirm] = useState('');
+  const [cpShow, setCpShow] = useState(false);
+  const [cpError, setCpError] = useState('');
+  const [cpDone, setCpDone] = useState(false);
   const archived: any[] = groups?.archived || [];
   const totalGroups = (groups?.active?.length || 0) + archived.length;
   const since = user.created_at ? (()=>{ const d = new Date(user.created_at); return `${d.toLocaleString('en-GB',{month:'short'})}, ${d.getFullYear()}`; })() : null;
@@ -589,7 +603,7 @@ function YouView({ user, setUser, onLogout, groups, loadGroups, loadGroup, onBac
     <h3 style={{marginBottom:8}}>Account</h3>
     <div style={{...homeCard,display:'flex',flexDirection:'column',gap:8}}>
       <button style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}} onClick={()=>{setNameDraft(user.name); setEditError(''); setEditingName(true);}}><span>Edit name <span style={{color:'var(--muted)'}}>· Shown to your groups</span></span><span style={{color:'var(--muted)'}}>›</span></button>
-      <button style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center',opacity:0.5,cursor:'not-allowed'}} disabled><span>Change password</span><span style={{fontSize:12,color:'var(--muted)',border:'1px solid var(--border)',borderRadius:999,padding:'2px 8px'}}>Coming soon</span></button>
+      <button style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}} onClick={()=>{setCpCurrent(''); setCpNew(''); setCpConfirm(''); setCpError(''); setCpDone(false); setShowChangePassword(true);}}><span>Change password</span><span style={{color:'var(--muted)'}}>›</span></button>
     </div>
     <h3 style={{marginBottom:8}}>Groups</h3>
     <div style={{...homeCard,display:'flex',flexDirection:'column',gap:8}}>
@@ -603,6 +617,22 @@ function YouView({ user, setUser, onLogout, groups, loadGroups, loadGroup, onBac
         <input style={input} value={nameDraft} onChange={e=>setNameDraft(e.target.value)} aria-label="Name" />
         {editError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{editError}</p>}
         <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={async()=>{if (!nameDraft.trim()) { setEditError('Name cannot be empty'); return; } try{const d = await api('/api/me','PATCH',{name:nameDraft}); setUser(d.user); setEditingName(false);}catch(e:any){setEditError(e.message);}}}>Save</AsyncButton>
+      </div>
+    </div>)}
+    {showChangePassword && (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+      <div style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h2 style={{margin:0}}>Change password</h2><button type="button" aria-label="Close" title="Close" onClick={()=>setShowChangePassword(false)} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
+        {cpDone ? (<>
+          <p style={{fontSize:13,color:'var(--muted)'}}>Your password has been changed. You have been logged out everywhere — please log in again with your new password.</p>
+          <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={async()=>{setShowChangePassword(false); onLogout();}}>Log in again</AsyncButton>
+        </>) : (<>
+          <p style={{fontSize:13,color:'var(--muted)'}}>You will be logged out everywhere after changing your password.</p>
+          <label>Current password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={cpShow ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={cpCurrent} onChange={e=>setCpCurrent(e.target.value)} aria-label="Current password" /><button type="button" aria-label={cpShow ? 'Hide password' : 'Show password'} aria-pressed={cpShow} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onClick={()=>setCpShow(v=>!v)}>{cpShow ? '🙈' : '👁️'}</button></div>
+          <label>New password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={cpShow ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={cpNew} onChange={e=>setCpNew(e.target.value)} aria-label="New password" /><button type="button" aria-label={cpShow ? 'Hide password' : 'Show password'} aria-pressed={cpShow} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onClick={()=>setCpShow(v=>!v)}>{cpShow ? '🙈' : '👁️'}</button></div>
+          <label>Confirm new password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={cpShow ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={cpConfirm} onChange={e=>setCpConfirm(e.target.value)} aria-label="Confirm new password" /><button type="button" aria-label={cpShow ? 'Hide password' : 'Show password'} aria-pressed={cpShow} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onClick={()=>setCpShow(v=>!v)}>{cpShow ? '🙈' : '👁️'}</button></div>
+          {cpError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{cpError}</p>}
+          <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={async()=>{setCpError(''); if (!cpCurrent || !cpNew || !cpConfirm) { setCpError('Please fill in all three fields'); return; } if (cpNew.length < 6) { setCpError('New password must be at least 6 characters'); return; } if (cpNew !== cpConfirm) { setCpError('New passwords do not match'); return; } if (cpNew === cpCurrent) { setCpError('New password must be different from the current password'); return; } try { await api('/api/me/password','POST',{currentPassword:cpCurrent,newPassword:cpNew}); setCpDone(true); } catch (e:any) { setCpError(e.message); }}}>Save</AsyncButton>
+        </>)}
       </div>
     </div>)}
   </div>);
