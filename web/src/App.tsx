@@ -236,14 +236,6 @@ function ConfirmSheet({ title, message, confirmLabel, onConfirm, onCancel }: any
 // stale or forged id simply fails to load and falls back to Home.
 const LAST_GROUP_KEY = 'dont-ngiao-last-group';
 const THEME_KEY = 'dont-ngiao-theme';
-// UPDATE BANNER, Nov 2026: sessionStorage key holding the buildId the
-// user dismissed this session. Dismissal is session-scoped (same as the
-// onboarding prompts): the banner reappears on the next fresh launch
-// while an update is still pending, so a dismissed banner can never
-// strand the user on a stale version for weeks just because no newer
-// version shipped in the meantime. Stores the buildId (not a bare flag)
-// so a NEWER version than the dismissed one still shows the banner.
-const UPDATE_DISMISS_KEY = 'dont-ngiao-update-dismissed';
 const VALID_TABS = ['expenses','balances','members','log'] as const;
 function readSavedGroup(): { groupId: string; tab: typeof VALID_TABS[number] } | null {
   try {
@@ -277,35 +269,37 @@ export default function App() {
   // right after joining. Cleared when they leave the group (back) or open
   // a different group, so it does not reappear on a later visit.
   const [justJoinedId, setJustJoinedId] = useState<string | null>(null);
-  // UPDATE BANNER, Nov 2026: a bookmarked PWA usually resumes from its
-  // suspended state instead of doing a fresh load, so users can run a
-  // stale version for days — and the service worker only checks for an
-  // update when sw.js itself changes, which is rare. The app therefore
-  // polls version.json (written fresh at every build, never cached) and
-  // shows a slim "A new version is available" banner on Home when the
-  // deployed build differs from the one this instance started with.
-  // seenVersionRef = the build this instance started with (baseline,
-  // set on the first successful fetch); latestVersion = the newest
-  // deployed build seen so far. The check runs on mount and whenever
-  // the app returns to the foreground (visibilitychange + focus).
-  // Dismissal is session-scoped and version-specific (see
-  // UPDATE_DISMISS_KEY): dismissing hides the banner for THIS build
-  // only, this session only — it reappears on the next fresh launch
-  // while an update is still pending, and a newer build than the
-  // dismissed one always shows it again.
+  // FORCE RELOAD ON OPEN, Nov 2026: a bookmarked PWA usually resumes
+  // from its suspended state instead of doing a fresh load, so users
+  // can run a stale version for days — and the service worker only
+  // checks for an update when sw.js itself changes, which is rare.
+  // The app therefore polls version.json (written fresh at every
+  // build, never cached) and RELOADS immediately when the deployed
+  // build differs from the one this instance started with. The check
+  // runs on mount and whenever the app returns to the foreground
+  // (visibilitychange + focus). Wai's call (2026-11-10): reload on
+  // open, always, even if a form/sheet is open — no banner, no
+  // "actively using" check, no periodic check. The trade-off is that
+  // an unsaved form draft is lost if a new version deploys while the
+  // user has a form open and backgrounds the app; deploys are
+  // infrequent, so the window is narrow, and Wai accepted it for the
+  // seamless update. (An earlier v160–v162 banner version was
+  // replaced by this: the banner asked the user to tap Update on
+  // open, which Wai found unnecessary — opening the app should just
+  // update it.) seenVersionRef = the build this instance started
+  // with (baseline, set on the first successful fetch). A reload only
+  // happens when a LATER fetch returns a different buildId, so there
+  // is no reload loop: after the reload the app loads the latest
+  // version and the baseline matches it.
   const seenVersionRef = useRef<string | null>(null);
-  const [latestVersion, setLatestVersion] = useState<string | null>(null);
-  const [updateDismissedFor, setUpdateDismissedFor] = useState<string | null>(() => {
-    try { return sessionStorage.getItem(UPDATE_DISMISS_KEY); } catch { return null; }
-  });
-  const updateAvailable = latestVersion !== null && seenVersionRef.current !== null && latestVersion !== seenVersionRef.current && latestVersion !== updateDismissedFor;
+  const reloadingRef = useRef(false);
   useEffect(() => {
     let alive = true;
     const checkVersion = async () => {
       const v = await fetchVersion();
       if (!alive || !v) return; // offline or no version file — skip silently
-      if (seenVersionRef.current === null) seenVersionRef.current = v; // establish the baseline
-      setLatestVersion(v);
+      if (seenVersionRef.current === null) { seenVersionRef.current = v; return; } // establish the baseline, no reload yet
+      if (v !== seenVersionRef.current && !reloadingRef.current) { reloadingRef.current = true; window.location.reload(); } // a newer deploy exists — reload to it now
     };
     checkVersion();
     const onVisible = () => { if (document.visibilityState === 'visible') checkVersion(); };
@@ -313,10 +307,6 @@ export default function App() {
     window.addEventListener('focus', onVisible);
     return () => { alive = false; document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('focus', onVisible); };
   }, []);
-  const dismissUpdate = () => {
-    if (latestVersion) { try { sessionStorage.setItem(UPDATE_DISMISS_KEY, latestVersion); } catch { /* ignore */ } }
-    setUpdateDismissedFor(latestVersion);
-  };
   const [groupLoading, setGroupLoading] = useState(false);
   const loadSeq = useRef(0);
   const restoredRef = useRef(false);
@@ -478,7 +468,7 @@ export default function App() {
   // (archive/restore/leave from Settings, Home restore via loadGroups).
   if (group) return <GroupView group={group} setGroup={setGroup} tab={tab} setTab={setTab} justJoined={justJoinedId === group.id} back={()=>{setJustJoinedId(null); setGroup(null); loadGroups();}} reload={(detail?: any)=> detail && detail.id ? (setGroup(detail), setError(''), Promise.resolve(true)) : loadGroup(group.id, { keepTab: true })} error={error} setError={setError}  theme={theme} setTheme={setTheme} />;
   if (!groups) return <HomeSkeleton user={user} />;
-  return <Home user={user} setUser={setUser} onLogout={doLogout} setAuthNotice={setAuthNotice} groups={groups} loadGroups={loadGroups} loadGroup={(id: string)=>loadGroup(id, { skeleton: true })} error={error} setError={setError}  theme={theme} setTheme={setTheme} updateAvailable={updateAvailable} dismissUpdate={dismissUpdate} />;
+  return <Home user={user} setUser={setUser} onLogout={doLogout} setAuthNotice={setAuthNotice} groups={groups} loadGroups={loadGroups} loadGroup={(id: string)=>loadGroup(id, { skeleton: true })} error={error} setError={setError}  theme={theme} setTheme={setTheme} />;
 }
 
 // Skeleton screens: grey blocks in the exact shape of the content that is
@@ -643,7 +633,7 @@ function OnboardingPrompts() {
   </div>);
 }
 
-function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, loadGroup, error, setError, theme, setTheme, updateAvailable, dismissUpdate }: any) {
+function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, loadGroup, error, setError, theme, setTheme }: any) {
   const [showCreate, setShowCreate] = useState(false);
   const [showYou, setShowYou] = useState(false);
   // BUG FIX, 2026-11-05: YouView used to render inline at the BOTTOM of
@@ -666,12 +656,6 @@ function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, load
       </div>
     </div>
     {error && <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:12}}><span style={{color:'var(--danger-text)'}}>{error}</span><button style={btn} onClick={()=>loadGroups()}>Retry</button></div>}
-    {updateAvailable && <div role="status" style={{display:'flex',alignItems:'center',gap:10,background:'var(--tint-bg)',borderRadius:14,padding:'10px 12px',marginBottom:12}}>
-      <span style={{width:28,height:28,borderRadius:'50%',background:'var(--tint-bg)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--tint-text)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></span>
-      <span style={{flex:1,minWidth:0,fontSize:14,fontWeight:600,lineHeight:1.3}}>A new version is available</span>
-      <button type="button" style={{...primary, padding:'6px 12px', fontSize:13, flexShrink:0}} onClick={()=>window.location.reload()}>Update</button>
-      <button type="button" aria-label="Dismiss" onClick={dismissUpdate} style={{background:'transparent',border:'none',color:'var(--muted)',fontSize:18,lineHeight:1,padding:8,minWidth:32,minHeight:32,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexShrink:0}}>×</button>
-    </div>}
     <OnboardingPrompts />
     <div style={{background:'linear-gradient(135deg,#0f766e,#059669,#10b981)',borderRadius:24,padding:20,marginBottom:20,color:'#fff'}}>
       <div style={{fontSize:12,letterSpacing:1.5,color:'#ccfbf1',fontWeight:600}}>ALL ACROSS {(groups?.active?.length ?? 0)} {((groups?.active?.length ?? 0) === 1) ? 'GROUP' : 'GROUPS'}</div>
