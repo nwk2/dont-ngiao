@@ -670,7 +670,7 @@ function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, load
       <span style={{width:28,height:28,borderRadius:'50%',background:'var(--tint-bg)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--tint-text)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></span>
       <span style={{flex:1,minWidth:0,fontSize:14,fontWeight:600,lineHeight:1.3}}>A new version is available</span>
       <button type="button" style={{...primary, padding:'6px 12px', fontSize:13, flexShrink:0}} onClick={()=>window.location.reload()}>Update</button>
-      <button type="button" aria-label="Dismiss" onClick={dismissUpdate} style={{background:'transparent',border:'none',color:'var(--muted)',fontSize:18,lineHeight:1,padding:4,cursor:'pointer',flexShrink:0}}>×</button>
+      <button type="button" aria-label="Dismiss" onClick={dismissUpdate} style={{background:'transparent',border:'none',color:'var(--muted)',fontSize:18,lineHeight:1,padding:8,minWidth:32,minHeight:32,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexShrink:0}}>×</button>
     </div>}
     <OnboardingPrompts />
     <div style={{background:'linear-gradient(135deg,#0f766e,#059669,#10b981)',borderRadius:24,padding:20,marginBottom:20,color:'#fff'}}>
