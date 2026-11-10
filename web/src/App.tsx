@@ -396,11 +396,52 @@ export default function App() {
       else { setAuthError(e.message || 'Could not reach the server'); }
     }
   }
-  useEffect(()=>{ checkAuth(); }, []);
+  useEffect(()=>{
+    // A Google redirect back (?code=...&state=...) takes precedence
+    // over the normal session check — the callback handles auth, so
+    // checkAuth must not also run and race it.
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const state = params.get('state');
+    if (code && state) { handleGoogleCallback(code, state); return; }
+    checkAuth();
+  }, []);
   async function doAuth(mode: 'login'|'register', name: string, email: string, password: string, turnstileToken?: string | null) {
     setError(''); setLoading(true);
     try { const d = await api(`/api/auth/${mode}`, 'POST', mode==='register' ? {name,email,password,turnstileToken} : {email,password}); setToken(d.token); setUser(d.user); setAuthState('authed'); setAuthNotice(''); await loadGroups(); await restoreSaved(); }
     catch(e:any){ setError(e.message); } finally { setLoading(false); }
+  }
+  // GOOGLE CALLBACK, Nov 2026: Google redirected back to the app root
+  // with ?code=...&state=.... Verify the state (CSRF — the code is
+  // useless without it, and a forged callback cannot guess the nonce),
+  // clear the code from the URL at once (codes are single-use, a
+  // refresh must not re-submit one), then exchange the code. If the
+  // user is already signed in (a token exists) this is a LINK — they
+  // tapped "Link Google account" in You view — so POST
+  // /api/me/google/link. Otherwise it is a SIGN-IN — POST
+  // /api/auth/google. The mount effect calls this instead of
+  // checkAuth when a code is present, so the two never race.
+  async function handleGoogleCallback(code: string, state: string) {
+    try { window.history.replaceState(null, '', window.location.pathname); } catch { /* ignore */ }
+    setUrlParams(new URLSearchParams(window.location.search));
+    let storedState: string | null = null;
+    try { storedState = localStorage.getItem(GOOGLE_STATE_KEY); } catch { /* ignore */ }
+    try { localStorage.removeItem(GOOGLE_STATE_KEY); } catch { /* ignore */ }
+    if (!storedState || storedState !== state) { setError('Google sign-in failed — please try again.'); setAuthState('guest'); return; }
+    const linking = !!getToken();
+    setError(''); setLoading(true);
+    try {
+      if (linking) {
+        const d = await api('/api/me/google/link', 'POST', { code });
+        setUser(d.user);
+      } else {
+        const d = await api('/api/auth/google', 'POST', { code });
+        setToken(d.token); setUser(d.user); setAuthState('authed'); setAuthNotice(''); await loadGroups(); await restoreSaved();
+      }
+    } catch (e: any) {
+      setError(e.message || 'Google sign-in failed, try again.');
+      if (!linking) setAuthState('guest');
+    } finally { setLoading(false); }
   }
   function doLogout() { try { localStorage.removeItem(LAST_GROUP_KEY); } catch { /* ignore */ } setToken(null); setUser(null); setGroup(null); setGroups(null); setAuthState('guest'); }
   // INVITE LINK (?invite=<token>), Nov 2026: the token survives the
@@ -783,7 +824,16 @@ function YouView({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, l
     <h3 style={{marginBottom:8}}>Account</h3>
     <div style={{...homeCard,display:'flex',flexDirection:'column',gap:8}}>
       <button style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}} onClick={()=>{setNameDraft(user.name); setEditError(''); setEditingName(true);}}><span>Edit name <span style={{color:'var(--muted)'}}>· Shown to your groups</span></span><span style={{color:'var(--muted)'}}>›</span></button>
-      <button style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}} onClick={()=>{setCpCurrent(''); setCpNew(''); setCpConfirm(''); setCpError(''); setShowChangePassword(true);}}><span>Change password</span><span style={{color:'var(--muted)'}}>›</span></button>
+      <button style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}} onClick={()=>{setCpCurrent(''); setCpNew(''); setCpConfirm(''); setCpError(''); setShowChangePassword(true);}}><span>{user.has_password ? 'Change password' : 'Set password'}{!user.has_password && <span style={{color:'var(--muted)'}}> · Add email sign-in</span>}</span><span style={{color:'var(--muted)'}}>›</span></button>
+      {/* GOOGLE SIGN-IN, Nov 2026: link a Google account to sign in
+      with Google next time. Shown only until linked; afterwards the
+      row reads Linked (informational). Linking does NOT change the
+      name — Google only proves identity. */}
+      {user.has_google ? (
+        <div style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'default'}}><span>Google account <span style={{color:'var(--muted)'}}>· Linked</span></span><span style={{color:'var(--muted)'}}>✓</span></div>
+      ) : (
+        <button style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}} onClick={()=>{ window.location.href = googleAuthUrl(); }}><span>Link Google account <span style={{color:'var(--muted)'}}>· Sign in with Google</span></span><span style={{color:'var(--muted)'}}>›</span></button>
+      )}
       {/* ADMIN BUTTON, Nov 2026: the admin screen was only reachable by
       typing ?admin. An Admin row now sits in the Account card, visible
       only when the current user is an admin (user.is_admin comes from
@@ -820,7 +870,7 @@ function YouView({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, l
     </div>)}
     {showChangePassword && (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
       <div style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto'}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h2 style={{margin:0}}>Change password</h2><button type="button" aria-label="Close" title="Close" onClick={()=>setShowChangePassword(false)} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h2 style={{margin:0}}>{user.has_password ? 'Change password' : 'Set password'}</h2><button type="button" aria-label="Close" title="Close" onClick={()=>setShowChangePassword(false)} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
         {/* LOGOUT-ON-SUCCESS, Nov 2026: the sheet used to show a success
         state with a 'Log in again' button, but the X still closed the
         sheet without logging out — the session was already dead
@@ -829,12 +879,12 @@ function YouView({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, l
         successful change logs out immediately (onLogout) and sets an
         auth notice, so Auth explains why you are logged out. There is
         no success state in the sheet and no way to stay in the app. */}
-        <p style={{fontSize:13,color:'var(--muted)'}}>You will be logged out everywhere after changing your password.</p>
-        <label>Current password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={cpShow ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={cpCurrent} onChange={e=>setCpCurrent(e.target.value)} aria-label="Current password" /><button type="button" aria-label={cpShow ? 'Hide password' : 'Show password'} aria-pressed={cpShow} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onClick={()=>setCpShow(v=>!v)}>{cpShow ? '🙈' : '👁️'}</button></div>
+        <p style={{fontSize:13,color:'var(--muted)'}}>{user.has_password ? 'You will be logged out everywhere after changing your password.' : 'Add a password so you can also sign in with your email. You will be logged out everywhere after setting it.'}</p>
+        {user.has_password && (<><label>Current password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={cpShow ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={cpCurrent} onChange={e=>setCpCurrent(e.target.value)} aria-label="Current password" /><button type="button" aria-label={cpShow ? 'Hide password' : 'Show password'} aria-pressed={cpShow} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onClick={()=>setCpShow(v=>!v)}>{cpShow ? '🙈' : '👁️'}</button></div></>)}
         <label>New password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={cpShow ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={cpNew} onChange={e=>setCpNew(e.target.value)} aria-label="New password" /><button type="button" aria-label={cpShow ? 'Hide password' : 'Show password'} aria-pressed={cpShow} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onClick={()=>setCpShow(v=>!v)}>{cpShow ? '🙈' : '👁️'}</button></div>
         <label>Confirm new password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={cpShow ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={cpConfirm} onChange={e=>setCpConfirm(e.target.value)} aria-label="Confirm new password" /><button type="button" aria-label={cpShow ? 'Hide password' : 'Show password'} aria-pressed={cpShow} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onClick={()=>setCpShow(v=>!v)}>{cpShow ? '🙈' : '👁️'}</button></div>
         {cpError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{cpError}</p>}
-        <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={async()=>{setCpError(''); if (!cpCurrent || !cpNew || !cpConfirm) { setCpError('Please fill in all three fields'); return; } if (cpNew.length < 6) { setCpError('New password must be at least 6 characters'); return; } if (cpNew !== cpConfirm) { setCpError('New passwords do not match'); return; } if (cpNew === cpCurrent) { setCpError('New password must be different from the current password'); return; } try { await api('/api/me/password','POST',{currentPassword:cpCurrent,newPassword:cpNew}); setShowChangePassword(false); if (setAuthNotice) setAuthNotice('Your password was changed — please log in again with your new password.'); onLogout(); } catch (e:any) { setCpError(e.message); }}}>Save</AsyncButton>
+        <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={async()=>{setCpError(''); if (user.has_password) { if (!cpCurrent || !cpNew || !cpConfirm) { setCpError('Please fill in all three fields'); return; } if (cpNew.length < 6) { setCpError('New password must be at least 6 characters'); return; } if (cpNew !== cpConfirm) { setCpError('New passwords do not match'); return; } if (cpNew === cpCurrent) { setCpError('New password must be different from the current password'); return; } try { await api('/api/me/password','POST',{currentPassword:cpCurrent,newPassword:cpNew}); setShowChangePassword(false); if (setAuthNotice) setAuthNotice('Your password was changed — please log in again with your new password.'); onLogout(); } catch (e:any) { setCpError(e.message); } } else { if (!cpNew || !cpConfirm) { setCpError('Please fill in both fields'); return; } if (cpNew.length < 6) { setCpError('New password must be at least 6 characters'); return; } if (cpNew !== cpConfirm) { setCpError('New passwords do not match'); return; } try { await api('/api/me/password','POST',{newPassword:cpNew}); setShowChangePassword(false); if (setAuthNotice) setAuthNotice('Your password was set — please log in again with your new password.'); onLogout(); } catch (e:any) { setCpError(e.message); } }}}>Save</AsyncButton>
       </div>
     </div>)}
   </div>);
@@ -969,6 +1019,23 @@ function AuthCorgi({ focus, value, eyesClosed, oneEyePeek }: any) {
 // (TURNSTILE_SECRET Worker secret). The widget renders on the Register
 // tab only; the worker verifies the token before creating an account.
 const TURNSTILE_SITE_KEY = '0x4AAAAAAF53lVCZRIHYjqty';
+// GOOGLE SIGN-IN, Nov 2026: authorization-code flow. The Client ID is
+// public by design (it is in the auth URL); the secret lives only in
+// the Worker (GOOGLE_CLIENT_SECRET runtime secret). The redirect URI
+// is the app root — it must match the URI registered in Google Cloud
+// Console exactly, and the Worker uses the same value when it
+// exchanges the code. The state is a one-time CSRF nonce, kept in
+// localStorage (not sessionStorage) so it survives the round-trip
+// even if iOS relaunches the PWA on the way back from Google.
+const GOOGLE_CLIENT_ID = '710021216622-44ldbet58qcftfakusmu9i24qto6nr40.apps.googleusercontent.com';
+const GOOGLE_REDIRECT_URI = 'https://dont-ngiao-web.wk-io.workers.dev/';
+const GOOGLE_STATE_KEY = 'dont-ngiao-google-state';
+function googleAuthUrl(): string {
+  const state = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  try { localStorage.setItem(GOOGLE_STATE_KEY, state); } catch { /* ignore */ }
+  const p = new URLSearchParams({ client_id: GOOGLE_CLIENT_ID, redirect_uri: GOOGLE_REDIRECT_URI, response_type: 'code', scope: 'openid email profile', state, prompt: 'select_account' });
+  return `https://accounts.google.com/o/oauth2/v2/auth?${p.toString()}`;
+}
 // Resolves when the Turnstile script (loaded in index.html) is ready.
 // Polls briefly because the script loads async and may land after React
 // mounts; resolves to null if it never arrives (widget stays unrendered
@@ -1082,6 +1149,19 @@ function Auth({ onAuth, error, loading, notice, inviteToken, onInvalidInvite }: 
     <div style={{...tabTrack,marginBottom:16}}><button style={mode==='login'?tabPillActive:tabPill} onClick={()=>setMode('login')}>Log in</button><button style={mode==='register'?tabPillActive:tabPill} onClick={()=>setMode('register')}>Register</button></div>
     <div style={homeCard}>
     {error && <p style={{color:'var(--danger-text)',marginTop:0}}>{error}</p>}
+    {/* GOOGLE SIGN-IN, Nov 2026: one button for both Log in and
+    Register — Google signs the user in, or creates the account when
+    there is none. No password, no Turnstile (Google does the bot
+    check). The button follows Google's brand (white, Google "G"). */}
+    <button type="button" style={{...btn,width:'100%',padding:'14px',fontSize:16,background:'#fff',color:'#1f1f1f',border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',gap:10,marginBottom:12}} onClick={()=>{ window.location.href = googleAuthUrl(); }}>
+      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82z"/><path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96H1.29v3.09C3.26 21.3 7.31 24 12 24z"/><path fill="#FBBC05" d="M5.27 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.98-3.09z"/><path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.98 3.09C6.22 6.86 8.87 4.75 12 4.75z"/></svg>
+      <span>Sign in with Google</span>
+    </button>
+    <div style={{display:'flex',alignItems:'center',gap:12,margin:'4px 0 12px',color:'var(--muted)',fontSize:13}}>
+      <span style={{flex:1,height:1,background:'var(--border)'}} />
+      <span>or continue with email</span>
+      <span style={{flex:1,height:1,background:'var(--border)'}} />
+    </div>
     {pet}
     {mode==='register' && <><label>Name</label><input style={input} value={name} onChange={e=>setName(e.target.value)} onFocus={()=>{setFocus('name'); setLastField('name');}} onBlur={()=>setFocus(null)} /></>}
     <label>Email</label><input style={input} value={email} onChange={e=>setEmail(e.target.value)} onFocus={()=>{setFocus('email'); setLastField('email');}} onBlur={()=>setFocus(null)} />

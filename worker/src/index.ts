@@ -5,7 +5,7 @@
 import { CURRENCIES, CATEGORIES, equalSplit, percentSplit, balanceOf, simplify, formatAmount } from './logic';
 import { notifyGroupMembers, notifyUsers } from './push';
 
-export interface Env { DB: D1Database; TURNSTILE_SECRET?: string; VAPID_PRIVATE_KEY?: string; }
+export interface Env { DB: D1Database; TURNSTILE_SECRET?: string; VAPID_PRIVATE_KEY?: string; GOOGLE_CLIENT_SECRET?: string; }
 type Row = Record<string, any>;
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 const nowIso = () => new Date().toISOString();
@@ -56,6 +56,44 @@ function newSalt(): string {
   const b = new Uint8Array(16); crypto.getRandomValues(b);
   return btoa(String.fromCharCode(...b));
 }
+// GOOGLE SIGN-IN, Nov 2026: authorization-code flow (full-page
+// redirect, reliable in a PWA — popups are flaky on iOS Home Screen).
+// The frontend redirects to Google with redirect_uri = the app root;
+// Google returns a code, which the frontend sends to
+// POST /api/auth/google (or /api/me/google/link). The Worker exchanges
+// the code for tokens (needs the GOOGLE_CLIENT_SECRET runtime secret,
+// never in the repo), then calls Google's userinfo endpoint with the
+// access token — Google validates the token, so no JWT verification
+// is needed in the Worker. The Client ID is public by design (it is
+// in the frontend auth URL); only the secret is sensitive. Returns
+// the verified { sub, email, email_verified, name } or throws.
+const GOOGLE_CLIENT_ID = '710021216622-44ldbet58qcftfakusmu9i24qto6nr40.apps.googleusercontent.com';
+const GOOGLE_REDIRECT_URI = 'https://dont-ngiao-web.wk-io.workers.dev/';
+async function googleUserFromCode(env: Env, code: string): Promise<{ sub: string; email: string; email_verified: boolean; name: string }> {
+  if (!env.GOOGLE_CLIENT_SECRET) throw new Error('Google sign-in is not configured, try again later');
+  let tokRes: Response;
+  try {
+    tokRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ code, client_id: GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, redirect_uri: GOOGLE_REDIRECT_URI, grant_type: 'authorization_code' }),
+    });
+  } catch {
+    throw new Error('Could not reach Google, try again');
+  }
+  const tokData: any = await tokRes.json().catch(() => ({}));
+  const accessToken = tokData?.access_token;
+  if (!tokRes.ok || !accessToken) throw new Error('Google sign-in failed, try again');
+  let infoRes: Response;
+  try {
+    infoRes = await fetch('https://openidconnect.googleapis.com/v1/userinfo', { headers: { Authorization: `Bearer ${accessToken}` } });
+  } catch {
+    throw new Error('Could not reach Google, try again');
+  }
+  const info: any = await infoRes.json().catch(() => ({}));
+  if (!infoRes.ok || !info?.sub || !info?.email) throw new Error('Google sign-in failed, try again');
+  return { sub: String(info.sub), email: String(info.email), email_verified: info.email_verified === true, name: String(info.name || '') };
+}
 async function authUser(req: Request, env: Env): Promise<Row | null> {
   const tok = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   if (!tok) return null;
@@ -68,7 +106,7 @@ async function authUser(req: Request, env: Env): Promise<Row | null> {
   // Aliases matter: users.created_at and sessions.created_at are
   // different dates; expiry uses the SESSION's dates only.
   let s: Row | null = null;
-  try { s = await env.DB.prepare('SELECT u.id, u.name, u.email, u.created_at, u.is_admin, s.created_at AS session_created_at, s.last_seen_at AS session_last_seen_at FROM users u JOIN sessions s ON s.user_id = u.id WHERE s.token=?').bind(tok).first<Row>(); }
+  try { s = await env.DB.prepare('SELECT u.id, u.name, u.email, u.created_at, u.is_admin, (u.google_sub IS NOT NULL) AS has_google, (u.password_hash <> \'\') AS has_password, s.created_at AS session_created_at, s.last_seen_at AS session_last_seen_at FROM users u JOIN sessions s ON s.user_id = u.id WHERE s.token=?').bind(tok).first<Row>(); }
   catch { s = await env.DB.prepare('SELECT u.id, u.name, u.email, u.created_at, s.created_at AS session_created_at FROM users u JOIN sessions s ON s.user_id = u.id WHERE s.token=?').bind(tok).first<Row>(); }
   if (!s) return null;
   const lastActivity = s.session_last_seen_at || s.session_created_at;
@@ -84,7 +122,7 @@ async function authUser(req: Request, env: Env): Promise<Row | null> {
   if (Number.isFinite(lastMs) && Date.now() - lastMs > SESSION_TOUCH_INTERVAL_MS) {
     try { await env.DB.prepare('UPDATE sessions SET last_seen_at=? WHERE token=?').bind(nowIso(), tok).run(); } catch {}
   }
-  return { id: s.id, name: s.name, email: s.email, created_at: s.created_at, is_admin: Number(s.is_admin || 0) };
+  return { id: s.id, name: s.name, email: s.email, created_at: s.created_at, is_admin: Number(s.is_admin || 0), has_google: !!s.has_google, has_password: !!s.has_password };
 }
 // ADMIN, Nov 2026: separate admin user, separate login page. Admin
 // endpoints must check this server-side on every call — hiding the
@@ -281,7 +319,7 @@ async function verifyTurnstile(env: Env, token: string | undefined, ip: string, 
       // Include created_at: YouView's "User since" line needs it, and a
       // fresh register session never calls /api/me to fill it in (same
       // omission as login, fixed below).
-      const user = { id, name, email: email.toLowerCase(), created_at: createdAt, is_admin: 0 };
+      const user = { id, name, email: email.toLowerCase(), created_at: createdAt, is_admin: 0, has_google: false, has_password: true };
       const token = uid();
       await env.DB.prepare('INSERT INTO sessions (token,user_id,created_at) VALUES (?,?,?)').bind(token, id, nowIso()).run();
       return json({ user, token }, 200, origin);
@@ -305,9 +343,60 @@ async function verifyTurnstile(env: Env, token: string | undefined, ip: string, 
       // Include created_at (u.created_at): same "User since" reason as
       // register — a fresh login session never calls /api/me, so without
       // this the line silently disappears until the next page reload.
-      const user = { id: u.id, name: u.name, email: u.email, created_at: u.created_at, is_admin: Number(u.is_admin || 0) };
+      const user = { id: u.id, name: u.name, email: u.email, created_at: u.created_at, is_admin: Number(u.is_admin || 0), has_google: !!u.google_sub, has_password: !!u.password_hash };
       const token = uid();
       await env.DB.prepare('INSERT INTO sessions (token,user_id,created_at) VALUES (?,?,?)').bind(token, u.id, nowIso()).run();
+      return json({ user, token }, 200, origin);
+    }
+    // ---- Google sign-in (no password, no Turnstile) ----
+    // POST /api/auth/google { code }
+    // Google already verified the user (bot check + email ownership),
+    // so no Turnstile and no email verification are needed here.
+    // Exchanges the code, reads the verified email + Google ID from
+    // userinfo, then: (1) a user with this google_sub signs in as
+    // themselves; (2) otherwise a user with this email gets the
+    // google_sub linked (existing account, name kept — Google only
+    // proves identity, it does not rename); (3) otherwise a new user
+    // is created with the Google name (or the email prefix), no
+    // password. A placeholder with this email is activated the same
+    // way register does (name syncs to the Google name). Issues a
+    // normal session, same shape as login.
+    if (path === '/api/auth/google' && req.method === 'POST') {
+      const { code } = body;
+      if (!code) return err('Google sign-in failed, try again', 400, origin);
+      let g: { sub: string; email: string; email_verified: boolean; name: string };
+      try { g = await googleUserFromCode(env, String(code)); }
+      catch (e: any) { return err(e?.message || 'Google sign-in failed, try again', 400, origin); }
+      if (!g.email_verified) return err('Google could not verify this email address', 400, origin);
+      const email = g.email.toLowerCase();
+      // (1) Already linked by Google ID.
+      let u = await env.DB.prepare('SELECT * FROM users WHERE google_sub=?').bind(g.sub).first<Row>();
+      let id: string;
+      let name: string;
+      let isAdmin = 0;
+      let createdAt: string;
+      if (u) {
+        id = String(u.id); name = String(u.name); isAdmin = Number(u.is_admin || 0); createdAt = String(u.created_at);
+      } else {
+        // (2) Existing account (or placeholder) with this email: link
+        // the Google ID. The name is KEPT for a real account; a
+        // placeholder's temporary name syncs to the Google name (same
+        // as register activation).
+        u = await env.DB.prepare('SELECT * FROM users WHERE email=?').bind(email).first<Row>();
+        if (u) {
+          id = String(u.id); isAdmin = Number(u.is_admin || 0); createdAt = String(u.created_at);
+          if (u.password_hash) { name = String(u.name); } else { name = g.name || email.split('@')[0]; }
+          await env.DB.prepare('UPDATE users SET google_sub=?, name=? WHERE id=?').bind(g.sub, name, id).run();
+        } else {
+          // (3) New user.
+          id = uid(); name = g.name || email.split('@')[0]; isAdmin = 0; createdAt = nowIso();
+          try { await env.DB.prepare('INSERT INTO users (id,name,email,password_salt,password_hash,google_sub,created_at) VALUES (?,?,?,?,?,?,?)').bind(id, name, email, '', '', g.sub, createdAt).run(); }
+          catch { return err('Google sign-in failed, try again', 400, origin); }
+        }
+      }
+      const user = { id, name, email, created_at: createdAt, is_admin: isAdmin, has_google: true, has_password: !!u?.password_hash };
+      const token = uid();
+      await env.DB.prepare('INSERT INTO sessions (token,user_id,created_at) VALUES (?,?,?)').bind(token, id, nowIso()).run();
       return json({ user, token }, 200, origin);
     }
     if (path === '/api/auth/logout' && req.method === 'POST') {
@@ -327,28 +416,59 @@ async function verifyTurnstile(env: Env, token: string | undefined, ip: string, 
 
     // ---- Change password (authenticated) ----
     // POST /api/me/password { currentPassword, newPassword }
-    // The user changes their own password. Verifies the current
-    // password (PBKDF2, same as login), then stores a new salt +
-    // hash (min 6 chars, must differ from the current password).
-    // Deletes ALL sessions for the user — the change logs them out
-    // everywhere, including the current session, same as the reset
-    // flow, so a lost/stolen session cannot keep working after the
-    // change. The frontend clears the token and shows Auth.
+    // CHANGE (user has a password): verifies the current password
+    // (PBKDF2, same as login), then stores a new salt + hash (min 6
+    // chars, must differ from the current password). SET (Google-only
+    // user, no password yet): no current password to verify — just
+    // sets the new one, so a Google-only account can add email/
+    // password sign-in later. Either way, deletes ALL sessions for
+    // the user — the change logs them out everywhere, including the
+    // current session, same as the reset flow, so a lost/stolen
+    // session cannot keep working after the change. The frontend
+    // clears the token and shows Auth.
     if (path === '/api/me/password' && req.method === 'POST') {
       const user = await authUser(req, env); if (!user) return err('Unauthorized', 401, origin);
       const { currentPassword, newPassword } = body;
-      if (!currentPassword || !newPassword) return err('Current and new password are required', 400, origin);
+      if (!newPassword) return err('A new password is required', 400, origin);
       if (String(newPassword).length < 6) return err('New password must be at least 6 characters', 400, origin);
-      if (String(newPassword) === String(currentPassword)) return err('New password must be different from the current password', 400, origin);
       const u = await env.DB.prepare('SELECT password_salt, password_hash FROM users WHERE id=?').bind(user.id).first<Row>();
-      if (!u || !u.password_hash || !u.password_salt) return err('Current password is incorrect', 401, origin);
-      if ((await hashPassword(String(currentPassword), u.password_salt)) !== u.password_hash) return err('Current password is incorrect', 401, origin);
+      if (!u) return err('Current password is incorrect', 401, origin);
+      if (u.password_hash && u.password_salt) {
+        if (!currentPassword) return err('Current and new password are required', 400, origin);
+        if (String(newPassword) === String(currentPassword)) return err('New password must be different from the current password', 400, origin);
+        if ((await hashPassword(String(currentPassword), u.password_salt)) !== u.password_hash) return err('Current password is incorrect', 401, origin);
+      }
       const salt = newSalt(); const hash = await hashPassword(String(newPassword), salt);
       await env.DB.batch([
         env.DB.prepare('UPDATE users SET password_salt=?, password_hash=? WHERE id=?').bind(salt, hash, user.id),
         env.DB.prepare('DELETE FROM sessions WHERE user_id=?').bind(user.id),
       ]);
       return json({ ok: true }, 200, origin);
+    }
+
+    // ---- Link a Google account (authenticated) ----
+    // POST /api/me/google/link { code }
+    // A signed-in user links their Google account to their existing
+    // account, so they can sign in with Google next time. This is the
+    // safe path when the Google email differs from the Don't Ngiao
+    // email (the automatic email-match in /api/auth/google would
+    // otherwise create a second account). Exchanges the code, reads
+    // the Google ID, and sets google_sub on the CURRENT user (from
+    // the session token). Rejects if this Google account is already
+    // linked to a DIFFERENT user. The name is NOT changed — Google
+    // only proves identity. Returns the updated user.
+    if (path === '/api/me/google/link' && req.method === 'POST') {
+      const user = await authUser(req, env); if (!user) return err('Unauthorized', 401, origin);
+      const { code } = body;
+      if (!code) return err('Google sign-in failed, try again', 400, origin);
+      let g: { sub: string; email: string; email_verified: boolean; name: string };
+      try { g = await googleUserFromCode(env, String(code)); }
+      catch (e: any) { return err(e?.message || 'Google sign-in failed, try again', 400, origin); }
+      if (!g.email_verified) return err('Google could not verify this email address', 400, origin);
+      const other = await env.DB.prepare('SELECT id FROM users WHERE google_sub=?').bind(g.sub).first<Row>();
+      if (other && String(other.id) !== String(user.id)) return err('This Google account is already linked to another account', 400, origin);
+      await env.DB.prepare('UPDATE users SET google_sub=? WHERE id=?').bind(g.sub, user.id).run();
+      return json({ user: { ...user, has_google: true } }, 200, origin);
     }
 
     // ---- Push subscriptions (authenticated) ----
