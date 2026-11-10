@@ -17,7 +17,7 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith('/api/')) return; // never cache the API
+  if (url.pathname.startsWith('/api/') || url.pathname === '/version.json') return; // never cache the API or the version check
   if (e.request.mode === 'navigate') {
     e.respondWith(
       fetch(e.request)

@@ -89,6 +89,22 @@ export async function unsubscribePush(): Promise<void> {
   try { await api('/api/me/push-subscription', 'DELETE', { endpoint: sub.endpoint }); } catch { /* server row may already be gone */ }
   await sub.unsubscribe();
 }
+// UPDATE CHECK, Nov 2026: fetch the build-time version.json and return
+// its buildId, or null when unreachable. The file is written fresh by
+// generate-version.mjs on every build and is never cached (the service
+// worker skips /version.json, and the fetch uses no-store), so it always
+// reports the latest deployed build. The app compares it against the
+// version it started with to detect a newer deploy for the update
+// banner. Same-origin fetch — version.json is served by the frontend
+// Worker, not the API Worker.
+export async function fetchVersion(): Promise<string | null> {
+  try {
+    const res = await fetch('/version.json', { cache: 'no-store' });
+    if (!res.ok) return null;
+    const d = await res.json();
+    return typeof d?.buildId === 'string' ? d.buildId : null;
+  } catch { return null; }
+}
 const SYM: Record<string,string> = { SGD:'S$', USD:'$', EUR:'€', GBP:'£', AUD:'A$', CAD:'C$', JPY:'¥', KRW:'₩', VND:'₫', HKD:'HK$', TWD:'NT$', CNY:'¥', INR:'₹', MYR:'RM', THB:'฿', IDR:'Rp', PHP:'₱', NZD:'NZ$', CHF:'CHF ' };
 export function fmt(minor: number, cur: string) {
   const zero = ['JPY','KRW','VND'].includes(cur);

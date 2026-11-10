@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { api, setToken, getToken, CURRENCIES, CATEGORIES, fmt, toMinor, fromMinor, VAPID_PUBLIC_KEY, isStandalone, installPlatform, pushSupported, getPushSubscription, subscribePush } from './api';
+import { api, setToken, getToken, CURRENCIES, CATEGORIES, fmt, toMinor, fromMinor, VAPID_PUBLIC_KEY, isStandalone, installPlatform, pushSupported, getPushSubscription, subscribePush, fetchVersion } from './api';
 import { DateField, fmtDate, todayIso } from './calendar';
 import { Pie, DailyBar } from './pie';
 
@@ -236,6 +236,14 @@ function ConfirmSheet({ title, message, confirmLabel, onConfirm, onCancel }: any
 // stale or forged id simply fails to load and falls back to Home.
 const LAST_GROUP_KEY = 'dont-ngiao-last-group';
 const THEME_KEY = 'dont-ngiao-theme';
+// UPDATE BANNER, Nov 2026: sessionStorage key holding the buildId the
+// user dismissed this session. Dismissal is session-scoped (same as the
+// onboarding prompts): the banner reappears on the next fresh launch
+// while an update is still pending, so a dismissed banner can never
+// strand the user on a stale version for weeks just because no newer
+// version shipped in the meantime. Stores the buildId (not a bare flag)
+// so a NEWER version than the dismissed one still shows the banner.
+const UPDATE_DISMISS_KEY = 'dont-ngiao-update-dismissed';
 const VALID_TABS = ['expenses','balances','members','log'] as const;
 function readSavedGroup(): { groupId: string; tab: typeof VALID_TABS[number] } | null {
   try {
@@ -269,6 +277,46 @@ export default function App() {
   // right after joining. Cleared when they leave the group (back) or open
   // a different group, so it does not reappear on a later visit.
   const [justJoinedId, setJustJoinedId] = useState<string | null>(null);
+  // UPDATE BANNER, Nov 2026: a bookmarked PWA usually resumes from its
+  // suspended state instead of doing a fresh load, so users can run a
+  // stale version for days — and the service worker only checks for an
+  // update when sw.js itself changes, which is rare. The app therefore
+  // polls version.json (written fresh at every build, never cached) and
+  // shows a slim "A new version is available" banner on Home when the
+  // deployed build differs from the one this instance started with.
+  // seenVersionRef = the build this instance started with (baseline,
+  // set on the first successful fetch); latestVersion = the newest
+  // deployed build seen so far. The check runs on mount and whenever
+  // the app returns to the foreground (visibilitychange + focus).
+  // Dismissal is session-scoped and version-specific (see
+  // UPDATE_DISMISS_KEY): dismissing hides the banner for THIS build
+  // only, this session only — it reappears on the next fresh launch
+  // while an update is still pending, and a newer build than the
+  // dismissed one always shows it again.
+  const seenVersionRef = useRef<string | null>(null);
+  const [latestVersion, setLatestVersion] = useState<string | null>(null);
+  const [updateDismissedFor, setUpdateDismissedFor] = useState<string | null>(() => {
+    try { return sessionStorage.getItem(UPDATE_DISMISS_KEY); } catch { return null; }
+  });
+  const updateAvailable = latestVersion !== null && seenVersionRef.current !== null && latestVersion !== seenVersionRef.current && latestVersion !== updateDismissedFor;
+  useEffect(() => {
+    let alive = true;
+    const checkVersion = async () => {
+      const v = await fetchVersion();
+      if (!alive || !v) return; // offline or no version file — skip silently
+      if (seenVersionRef.current === null) seenVersionRef.current = v; // establish the baseline
+      setLatestVersion(v);
+    };
+    checkVersion();
+    const onVisible = () => { if (document.visibilityState === 'visible') checkVersion(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => { alive = false; document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('focus', onVisible); };
+  }, []);
+  const dismissUpdate = () => {
+    if (latestVersion) { try { sessionStorage.setItem(UPDATE_DISMISS_KEY, latestVersion); } catch { /* ignore */ } }
+    setUpdateDismissedFor(latestVersion);
+  };
   const [groupLoading, setGroupLoading] = useState(false);
   const loadSeq = useRef(0);
   const restoredRef = useRef(false);
@@ -430,7 +478,7 @@ export default function App() {
   // (archive/restore/leave from Settings, Home restore via loadGroups).
   if (group) return <GroupView group={group} setGroup={setGroup} tab={tab} setTab={setTab} justJoined={justJoinedId === group.id} back={()=>{setJustJoinedId(null); setGroup(null); loadGroups();}} reload={(detail?: any)=> detail && detail.id ? (setGroup(detail), setError(''), Promise.resolve(true)) : loadGroup(group.id, { keepTab: true })} error={error} setError={setError}  theme={theme} setTheme={setTheme} />;
   if (!groups) return <HomeSkeleton user={user} />;
-  return <Home user={user} setUser={setUser} onLogout={doLogout} setAuthNotice={setAuthNotice} groups={groups} loadGroups={loadGroups} loadGroup={(id: string)=>loadGroup(id, { skeleton: true })} error={error} setError={setError}  theme={theme} setTheme={setTheme} />;
+  return <Home user={user} setUser={setUser} onLogout={doLogout} setAuthNotice={setAuthNotice} groups={groups} loadGroups={loadGroups} loadGroup={(id: string)=>loadGroup(id, { skeleton: true })} error={error} setError={setError}  theme={theme} setTheme={setTheme} updateAvailable={updateAvailable} dismissUpdate={dismissUpdate} />;
 }
 
 // Skeleton screens: grey blocks in the exact shape of the content that is
@@ -595,7 +643,7 @@ function OnboardingPrompts() {
   </div>);
 }
 
-function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, loadGroup, error, setError, theme, setTheme }: any) {
+function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, loadGroup, error, setError, theme, setTheme, updateAvailable, dismissUpdate }: any) {
   const [showCreate, setShowCreate] = useState(false);
   const [showYou, setShowYou] = useState(false);
   // BUG FIX, 2026-11-05: YouView used to render inline at the BOTTOM of
@@ -618,6 +666,12 @@ function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, load
       </div>
     </div>
     {error && <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:12}}><span style={{color:'var(--danger-text)'}}>{error}</span><button style={btn} onClick={()=>loadGroups()}>Retry</button></div>}
+    {updateAvailable && <div style={{display:'flex',alignItems:'center',gap:10,background:'var(--tint-bg)',borderRadius:14,padding:'10px 12px',marginBottom:12}}>
+      <span style={{width:28,height:28,borderRadius:'50%',background:'var(--tint-bg)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--tint-text)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></span>
+      <span style={{flex:1,minWidth:0,fontSize:14,fontWeight:600,lineHeight:1.3}}>A new version is available</span>
+      <button type="button" style={{...primary, padding:'6px 12px', fontSize:13, flexShrink:0}} onClick={()=>window.location.reload()}>Update</button>
+      <button type="button" aria-label="Dismiss" onClick={dismissUpdate} style={{background:'transparent',border:'none',color:'var(--muted)',fontSize:18,lineHeight:1,padding:4,cursor:'pointer',flexShrink:0}}>×</button>
+    </div>}
     <OnboardingPrompts />
     <div style={{background:'linear-gradient(135deg,#0f766e,#059669,#10b981)',borderRadius:24,padding:20,marginBottom:20,color:'#fff'}}>
       <div style={{fontSize:12,letterSpacing:1.5,color:'#ccfbf1',fontWeight:600}}>ALL ACROSS {(groups?.active?.length ?? 0)} {((groups?.active?.length ?? 0) === 1) ? 'GROUP' : 'GROUPS'}</div>
