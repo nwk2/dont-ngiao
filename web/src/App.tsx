@@ -666,7 +666,7 @@ function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, load
       </div>
     </div>
     {error && <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:12}}><span style={{color:'var(--danger-text)'}}>{error}</span><button style={btn} onClick={()=>loadGroups()}>Retry</button></div>}
-    {updateAvailable && <div style={{display:'flex',alignItems:'center',gap:10,background:'var(--tint-bg)',borderRadius:14,padding:'10px 12px',marginBottom:12}}>
+    {updateAvailable && <div role="status" style={{display:'flex',alignItems:'center',gap:10,background:'var(--tint-bg)',borderRadius:14,padding:'10px 12px',marginBottom:12}}>
       <span style={{width:28,height:28,borderRadius:'50%',background:'var(--tint-bg)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--tint-text)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></span>
       <span style={{flex:1,minWidth:0,fontSize:14,fontWeight:600,lineHeight:1.3}}>A new version is available</span>
       <button type="button" style={{...primary, padding:'6px 12px', fontSize:13, flexShrink:0}} onClick={()=>window.location.reload()}>Update</button>
