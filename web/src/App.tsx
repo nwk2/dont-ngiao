@@ -421,26 +421,40 @@ export default function App() {
   // /api/me/google/link. Otherwise it is a SIGN-IN — POST
   // /api/auth/google. The mount effect calls this instead of
   // checkAuth when a code is present, so the two never race.
+  // LINK FIX, Nov 2026: the linking branch used to only setUser() —
+  // it never set authState('authed'), loadGroups(), or restoreSaved(),
+  // so a successful link left the app stuck on the 'checking'
+  // skeleton even though the server had linked the account, and a
+  // failed link left the same skeleton with the error invisible.
+  // Linking now finishes exactly like a sign-in. On any linking
+  // failure (state mismatch or a rejected code) the existing session
+  // is restored via checkAuth() instead of dropping to Auth or
+  // stranding the skeleton — checkAuth re-validates the token, and
+  // only a real 401 clears it and goes to guest.
   async function handleGoogleCallback(code: string, state: string) {
     try { window.history.replaceState(null, '', window.location.pathname); } catch { /* ignore */ }
     setUrlParams(new URLSearchParams(window.location.search));
     let storedState: string | null = null;
     try { storedState = localStorage.getItem(GOOGLE_STATE_KEY); } catch { /* ignore */ }
     try { localStorage.removeItem(GOOGLE_STATE_KEY); } catch { /* ignore */ }
-    if (!storedState || storedState !== state) { setError('Google sign-in failed — please try again.'); setAuthState('guest'); return; }
     const linking = !!getToken();
+    if (!storedState || storedState !== state) {
+      setError('Google sign-in failed — please try again.');
+      if (linking) { await checkAuth(); } else { setAuthState('guest'); }
+      return;
+    }
     setError(''); setLoading(true);
     try {
       if (linking) {
         const d = await api('/api/me/google/link', 'POST', { code });
-        setUser(d.user);
+        setUser(d.user); setAuthState('authed'); await loadGroups(); await restoreSaved();
       } else {
         const d = await api('/api/auth/google', 'POST', { code });
         setToken(d.token); setUser(d.user); setAuthState('authed'); setAuthNotice(''); await loadGroups(); await restoreSaved();
       }
     } catch (e: any) {
       setError(e.message || 'Google sign-in failed, try again.');
-      if (!linking) setAuthState('guest');
+      if (linking) { await checkAuth(); } else { setAuthState('guest'); }
     } finally { setLoading(false); }
   }
   function doLogout() { try { localStorage.removeItem(LAST_GROUP_KEY); } catch { /* ignore */ } setToken(null); setUser(null); setGroup(null); setGroups(null); setAuthState('guest'); }
@@ -830,7 +844,7 @@ function YouView({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, l
       row reads Linked (informational). Linking does NOT change the
       name — Google only proves identity. */}
       {user.has_google ? (
-        <div style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'default'}}><span>Google account <span style={{color:'var(--muted)'}}>· Linked</span></span><span style={{color:'var(--muted)'}}>✓</span></div>
+        <div style={{...btn,boxSizing:'border-box',width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'default'}}><span>Google account <span style={{color:'var(--muted)'}}>· Linked</span></span><span style={{color:'var(--muted)'}}>✓</span></div>
       ) : (
         <button style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}} onClick={()=>{ window.location.href = googleAuthUrl(); }}><span>Link Google account <span style={{color:'var(--muted)'}}>· Sign in with Google</span></span><span style={{color:'var(--muted)'}}>›</span></button>
       )}
