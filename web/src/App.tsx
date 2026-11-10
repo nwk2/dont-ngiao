@@ -390,7 +390,7 @@ export default function App() {
   async function checkAuth() {
     if (!getToken()) return;
     setAuthError('');
-    try { const d = await api('/api/me'); setUser(d.user); setAuthState('authed'); loadGroups(); await restoreSaved(); }
+    try { const d = await api('/api/me'); setUser(d.user); setAuthState('authed'); await loadGroups(); await restoreSaved(); }
     catch (e: any) {
       if (e?.status === 401) { setToken(null); setUser(null); setAuthState('guest'); }
       else { setAuthError(e.message || 'Could not reach the server'); }
@@ -431,6 +431,13 @@ export default function App() {
   // is restored via checkAuth() instead of dropping to Auth or
   // stranding the skeleton — checkAuth re-validates the token, and
   // only a real 401 clears it and goes to guest.
+  // ERROR ORDERING, Nov 2026: the error must be set AFTER checkAuth()
+  // returns, not before. checkAuth() -> loadGroups() / restoreSaved()
+  // call setError('') on success, so an error set first is wiped
+  // before Home ever renders it (that is what the v166 live check
+  // caught: Home came back, but no error text was visible). checkAuth
+  // now awaits loadGroups() too, so by the time it returns there is
+  // no in-flight load left to wipe the error set after it.
   async function handleGoogleCallback(code: string, state: string) {
     try { window.history.replaceState(null, '', window.location.pathname); } catch { /* ignore */ }
     setUrlParams(new URLSearchParams(window.location.search));
@@ -439,8 +446,7 @@ export default function App() {
     try { localStorage.removeItem(GOOGLE_STATE_KEY); } catch { /* ignore */ }
     const linking = !!getToken();
     if (!storedState || storedState !== state) {
-      setError('Google sign-in failed — please try again.');
-      if (linking) { await checkAuth(); } else { setAuthState('guest'); }
+      if (linking) { await checkAuth(); setError('Google sign-in failed — please try again.'); } else { setError('Google sign-in failed — please try again.'); setAuthState('guest'); }
       return;
     }
     setError(''); setLoading(true);
@@ -453,8 +459,8 @@ export default function App() {
         setToken(d.token); setUser(d.user); setAuthState('authed'); setAuthNotice(''); await loadGroups(); await restoreSaved();
       }
     } catch (e: any) {
-      setError(e.message || 'Google sign-in failed, try again.');
-      if (linking) { await checkAuth(); } else { setAuthState('guest'); }
+      const msg = e.message || 'Google sign-in failed, try again.';
+      if (linking) { await checkAuth(); setError(msg); } else { setError(msg); setAuthState('guest'); }
     } finally { setLoading(false); }
   }
   function doLogout() { try { localStorage.removeItem(LAST_GROUP_KEY); } catch { /* ignore */ } setToken(null); setUser(null); setGroup(null); setGroups(null); setAuthState('guest'); }
