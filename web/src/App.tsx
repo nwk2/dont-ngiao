@@ -299,7 +299,7 @@ export default function App() {
       const v = await fetchVersion();
       if (!alive || !v) return; // offline or no version file — skip silently
       if (seenVersionRef.current === null) { seenVersionRef.current = v; return; } // establish the baseline, no reload yet
-      if (v !== seenVersionRef.current && !reloadingRef.current) { reloadingRef.current = true; window.location.reload(); } // a newer deploy exists — reload to it now
+      if (v !== seenVersionRef.current && !reloadingRef.current) { reloadingRef.current = true; window.location.reload(); } // a newer deploy exists — reload to it now. The guard is because visibilitychange and focus can fire together on resume, so two concurrent checks could both see the newer version and both call reload; the first reload wins and the second is a no-op.
     };
     checkVersion();
     const onVisible = () => { if (document.visibilityState === 'visible') checkVersion(); };
