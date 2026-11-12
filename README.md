@@ -245,5 +245,7 @@ transaction; use ALTER/INSERT/UPDATE/CREATE INDEX only).
 - Session tokens are stored in **plaintext** in D1 (known limitation; hashing them is a
   backlog item). Invite tokens are also plaintext, by design.
 - CORS is locked to the frontend origin (see step 4 above).
-- Free D1 has no automated backups. Export/backup the database before any schema change
-  if real expense data is in it.
+- Automated weekly backup: every Sunday ~09:13 SGT the database is exported to a
+  verified `.sql` dump (loads clean, row counts checked against live D1), keeping
+  the 2 most recent copies. Before any schema change, still take a fresh manual
+  export if real expense data is in it.
