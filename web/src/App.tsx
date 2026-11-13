@@ -2237,6 +2237,9 @@ function PayerPickerSheet({ group, current, onPick, onClose, allowAll, counts, a
 // the server (and shown in the admin detail) but never displayed to
 // the sender — no "Sent as" footnote. On success the sheet swaps to a
 // success state; on failure the message is preserved for retry.
+// REBUILD, Nov 2026: re-trigger push — the webhook for the feedback
+// fixes commit never built (no v171), so this comment-only change
+// re-triggers the Workers Build from main.
 function FeedbackSheet({ initialGroupId, groups, onClose }: any) {
   const active: any[] = groups || [];
   const [fbType, setFbType] = useState<'bug'|'idea'|'question'>('bug');
