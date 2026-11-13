@@ -70,7 +70,7 @@ API <https://dont-ngiao.wk-io.workers.dev> · D1 database `dont-ngiao`.
   creator; detail with members, per-currency money summary, invite link + revoke,
   Archive/Restore, Delete for clean groups only; admin member-remove keeps the money
   guards but overrides the creator-only role check), and Feedback module (every
-  submission, All / Open / Done, newest first; detail with sender, group, build and
+  submission, Open / Done / All filter (default Open), newest first; detail with sender, group, build and
   sent date; Mark done / Reopen — the only mutation).
 - **Feedback (auth-only, no anonymous path).** Any signed-in user can send feedback
   from the You view Feedback section or the header icon on Home and Group screens

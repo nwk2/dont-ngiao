@@ -1288,7 +1288,7 @@ function AdminView() {
   // the only mutation — no in-app replies in v1, no push alert on new
   // feedback.
   const [feedback, setFeedback] = useState<any[]>([]);
-  const [feedbackFilter, setFeedbackFilter] = useState<'all'|'open'|'done'>('all');
+  const [feedbackFilter, setFeedbackFilter] = useState<'all'|'open'|'done'>('open');
   const [selectedFeedback, setSelectedFeedback] = useState<any>(null);
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   async function loadFeedback() {
@@ -1445,7 +1445,9 @@ function AdminView() {
     </div>
     </>)}
     {adminModule==='feedback' && !selectedFeedback && (<>
-    <div style={tabTrack}><button style={feedbackFilter==='all'?tabPillActive:tabPill} onClick={()=>setFeedbackFilter('all')}>All · {feedback.length}</button><button style={feedbackFilter==='open'?tabPillActive:tabPill} onClick={()=>setFeedbackFilter('open')}>Open · {fbOpenCount}</button><button style={feedbackFilter==='done'?tabPillActive:tabPill} onClick={()=>setFeedbackFilter('done')}>Done · {fbDoneCount}</button></div>
+    {/* FEEDBACK FILTER, Nov 2026: Open / Done / All, default Open (Wai
+    2026-11-13) — the triage view is the open items, so it leads. */}
+    <div style={tabTrack}><button style={feedbackFilter==='open'?tabPillActive:tabPill} onClick={()=>setFeedbackFilter('open')}>Open · {fbOpenCount}</button><button style={feedbackFilter==='done'?tabPillActive:tabPill} onClick={()=>setFeedbackFilter('done')}>Done · {fbDoneCount}</button><button style={feedbackFilter==='all'?tabPillActive:tabPill} onClick={()=>setFeedbackFilter('all')}>All · {feedback.length}</button></div>
     {feedbackLoading && <p style={{color:'var(--muted)'}}>Loading feedback…</p>}
     {!feedbackLoading && filteredFeedback.length===0 && <p style={{color:'var(--muted)'}}>No feedback yet.</p>}
     {!feedbackLoading && filteredFeedback.length>0 && <div style={balCard}>{filteredFeedback.map((f:any,fi:number,arr:any[])=>(<div key={f.id} style={{...balRow,borderBottom:fi===arr.length-1?'none':balHairline,cursor:'pointer'}} onClick={()=>setSelectedFeedback(f)}><div style={{flex:1,minWidth:0}}><div style={{display:'flex',alignItems:'center',gap:8}}>{fbTypeBadge(f.type)}<strong>{f.senderName}</strong>{fbStatusPill(f.status)}</div><div style={{fontSize:13,color:'var(--muted)'}}>{f.groupName || 'General (no group)'} · {new Date(f.createdAt).toLocaleDateString()}</div><div style={{fontSize:14,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.message}</div></div><span style={{color:'var(--muted)',flexShrink:0}}>›</span></div>))}</div>}
