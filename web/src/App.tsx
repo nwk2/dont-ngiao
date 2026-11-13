@@ -1445,6 +1445,7 @@ function AdminView() {
     </div>
     </>)}
     {adminModule==='feedback' && !selectedFeedback && (<>
+    {/* REBUILD 2026-11-14: no build fired for c8b07d0b — re-trigger. */}
     {/* FEEDBACK FILTER, Nov 2026: Open / Done / All, default Open (Wai
     2026-11-13) — the triage view is the open items, so it leads. */}
     <div style={tabTrack}><button style={feedbackFilter==='open'?tabPillActive:tabPill} onClick={()=>setFeedbackFilter('open')}>Open · {fbOpenCount}</button><button style={feedbackFilter==='done'?tabPillActive:tabPill} onClick={()=>setFeedbackFilter('done')}>Done · {fbDoneCount}</button><button style={feedbackFilter==='all'?tabPillActive:tabPill} onClick={()=>setFeedbackFilter('all')}>All · {feedback.length}</button></div>
