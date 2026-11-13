@@ -1,6 +1,6 @@
 # Don't Ngiao
 
-Split expenses fairly. Don't be ngiao.
+Don't be ngiao.
 
 A Splitwise-like expense-splitting app for friends and family: Vite + React +
 TypeScript frontend served as static assets by a Cloudflare Worker, a Cloudflare
