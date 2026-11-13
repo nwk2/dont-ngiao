@@ -45,6 +45,10 @@ const REGISTER_LIMIT_PER_DAY = 20;
 const LOGIN_FAILED_LIMIT = 5;
 const LOGIN_FAILED_WINDOW_MS = 15 * 60 * 1000;
 const RATE_LIMIT_DAY_MS = 24 * 60 * 60 * 1000;
+// FEEDBACK, Nov 2026: 10 submissions/hour per user. Fails open like
+// the others (pre-0002 the rate_limits table does not exist).
+const FEEDBACK_LIMIT_PER_HOUR = 10;
+const FEEDBACK_WINDOW_MS = 60 * 60 * 1000;
 
 async function hashPassword(password: string, saltB64: string): Promise<string> {
   const salt = Uint8Array.from(atob(saltB64), c => c.charCodeAt(0));
@@ -498,6 +502,43 @@ async function verifyTurnstile(env: Env, token: string | undefined, ip: string, 
       return json({ ok: true }, 200, origin);
     }
 
+    // ---- Feedback (auth-only) ----
+    // POST /api/me/feedback { type, message, groupId?, buildId? }
+    // One row per submission. The type must be bug / idea / question;
+    // the message is trimmed and must be 1..2000 chars — the server is
+    // the real guard here (the disabled Send button is UX only, a
+    // direct API call must not be able to store an empty row). groupId,
+    // when given, must be a group the user is a member of; NULL means
+    // general feedback about no group. buildId is whatever the frontend
+    // read from version.json (null when it could not fetch it) and is
+    // stored as-is for the admin detail view. Rate limit: 10/hour per
+    // user, D1-backed, fails open like the others.
+    if (path === '/api/me/feedback' && req.method === 'POST') {
+      const user = await authUser(req, env); if (!user) return err('Unauthorized', 401, origin);
+      const type = String(body.type || '');
+      if (type !== 'bug' && type !== 'idea' && type !== 'question') return err('Type must be bug, idea or question', 400, origin);
+      const message = String(body.message || '').trim();
+      if (!message) return err('A message is required', 400, origin);
+      if (message.length > 2000) return err('Message must be 2000 characters or fewer', 400, origin);
+      const rawGroupId = body.groupId == null ? '' : String(body.groupId);
+      let groupId: string | null = null;
+      if (rawGroupId) {
+        const member = await myMember(env, rawGroupId, user.id);
+        if (!member) return err('You are not a member of that group', 400, origin);
+        groupId = rawGroupId;
+      }
+      const buildId = body.buildId == null || String(body.buildId) === '' ? null : String(body.buildId).slice(0, 64);
+      {
+        const now = Date.now();
+        await ratePrune(env, now);
+        if (await rateCount(env, 'feedback', user.id, FEEDBACK_WINDOW_MS, now) >= FEEDBACK_LIMIT_PER_HOUR) return err('Too many feedback submissions, try again later', 429, origin);
+        await rateRecord(env, 'feedback', user.id, now);
+      }
+      const id = uid();
+      await env.DB.prepare('INSERT INTO feedback (id, user_id, type, message, group_id, build_id, status, created_at) VALUES (?,?,?,?,?,?,?,?)').bind(id, user.id, type, message, groupId, buildId, 'open', nowIso()).run();
+      return json({ id }, 200, origin);
+    }
+
     // ---- Password reset (public, token is the auth) ----
     // POST /api/auth/reset-password { token, newPassword }
     // Generic error for every failure (unknown / expired / already-used
@@ -712,6 +753,38 @@ async function verifyTurnstile(env: Env, token: string | undefined, ip: string, 
         return json(await adminGroupDetail(env, groupId, admin.id), 200, origin);
       }
       return err('Not found', 404, origin);
+    }
+
+    // ---- Admin: Feedback module ----
+    // GET /api/admin/feedback — every submission, newest first, with
+    // the sender's name + join date and the group name resolved (the
+    // admin detail view needs both without a second round-trip).
+    // PATCH /api/admin/feedback/:id { status } — triage only; status
+    // is open or done, nothing else is editable. A missing row 404s.
+    // No in-app replies in v1, no push alert to the admin on new
+    // feedback — the admin checks the tab.
+    async function feedbackRow(env: Env, id: string): Promise<Row | null> {
+      return env.DB.prepare('SELECT f.*, u.name AS sender_name, u.created_at AS sender_created_at, g.name AS group_name FROM feedback f JOIN users u ON u.id = f.user_id LEFT JOIN groups g ON g.id = f.group_id WHERE f.id=?').bind(id).first<Row>();
+    }
+    function mapFeedbackRow(r: Row): any {
+      return { id: r.id, type: r.type, message: r.message, status: r.status, buildId: r.build_id || null, createdAt: r.created_at, groupId: r.group_id || null, groupName: r.group_name || null, senderId: r.user_id, senderName: r.sender_name, senderCreatedAt: r.sender_created_at };
+    }
+    if (path === '/api/admin/feedback' && req.method === 'GET') {
+      const admin = await authAdmin(req, env); if (!admin) return err('Admin access required', 403, origin);
+      const rows = await env.DB.prepare('SELECT f.*, u.name AS sender_name, u.created_at AS sender_created_at, g.name AS group_name FROM feedback f JOIN users u ON u.id = f.user_id LEFT JOIN groups g ON g.id = f.group_id ORDER BY f.created_at DESC').bind().all<Row>();
+      return json({ feedback: (rows.results || []).map(mapFeedbackRow) }, 200, origin);
+    }
+    const af = path.match(/^\/api\/admin\/feedback\/([^/]+)$/);
+    if (af && req.method === 'PATCH') {
+      const admin = await authAdmin(req, env); if (!admin) return err('Admin access required', 403, origin);
+      const id = decodeURIComponent(af[1]);
+      const status = String(body.status || '');
+      if (status !== 'open' && status !== 'done') return err('Status must be open or done', 400, origin);
+      const row = await feedbackRow(env, id);
+      if (!row) return err('Feedback not found', 404, origin);
+      await env.DB.prepare('UPDATE feedback SET status=? WHERE id=?').bind(status, id).run();
+      const updated = await feedbackRow(env, id);
+      return json(mapFeedbackRow(updated as Row), 200, origin);
     }
 
     // ---- Groups list / create ----

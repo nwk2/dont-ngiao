@@ -259,6 +259,15 @@ function ThemePill({ theme, setTheme }: any) {
     <span aria-hidden="true" style={seg(theme==='dark')}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z" /></svg></span>
   </button>);
 }
+// FEEDBACK ENTRY, Nov 2026: the 40px circle icon button that opens
+// the feedback sheet from the Home and GroupView headers, immediately
+// left of the ThemePill. Icon is Feather message-square-text (square
+// bubble with two lines). Neutral grey like the gear button — NOT
+// accent blue (blue was tried in the mockup and dropped: too loud for
+// the least-used feature). Same shape as the GroupView gear button.
+function FeedbackIconButton({ onClick }: any) {
+  return (<button type="button" aria-label="Send feedback" title="Send feedback" onClick={onClick} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /><path d="M13 8H7" /><path d="M17 12H7" /></svg></button>);
+}
 export default function App() {
   const [user, setUser] = useState<any>(null);
   const [authState, setAuthState] = useState<'checking'|'guest'|'authed'>(()=> getToken() ? 'checking' : 'guest');
@@ -269,6 +278,16 @@ export default function App() {
   // right after joining. Cleared when they leave the group (back) or open
   // a different group, so it does not reappear on a later visit.
   const [justJoinedId, setJustJoinedId] = useState<string | null>(null);
+  // FEEDBACK, Nov 2026: the shared sheet state lives here (not in
+  // Home/GroupView/YouView) because all three doors open the same
+  // sheet. openFeedback(groupId) sets the default group for the
+  // sheet: the current group from GroupView, null from Home/You (the
+  // sheet then falls back to the last-opened group, else the first
+  // active group). The sheet mounts fresh on every open, so the form
+  // always starts fresh.
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedbackGroupId, setFeedbackGroupId] = useState<string | null>(null);
+  function openFeedback(groupId: string | null) { setFeedbackGroupId(groupId); setShowFeedback(true); }
   // FORCE RELOAD ON OPEN, Nov 2026: a bookmarked PWA usually resumes
   // from its suspended state instead of doing a fresh load, so users
   // can run a stale version for days — and the service worker only
@@ -527,9 +546,9 @@ export default function App() {
   // Members landed back on Expenses, hiding the updated data). Refetch
   // (keepTab) is only the fallback for writes that return no detail
   // (archive/restore/leave from Settings, Home restore via loadGroups).
-  if (group) return <GroupView group={group} setGroup={setGroup} tab={tab} setTab={setTab} justJoined={justJoinedId === group.id} back={()=>{setJustJoinedId(null); setGroup(null); loadGroups();}} reload={(detail?: any)=> detail && detail.id ? (setGroup(detail), setError(''), Promise.resolve(true)) : loadGroup(group.id, { keepTab: true })} error={error} setError={setError}  theme={theme} setTheme={setTheme} />;
+  if (group) return (<><GroupView group={group} setGroup={setGroup} tab={tab} setTab={setTab} justJoined={justJoinedId === group.id} back={()=>{setJustJoinedId(null); setGroup(null); loadGroups();}} reload={(detail?: any)=> detail && detail.id ? (setGroup(detail), setError(''), Promise.resolve(true)) : loadGroup(group.id, { keepTab: true })} error={error} setError={setError}  theme={theme} setTheme={setTheme} onFeedback={()=>openFeedback(group.id)} />{showFeedback && <FeedbackSheet initialGroupId={feedbackGroupId} groups={groups?.active || []} onClose={()=>setShowFeedback(false)} />}</>);
   if (!groups) return <HomeSkeleton user={user} />;
-  return <Home user={user} setUser={setUser} onLogout={doLogout} setAuthNotice={setAuthNotice} groups={groups} loadGroups={loadGroups} loadGroup={(id: string)=>loadGroup(id, { skeleton: true })} error={error} setError={setError}  theme={theme} setTheme={setTheme} />;
+  return (<><Home user={user} setUser={setUser} onLogout={doLogout} setAuthNotice={setAuthNotice} groups={groups} loadGroups={loadGroups} loadGroup={(id: string)=>loadGroup(id, { skeleton: true })} error={error} setError={setError}  theme={theme} setTheme={setTheme} onFeedback={openFeedback} />{showFeedback && <FeedbackSheet initialGroupId={feedbackGroupId} groups={groups?.active || []} onClose={()=>setShowFeedback(false)} />}</>);
 }
 
 // Skeleton screens: grey blocks in the exact shape of the content that is
@@ -694,7 +713,7 @@ function OnboardingPrompts() {
   </div>);
 }
 
-function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, loadGroup, error, setError, theme, setTheme }: any) {
+function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, loadGroup, error, setError, theme, setTheme, onFeedback }: any) {
   const [showCreate, setShowCreate] = useState(false);
   const [showYou, setShowYou] = useState(false);
   // BUG FIX, 2026-11-05: YouView used to render inline at the BOTTOM of
@@ -703,7 +722,7 @@ function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, load
   // Home, then You, then scrolling back to Home. It now replaces Home
   // via an early return, like App replaces Home with GroupView and like
   // YouView replaces itself with the archived view.
-  if (showYou) return <YouView user={user} setUser={setUser} onLogout={onLogout} setAuthNotice={setAuthNotice} groups={groups} loadGroups={loadGroups} loadGroup={loadGroup} onBack={()=>setShowYou(false)} setError={setError}  theme={theme} setTheme={setTheme} />;
+  if (showYou) return <YouView user={user} setUser={setUser} onLogout={onLogout} setAuthNotice={setAuthNotice} groups={groups} loadGroups={loadGroups} loadGroup={loadGroup} onBack={()=>setShowYou(false)} setError={setError}  theme={theme} setTheme={setTheme} onFeedback={onFeedback} />;
     const totals: any[] = groups?.totals || [];
   return (<div style={S}>
     <div style={{marginBottom:16}}>
@@ -713,6 +732,7 @@ function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, load
           <div style={{fontSize:20,fontWeight:700}}>{user.name}</div>
           <div style={{fontSize:13,color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',lineHeight:1.4}}>Mai ngiao, mai drama.</div>
         </div>
+        <FeedbackIconButton onClick={()=>onFeedback(null)} />
         <ThemePill theme={theme} setTheme={setTheme} />
       </div>
     </div>
@@ -756,7 +776,7 @@ function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, load
 }
 
 
-function YouView({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, loadGroup, onBack, setError, theme, setTheme }: any) {
+function YouView({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, loadGroup, onBack, setError, theme, setTheme, onFeedback }: any) {
   const [showArchived, setShowArchived] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(user.name || '');
@@ -873,6 +893,18 @@ function YouView({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, l
       </div>
       {pushError && <div style={{color:'var(--danger-text)',fontSize:13}}>{pushError}</div>}
       {!pushSupported && <div style={{color:'var(--muted)',fontSize:13}}>Push notifications are not supported in this browser. On iPhone, add the app to your Home Screen first (iOS 16.4+).</div>}
+    </div>
+    {/* FEEDBACK, Nov 2026: one of the three doors into the shared
+    feedback sheet (the others are the Home and GroupView header
+    icons). The row opens the sheet with no group preselected — the
+    sheet falls back to the last-opened group, else the first active
+    group. The "New" pill is as in the approved mockup. */}
+    <h3 style={{marginBottom:8}}>Feedback</h3>
+    <div style={homeCard}>
+      <button type="button" onClick={()=>onFeedback(null)} style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
+        <span style={{flex:1,minWidth:0}}><span style={{display:'block',fontWeight:600}}>Send feedback</span><span style={{display:'block',fontSize:13,color:'var(--muted)',marginTop:2}}>Bugs, ideas, questions — goes straight to Wai.</span></span>
+        <span style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}><span style={{fontSize:12,background:'var(--tint-bg)',color:'var(--tint-text)',padding:'2px 8px',borderRadius:99}}>New</span><span style={{color:'var(--muted)'}}>›</span></span>
+      </button>
     </div>
     <h3 style={{marginBottom:8}}>Groups</h3>
     <div style={{...homeCard,display:'flex',flexDirection:'column',gap:8}}>
@@ -1240,7 +1272,7 @@ function AdminView() {
   // detail object (null = list). groupBusy names the in-flight admin
   // action ('archive' | 'restore' | 'delete' | 'revoke' |
   // 'remove:<memberId>') so its button can disable + show progress.
-  const [adminModule, setAdminModule] = useState<'users'|'groups'>('users');
+  const [adminModule, setAdminModule] = useState<'users'|'groups'|'feedback'>('users');
   const [groups, setGroups] = useState<any[]>([]);
   const [groupSearch, setGroupSearch] = useState('');
   const [groupFilter, setGroupFilter] = useState<'all'|'active'|'archived'>('all');
@@ -1249,6 +1281,34 @@ function AdminView() {
   const [groupBusy, setGroupBusy] = useState<string | null>(null);
   const [inviteStatus, setInviteStatus] = useState('');
   const [confirm, setConfirm] = useState<any>(null);
+  // FEEDBACK MODULE, Nov 2026: triage for the in-app feedback
+  // submissions. List (All / Open / Done, newest first) + detail with
+  // the sender, group, build and full message. Mark done / Reopen is
+  // the only mutation — no in-app replies in v1, no push alert on new
+  // feedback.
+  const [feedback, setFeedback] = useState<any[]>([]);
+  const [feedbackFilter, setFeedbackFilter] = useState<'all'|'open'|'done'>('all');
+  const [selectedFeedback, setSelectedFeedback] = useState<any>(null);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  async function loadFeedback() {
+    setFeedbackLoading(true);
+    try { const d = await adminApi('/api/admin/feedback', 'GET'); setFeedback(d.feedback || []); }
+    catch (e: any) { setError(e.message); }
+    finally { setFeedbackLoading(false); }
+  }
+  async function doFeedbackStatus(f: any, status: 'open'|'done') {
+    setError('');
+    try {
+      const d = await adminApi(`/api/admin/feedback/${f.id}`, 'PATCH', { status });
+      setSelectedFeedback(d);
+      setFeedback((list:any[])=>list.map((x:any)=>x.id===d.id ? d : x));
+    } catch (e: any) { setError(e.message); }
+  }
+  const fbTypeBadge = (t: string) => t==='bug' ? <span style={{fontSize:12,background:'var(--danger-bg)',color:'var(--danger-text)',padding:'2px 8px',borderRadius:99}}>Bug</span> : t==='idea' ? <span style={{fontSize:12,background:'#DBEAFE',color:'#1D4ED8',padding:'2px 8px',borderRadius:99}}>Idea</span> : <span style={{fontSize:12,background:'var(--field)',color:'var(--muted)',padding:'2px 8px',borderRadius:99}}>Question</span>;
+  const fbStatusPill = (s: string) => s==='open' ? <span style={{fontSize:12,background:'var(--warn-bg)',color:'var(--warn-text)',padding:'2px 8px',borderRadius:99}}>Open</span> : <span style={{fontSize:12,background:'#DCFCE7',color:'#166534',padding:'2px 8px',borderRadius:99}}>Done</span>;
+  const filteredFeedback = feedback.filter((f:any) => feedbackFilter==='all' || f.status===feedbackFilter);
+  const fbOpenCount = feedback.filter((f:any)=>f.status==='open').length;
+  const fbDoneCount = feedback.filter((f:any)=>f.status==='done').length;
   async function loadUsers(tok: string) { const d = await adminApi('/api/admin/users', 'GET', undefined, tok); setUsers(d.users || []); }
   useEffect(() => {
     if (!adminToken) return;
@@ -1268,7 +1328,7 @@ function AdminView() {
       setAdminToken(d.token); setAdminTokenState(d.token); setAdminUser(d.user); await loadUsers(d.token);
     } catch (e: any) { setError(e.message); } finally { setLoading(false); }
   }
-  function doAdminLogout() { setAdminToken(null); setAdminTokenState(null); setAdminUser(null); setUsers([]); setResetResult(null); setGroups([]); setSelectedGroup(null); setAdminModule('users'); }
+  function doAdminLogout() { setAdminToken(null); setAdminTokenState(null); setAdminUser(null); setUsers([]); setResetResult(null); setGroups([]); setSelectedGroup(null); setFeedback([]); setSelectedFeedback(null); setAdminModule('users'); }
   async function loadGroups() {
     setGroupsLoading(true);
     try { const d = await adminApi('/api/admin/groups', 'GET'); setGroups(d.groups || []); }
@@ -1345,7 +1405,7 @@ function AdminView() {
       catch { setCopyStatus('Could not copy automatically — select the link below and copy it manually.'); }
     } catch (e: any) { setError(e.message); } finally { setResettingId(null); }
   }
-  return (<div style={S}><div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',marginBottom:8}}><h1 style={{margin:0}}>Admin</h1><div style={{display:'flex',gap:8,flexShrink:0}}><button style={btn} onClick={doAdminLogout}>Log out</button><button style={btn} onClick={()=>{ window.location.href = '/'; }}>← Back to app</button></div></div><p style={{color:'var(--muted)'}}>Signed in as {adminUser.name} ({adminUser.email}) · Modules: Users, Groups</p>
+  return (<div style={S}><div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',marginBottom:8}}><h1 style={{margin:0}}>Admin</h1><div style={{display:'flex',gap:8,flexShrink:0}}><button style={btn} onClick={doAdminLogout}>Log out</button><button style={btn} onClick={()=>{ window.location.href = '/'; }}>← Back to app</button></div></div><p style={{color:'var(--muted)'}}>Signed in as {adminUser.name} ({adminUser.email}) · Modules: Users, Groups, Feedback</p>
     {/* ADMIN MODULE BAR, Nov 2026: the module tabs are their own
         full-width segmented control row (like the group tabs in the main
         app) so more modules slot in later with no layout change. The
@@ -1353,7 +1413,7 @@ function AdminView() {
         above, not in the tab row — they used to share a row with the
         tabTrack, which mixed a tab with standalone buttons (different
         heights/fonts, stray track margin). */}
-    <div style={tabTrack}><button style={adminModule==='users'?tabPillActive:tabPill} onClick={()=>{setAdminModule('users'); setSelectedGroup(null);}}>Users</button><button style={adminModule==='groups'?tabPillActive:tabPill} onClick={()=>{setAdminModule('groups'); setSelectedGroup(null); if (groups.length===0) loadGroups();}}>Groups</button></div>
+    <div style={tabTrack}><button style={adminModule==='users'?tabPillActive:tabPill} onClick={()=>{setAdminModule('users'); setSelectedGroup(null); setSelectedFeedback(null);}}>Users</button><button style={adminModule==='groups'?tabPillActive:tabPill} onClick={()=>{setAdminModule('groups'); setSelectedGroup(null); setSelectedFeedback(null); if (groups.length===0) loadGroups();}}>Groups</button><button style={adminModule==='feedback'?tabPillActive:tabPill} onClick={()=>{setAdminModule('feedback'); setSelectedGroup(null); setSelectedFeedback(null); if (feedback.length===0) loadFeedback();}}>Feedback</button></div>
     {error && <p style={{color:'var(--danger-text)'}}>{error}</p>}
     {adminModule==='users' && (<>
     {resetResult && <div style={homeCard}><strong>Reset link for {resetResult.user.name} ({resetResult.user.email})</strong><p style={{fontSize:13,color:'var(--muted)'}}>Single-use, expires {new Date(resetResult.expiresAt).toLocaleString()}. Send this link to the user yourself — the app does not email it.</p><input readOnly style={input} value={resetResult.link} onFocus={e=>e.target.select()} /><button style={btn} onClick={async()=>{ try { await navigator.clipboard.writeText(resetResult.link); setCopyStatus('Copied to clipboard.'); } catch { setCopyStatus('Could not copy automatically.'); } }}>Copy link again</button>{copyStatus && <p style={{fontSize:13,color:'var(--muted)'}}>{copyStatus}</p>}</div>}
@@ -1382,6 +1442,31 @@ function AdminView() {
     {selectedGroup.isClean && <button style={{...btn,width:'100%',padding:'14px',fontSize:16,background:'var(--danger-bg)',borderColor:'var(--danger-bg)',color:'var(--danger-text)',fontWeight:600}} disabled={groupBusy==='delete'} onClick={()=>setConfirm({title:'Delete group?',message:`Delete '${selectedGroup.name}'? It has no expenses or payments, so it will be permanently deleted (members, invite link and activity go with it). This cannot be undone.`,confirmLabel:'Delete',onError:(msg:string)=>setError(msg),action:async()=>{await doDeleteGroup(selectedGroup);}})}>{groupBusy==='delete' ? 'Deleting…' : 'Delete group'}</button>}
     {!selectedGroup.isClean && <p style={{fontSize:13,color:'var(--muted)'}}>Delete is only available for groups with no expenses or payments — this group has money history, so archive it instead.</p>}
     </div>
+    </>)}
+    {adminModule==='feedback' && !selectedFeedback && (<>
+    <div style={tabTrack}><button style={feedbackFilter==='all'?tabPillActive:tabPill} onClick={()=>setFeedbackFilter('all')}>All · {feedback.length}</button><button style={feedbackFilter==='open'?tabPillActive:tabPill} onClick={()=>setFeedbackFilter('open')}>Open · {fbOpenCount}</button><button style={feedbackFilter==='done'?tabPillActive:tabPill} onClick={()=>setFeedbackFilter('done')}>Done · {fbDoneCount}</button></div>
+    {feedbackLoading && <p style={{color:'var(--muted)'}}>Loading feedback…</p>}
+    {!feedbackLoading && filteredFeedback.length===0 && <p style={{color:'var(--muted)'}}>No feedback yet.</p>}
+    {!feedbackLoading && filteredFeedback.length>0 && <div style={balCard}>{filteredFeedback.map((f:any,fi:number,arr:any[])=>(<div key={f.id} style={{...balRow,borderBottom:fi===arr.length-1?'none':balHairline,cursor:'pointer'}} onClick={()=>setSelectedFeedback(f)}><div style={{flex:1,minWidth:0}}><div style={{display:'flex',alignItems:'center',gap:8}}>{fbTypeBadge(f.type)}<strong>{f.senderName}</strong>{fbStatusPill(f.status)}</div><div style={{fontSize:13,color:'var(--muted)'}}>{f.groupName || 'General (no group)'} · {new Date(f.createdAt).toLocaleDateString()}</div><div style={{fontSize:14,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.message}</div></div><span style={{color:'var(--muted)',flexShrink:0}}>›</span></div>))}</div>}
+    </>)}
+    {adminModule==='feedback' && selectedFeedback && (<>
+    <p><button style={btn} onClick={()=>{setSelectedFeedback(null); loadFeedback();}}>← Back to feedback</button></p>
+    <div style={homeCard}>
+      <div style={{display:'flex',gap:12,alignItems:'center'}}>
+        <div style={{...avatar,background:'var(--avatar-green)'}}>{initials(selectedFeedback.senderName)}</div>
+        <div style={{flex:1,minWidth:0}}><strong style={{fontSize:17}}>{selectedFeedback.senderName}</strong><div style={{fontSize:13,color:'var(--muted)'}}>Member since {new Date(selectedFeedback.senderCreatedAt).toLocaleDateString('en-GB', { month:'short', year:'numeric' })}</div></div>
+        {fbStatusPill(selectedFeedback.status)}
+      </div>
+      <div style={{marginTop:12,fontSize:14,lineHeight:1.6}}>
+        <div style={{display:'flex',justifyContent:'space-between',padding:'7px 0',borderTop:balHairline}}><span style={{color:'var(--muted)'}}>Type</span>{fbTypeBadge(selectedFeedback.type)}</div>
+        <div style={{display:'flex',justifyContent:'space-between',padding:'7px 0',borderTop:balHairline}}><span style={{color:'var(--muted)'}}>Group</span><span>{selectedFeedback.groupName || 'General (no group)'}</span></div>
+        <div style={{display:'flex',justifyContent:'space-between',padding:'7px 0',borderTop:balHairline}}><span style={{color:'var(--muted)'}}>Build</span><span style={{fontFamily:'ui-monospace,monospace',fontSize:13}}>{selectedFeedback.buildId || '—'}</span></div>
+        <div style={{display:'flex',justifyContent:'space-between',padding:'7px 0',borderTop:balHairline}}><span style={{color:'var(--muted)'}}>Sent</span><span>{new Date(selectedFeedback.createdAt).toLocaleString()}</span></div>
+      </div>
+    </div>
+    <div style={homeCard}><div style={{fontSize:15,lineHeight:1.55,whiteSpace:'pre-wrap'}}>{selectedFeedback.message}</div></div>
+    <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={async()=>{ await doFeedbackStatus(selectedFeedback, selectedFeedback.status==='open' ? 'done' : 'open'); }}>{selectedFeedback.status==='open' ? 'Mark done' : 'Reopen'}</AsyncButton>
+    <p style={{fontSize:13,color:'var(--muted)',textAlign:'center'}}>No in-app replies in v1 — reply on WhatsApp.</p>
     </>)}
     {confirm && <ConfirmSheet title={confirm.title} message={confirm.message} confirmLabel={confirm.confirmLabel} onCancel={()=>setConfirm(null)} onConfirm={async()=>{try{await confirm.action();}catch(er:any){if (confirm.onError) confirm.onError(er.message); else setError(er.message);}finally{setConfirm(null);}}} />}
   </div>);
@@ -1445,7 +1530,7 @@ function InviteView({ token, onJoined, onCancel }: any) {
   </div></div>);
 }
 
-function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError, theme, setTheme, justJoined }: any) {
+function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError, theme, setTheme, justJoined, onFeedback }: any) {
   const [showExpense, setShowExpense] = useState(false);
   const [editExpense, setEditExpense] = useState<any>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -1633,6 +1718,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
     <div style={{display:'flex',gap:8,alignItems:'center',justifyContent:'space-between'}}>
       <button style={btn} onClick={back}>← Groups</button>
       <span style={{display:'flex',gap:8,alignItems:'center'}}>
+        <FeedbackIconButton onClick={()=>onFeedback()} />
         <ThemePill theme={theme} setTheme={setTheme} />
         <button type="button" aria-label="Group settings" title="Group settings" onClick={()=>setShowSettings(true)} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg></button>
       </span>
@@ -2135,6 +2221,77 @@ function PayerPickerSheet({ group, current, onPick, onClose, allowAll, counts, a
       </button>);
     })}</div>
   </PickerSheet>);
+}
+// FEEDBACK, Nov 2026: in-app feedback from signed-in users
+// (auth-only — no anonymous path). Three doors (You view Feedback
+// section, Home header icon, GroupView header icon) open this one
+// shared sheet. The form always starts fresh on open (type Bug,
+// default group, empty message) — no draft preservation, like every
+// other sheet. Send is disabled while the trimmed message is empty;
+// while sending the sheet is undismissable (X, backdrop and swipe all
+// gated on !sending) so a result cannot be lost mid-flight. The label
+// stays "Send" while sending — AsyncButton prepends its spinner and
+// renders children unchanged; only Enable notifications swaps its
+// label, and this must not copy it. Sender name + buildId are sent to
+// the server (and shown in the admin detail) but never displayed to
+// the sender — no "Sent as" footnote. On success the sheet swaps to a
+// success state; on failure the message is preserved for retry.
+function FeedbackSheet({ initialGroupId, groups, onClose }: any) {
+  const active: any[] = groups || [];
+  const [fbType, setFbType] = useState<'bug'|'idea'|'question'>('bug');
+  const [fbGroupId, setFbGroupId] = useState<string | null>(() => {
+    if (initialGroupId && active.some((g:any)=>g.id===initialGroupId)) return initialGroupId;
+    const saved = readSavedGroup();
+    if (saved && active.some((g:any)=>g.id===saved.groupId)) return saved.groupId;
+    return active[0]?.id || null;
+  });
+  const [message, setMessage] = useState('');
+  const [showGroupPicker, setShowGroupPicker] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [fbError, setFbError] = useState('');
+  const [sent, setSent] = useState(false);
+  const sendingRef = useRef(false);
+  sendingRef.current = sending;
+  const drag = useSheetDrag(()=>{ if (!sendingRef.current) onClose(); });
+  const groupName = fbGroupId ? (active.find((g:any)=>g.id===fbGroupId)?.name || 'General (no group)') : 'General (no group)';
+  async function doSend() {
+    const msg = message.trim();
+    if (!msg || sending) return;
+    setSending(true); setFbError('');
+    try {
+      const buildId = await fetchVersion();
+      await api('/api/me/feedback', 'POST', { type: fbType, message: msg, groupId: fbGroupId, buildId });
+      setSent(true);
+    } catch (e: any) { setFbError(e?.message || 'Could not send feedback.'); }
+    finally { setSending(false); }
+  }
+  return (<div role="dialog" aria-modal="true" style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget && !sending) onClose(); }}>
+    <div style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
+      <div style={{width:36,height:4,borderRadius:99,background:'var(--border)',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><h2 style={{margin:0}}>Send feedback</h2><button type="button" aria-label="Close" title="Close" disabled={sending} onClick={()=>{ if (!sending) onClose(); }} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:sending?'default':'pointer',flexShrink:0,opacity:sending?0.5:1}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
+      {sent ? (<>
+        <p style={{color:'var(--muted)',lineHeight:1.45}}>Thanks — sent.</p>
+        <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={onClose}>Done</AsyncButton>
+      </>) : (<>
+        <div style={{...tabTrack,marginTop:12}}><button style={fbType==='bug'?tabPillActive:tabPill} onClick={()=>setFbType('bug')}>Bug</button><button style={fbType==='idea'?tabPillActive:tabPill} onClick={()=>setFbType('idea')}>Idea</button><button style={fbType==='question'?tabPillActive:tabPill} onClick={()=>setFbType('question')}>Question</button></div>
+        <button type="button" disabled={sending} onClick={()=>setShowGroupPicker(true)} style={{width:'100%',textAlign:'left',background:'var(--field)',border:'1px solid var(--border)',borderRadius:16,padding:14,marginBottom:12,color:'var(--text)',cursor:sending?'default':'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',opacity:sending?0.5:1}}><span><span style={{display:'block',fontSize:12,color:'var(--muted)'}}>Group</span><span style={{display:'block',marginTop:2}}>{groupName}</span></span><span style={{color:'var(--muted)'}}>›</span></button>
+        <label>Message</label>
+        <textarea style={{...input,minHeight:120,resize:'vertical'}} placeholder="What happened, or what would you like to see?" value={message} maxLength={2000} disabled={sending} onChange={e=>setMessage(e.target.value)} aria-label="Message" />
+        {fbError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{fbError}</p>}
+        <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} disabled={sending || !message.trim()} onClick={doSend}>Send</AsyncButton>
+      </>)}
+    </div>
+    {showGroupPicker && <PickerSheet title="Group" onClose={()=>setShowGroupPicker(false)}>
+      <div style={{marginTop:6}}>
+        <button key="__general" type="button" onClick={()=>{setFbGroupId(null); setShowGroupPicker(false);}} style={{display:'flex',alignItems:'center',gap:12,width:'100%',background:'transparent',border:'none',padding:'12px 0',color:'var(--text)',cursor:'pointer',textAlign:'left'}}>
+          <span style={{flex:1,minWidth:0,fontWeight:600}}>General (no group)</span>{fbGroupId===null && pickCheck}
+        </button>
+        {active.map((g:any) => (<button key={g.id} type="button" onClick={()=>{setFbGroupId(g.id); setShowGroupPicker(false);}} style={{display:'flex',alignItems:'center',gap:12,width:'100%',background:'transparent',border:'none',borderTop:balHairline,padding:'12px 0',color:'var(--text)',cursor:'pointer',textAlign:'left'}}>
+          <span style={{flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontWeight:600}}>{g.name}</span>{g.id===fbGroupId && pickCheck}
+        </button>))}
+      </div>
+    </PickerSheet>}
+  </div>);
 }
 function ExpenseModal({ group, expense, onClose, reload }: any) {
   // Add expense as a BOTTOM SHEET (revamp, dark only). REDESIGN 2026-11-06:

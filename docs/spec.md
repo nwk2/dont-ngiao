@@ -66,10 +66,24 @@ API <https://dont-ngiao.wk-io.workers.dev> · D1 database `dont-ngiao`.
   the earliest remaining account member. If the last account member leaves, the group
   is auto-deleted if clean, archived if expenses/payments remain.
 - **Admin (`?admin`, separate login, separate token):** Users module (all real accounts,
-  per-user password reset) and Groups module (every group with counts, created date +
+  per-user password reset), Groups module (every group with counts, created date +
   creator; detail with members, per-currency money summary, invite link + revoke,
   Archive/Restore, Delete for clean groups only; admin member-remove keeps the money
-  guards but overrides the creator-only role check).
+  guards but overrides the creator-only role check), and Feedback module (every
+  submission, All / Open / Done, newest first; detail with sender, group, build and
+  sent date; Mark done / Reopen — the only mutation).
+- **Feedback (auth-only, no anonymous path).** Any signed-in user can send feedback
+  from the You view Feedback section or the header icon on Home and Group screens
+  (message-square-text, neutral grey like the gear, 40px circle immediately left of
+  the ThemePill). All three doors open the same bottom sheet: type Bug / Idea /
+  Question (default Bug), group picker (active groups + General, defaulting to the
+  group it was opened from, else the last-opened group, else the first active
+  group), message up to 2000 chars. Send is disabled while the message is empty;
+  while sending the sheet cannot be dismissed and the label stays "Send" (spinner
+  only). Sender name and build are recorded with the submission and shown in the
+  admin detail, never to the sender. No in-app replies in v1 (the admin replies on
+  WhatsApp), no screenshots, no push alert to the admin on new feedback, no
+  anonymous submissions. Rate limit: 10 submissions/hour per user.
 - **PWA + push notifications.** Installable (Add to Home Screen; iOS 16.4+), manifest +
   service worker with runtime caching only (no precache; `/api/` and `/version.json`
   are never cached). Web Push on new/edited/deleted expense and settle/payment, only
@@ -107,7 +121,7 @@ worker/              Cloudflare Worker API
   src/index.ts       REST API + auth, admin, invites, groups, expenses, payments
   src/logic.ts       currencies, minor units, equal/percent splits, greedy simplification
   src/push.ts        Web Push sender (VAPID)
-  migrations/0001–0010.sql   D1 schema (see below)
+  migrations/0001–0011.sql   D1 schema (see below)
   wrangler.toml      Worker + D1 binding (DB)
 ```
 
@@ -115,7 +129,7 @@ Migrations: `0001` base schema (users, sessions, groups, group_members, expenses
 expense_splits, payments, activity_log) · `0002` session last-seen + rate limits ·
 `0003` group icon · `0004` indexes · `0005` admin (`is_admin`, password resets) ·
 `0006` activity log member ids · `0007` group invites · `0008` user/member unification ·
-`0009` push subscriptions · `0010` `google_sub`.
+`0009` push subscriptions · `0010` `google_sub` · `0011` feedback.
 
 API surface (all group routes require membership, checked server-side; admin routes
 require an admin session):
@@ -130,6 +144,9 @@ GET  /api/me              PATCH /api/me {name}
 POST /api/me/password     {currentPassword?, newPassword} (change, or set when none)
 POST /api/me/google/link  {code}
 POST /api/me/push-subscription {endpoint, keys...}   DELETE /api/me/push-subscription {endpoint}
+POST /api/me/feedback      {type, message, groupId?, buildId?} -> {id} (10/hour per user)
+GET  /api/admin/feedback   -> {feedback} (newest first, with sender + group names)
+PATCH /api/admin/feedback/:id {status} (open or done)
 POST /api/admin/login     {email, password} -> {adminUser, token}
 GET  /api/admin/me
 GET  /api/admin/users     POST /api/admin/users/:id/reset
