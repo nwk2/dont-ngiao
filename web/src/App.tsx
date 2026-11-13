@@ -283,7 +283,7 @@ export default function App() {
   // an unsaved form draft is lost if a new version deploys while the
   // user has a form open and backgrounds the app; deploys are
   // infrequent, so the window is narrow, and Wai accepted it for the
-  // seamless update. (An earlier v160–v162 banner version was
+  // automatic update. (An earlier v160–v162 banner version was
   // replaced by this: the banner asked the user to tap Update on
   // open, which Wai found unnecessary — opening the app should just
   // update it.) seenVersionRef = the build this instance started
@@ -724,7 +724,7 @@ function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, load
         <span style={{color:'#ccfbf1'}}>{i===0 ? g.verb : ''}</span>
         <strong style={{fontSize:28,whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'}}>{fmt(Math.abs(t.balance),t.currency)}</strong>
       </div>)))}
-      <p style={{fontSize:13,color:'#ccfbf1',marginBottom:0}}>Kept separate per currency — no conversion. Tap a group below to see who to pay.</p>
+      <p style={{fontSize:13,color:'#ccfbf1',marginBottom:0}}>Balances stay separate per currency. Nothing is converted — tap a group below to see who to pay.</p>
     </div>
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
       <h2 style={{margin:0}}>Your groups</h2>
@@ -1374,7 +1374,7 @@ function AdminView() {
     <p style={{color:'var(--muted)',marginTop:0}}>Created {new Date(selectedGroup.createdAt).toLocaleDateString()} by {selectedGroup.creatorName} · Default {selectedGroup.defaultCurrency}{selectedGroup.isArchived ? ' · Archived' : ''}</p>
     <div style={homeCard}><strong>Money</strong><div style={{fontSize:13,color:'var(--muted)',marginTop:4}}>{selectedGroup.expenseCount} expense{selectedGroup.expenseCount===1?'':'s'} · {selectedGroup.paymentCount} payment{selectedGroup.paymentCount===1?'':'s'}</div>{Object.keys(selectedGroup.totals||{}).length===0 ? <div style={{fontSize:13,color:'var(--muted)'}}>No money yet.</div> : Object.keys(selectedGroup.totals).map((cur:string)=>(<div key={cur} style={{display:'flex',justifyContent:'space-between',fontSize:14,marginTop:4}}><span>{cur}</span><strong>{fmt(selectedGroup.totals[cur], cur)}</strong></div>))}</div>
     <div style={balCard}>{selectedGroup.members.map((m:any,mi:number,arr:any[])=>(<div key={m.id} style={{...balRow,borderBottom:mi===arr.length-1?'none':balHairline}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,width:'100%'}}><div style={{flex:1,minWidth:0}}><strong>{m.name}</strong>{m.isCreator ? <span style={{fontSize:12,background:'var(--tint-bg)',padding:'2px 6px',borderRadius:99,marginLeft:8}}>Creator</span> : null}{!m.hasAccount ? <span style={noAccountChip}>No account yet</span> : null}<div style={{fontSize:13,color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.email || 'No email'}</div><div style={{fontSize:13,color:'var(--muted)'}}>Joined {new Date(m.createdAt).toLocaleDateString()}</div>{m.removeBlocked ? <div style={{fontSize:12,color:'var(--muted)',marginTop:2}}>{m.removeBlocked}</div> : null}</div><button style={{...btn,flexShrink:0}} disabled={!m.canRemove || groupBusy===('remove:'+m.id)} onClick={()=>setConfirm({title:'Remove member?',message:`Remove ${m.name} from '${selectedGroup.name}'? This cannot be undone.`,confirmLabel:'Remove',onError:(msg:string)=>setError(msg),action:async()=>{await doRemoveMember(selectedGroup,m);}})}>{groupBusy===('remove:'+m.id) ? 'Removing…' : 'Remove'}</button></div></div>))}</div>
-    <div style={homeCard}><strong>Invite link</strong>{selectedGroup.inviteToken ? <><p style={{fontSize:13,color:'var(--muted)'}}>Anyone with this link can join the group.</p><input readOnly style={input} value={`${window.location.origin}/?invite=${selectedGroup.inviteToken}`} onFocus={e=>e.target.select()} /><div style={{display:'flex',gap:8}}><button style={btn} onClick={async()=>{ try { await navigator.clipboard.writeText(`${window.location.origin}/?invite=${selectedGroup.inviteToken}`); setInviteStatus('Copied to clipboard.'); } catch { setInviteStatus('Could not copy automatically.'); } }}>Copy link</button><button style={{...btn,background:'var(--danger-bg)',borderColor:'var(--danger-bg)',color:'var(--danger-text)',fontWeight:600}} disabled={groupBusy==='revoke'} onClick={()=>setConfirm({title:'Revoke invite link?',message:'The current link will stop working immediately. A new link will be generated and shown here, so you can share the fresh link.',confirmLabel:'Revoke',onError:(msg:string)=>setError(msg),action:async()=>{await doInviteRevoke(selectedGroup);}})}>{groupBusy==='revoke' ? 'Revoking…' : 'Revoke'}</button></div>{inviteStatus && <p style={{fontSize:13,color:'var(--muted)'}}>{inviteStatus}</p>}</> : <p style={{fontSize:13,color:'var(--muted)'}}>No active invite link. A member can create one from the Members tab.</p>}</div>
+    <div style={homeCard}><strong>Invite link</strong>{selectedGroup.inviteToken ? <><p style={{fontSize:13,color:'var(--muted)'}}>Anyone with this link can join the group.</p><input readOnly style={input} value={`${window.location.origin}/?invite=${selectedGroup.inviteToken}`} onFocus={e=>e.target.select()} /><div style={{display:'flex',gap:8}}><button style={btn} onClick={async()=>{ try { await navigator.clipboard.writeText(`${window.location.origin}/?invite=${selectedGroup.inviteToken}`); setInviteStatus('Copied to clipboard.'); } catch { setInviteStatus('Could not copy automatically.'); } }}>Copy link</button><button style={{...btn,background:'var(--danger-bg)',borderColor:'var(--danger-bg)',color:'var(--danger-text)',fontWeight:600}} disabled={groupBusy==='revoke'} onClick={()=>setConfirm({title:'Revoke invite link?',message:'The current link stops working right away. A new one appears here — share that instead.',confirmLabel:'Revoke',onError:(msg:string)=>setError(msg),action:async()=>{await doInviteRevoke(selectedGroup);}})}>{groupBusy==='revoke' ? 'Revoking…' : 'Revoke'}</button></div>{inviteStatus && <p style={{fontSize:13,color:'var(--muted)'}}>{inviteStatus}</p>}</> : <p style={{fontSize:13,color:'var(--muted)'}}>No active invite link. A member can create one from the Members tab.</p>}</div>
     <div style={{display:'flex',flexDirection:'column',gap:8}}>
     {selectedGroup.isArchived
       ? <button style={{...primary,width:'100%',padding:'14px',fontSize:16}} disabled={groupBusy==='restore'} onClick={()=>doRestoreGroup(selectedGroup)}>{groupBusy==='restore' ? 'Restoring…' : 'Restore group'}</button>
@@ -1841,7 +1841,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
           {!group.isArchived && <button style={{...primary,flexShrink:0,background:canSettle?'var(--accent)':'var(--accent-disabled)',borderColor:canSettle?'var(--accent)':'var(--accent-disabled)',color:canSettle?'var(--accent-text)':'var(--accent-text-disabled)',cursor:canSettle?'pointer':'not-allowed'}} disabled={!canSettle} onClick={()=>setSettle(s)}>Settle</button>}
         </div>);
       })}</div>}
-      <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,margin:'8px 0 0'}}>Only the creditor can settle a debt — if a Settle button is dark, you're the one who owes, so only the other person can settle it. Settling records a payment between the two people — partial amounts are fine, edit the amount in the sheet.</p>
+      <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,margin:'8px 0 0'}}>Only the creditor can settle. If a Settle button is dark, you're the one who owes — the other person has to settle it. Edit the amount in the sheet to pay part of it.</p>
         </>);
       })()}
       <h3 style={{margin:'20px 0 8px',fontSize:17}}>Recorded payments</h3>
@@ -1859,7 +1859,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         </div>);
       })}</div> : <div style={balCard}><div style={{...balRow,color:'var(--muted)'}}>No recorded payments yet.</div></div>}
       <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,margin:'8px 0 0'}}>Delete shows only on payments you're part of — as the person who paid or the person who was paid.</p>
-      <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,margin:'16px 0 0'}}>Balances are per currency and never converted. Recording a payment never moves real money — it just records that money changed hands. Settle up above, one currency at a time.</p>
+      <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,margin:'16px 0 0'}}>Recording a payment never moves real money — it only records that money changed hands.</p>
       </>)}
     </>}
     {tab==='members' && <>
@@ -1995,7 +1995,7 @@ function InviteMember({ groupId, setConfirm }: any) {
     // and the member always has a valid link to share, with no extra
     // tap. Revoke stops NEW joins via the old link; it does not remove
     // anyone who already joined through it.
-    setConfirm({ title: 'Revoke invite link?', message: 'The current link will stop working immediately. A new link will be generated and shown here, so you can share the fresh link.', confirmLabel: 'Revoke', onError: (msg: string) => setError(msg), action: async () => {
+    setConfirm({ title: 'Revoke invite link?', message: 'The current link stops working right away. A new one appears here — share that instead.', confirmLabel: 'Revoke', onError: (msg: string) => setError(msg), action: async () => {
       await api(`/api/groups/${groupId}/invite`, 'DELETE');
       const d = await api(`/api/groups/${groupId}/invite`, 'POST'); setToken(d.token);
       const l = `${window.location.origin}/?invite=${d.token}`;
@@ -2350,9 +2350,9 @@ function SettingsModal({ group, onClose, reload, back }: any) {
       <p style={{fontSize:13,color:'var(--muted)'}}>Archiving hides the group from the active list and preserves all expenses, payments, members and activity. It can be restored.</p>
       <div style={{marginTop:20}}>
         <AsyncButton style={{...btn, width:'100%', padding:'14px', fontSize:16, background:'var(--danger-bg)', borderColor:'var(--danger-bg)', color:'var(--danger-text)', opacity: leaveBlocked?0.5:1, cursor: leaveBlocked?'not-allowed':'pointer'}} disabled={leaveBlocked} aria-disabled={leaveBlocked} onClick={async()=>{setSettingsError(''); try{await api(`/api/groups/${group.id}/leave`,'POST'); back();}catch(e:any){ if (e.message === 'Not a group member') { back(); return; } setSettingsError(e.message);}}}>Leave group</AsyncButton>
-        {hasExpense && <p style={{fontSize:13,color:'var(--muted)'}}>Leave is greyed out because you have an expense in this group, as payer or as a split participant — even if balances are settled. The server enforces the same rule.</p>}
-        {!hasExpense && hasPayment && <p style={{fontSize:13,color:'var(--muted)'}}>Leave is greyed out because you have a payment in this group. Delete the recorded payment first, then leave. The server enforces the same rule.</p>}
-        {!hasExpense && !hasPayment && hasNonZeroBalance && <p style={{fontSize:13,color:'var(--muted)'}}>Leave is greyed out because your balance in this group isn't zero. Settle it first, then leave. The server enforces the same rule.</p>}
+        {hasExpense && <p style={{fontSize:13,color:'var(--muted)'}}>Leave is greyed out because you have an expense in this group, as payer or as a split participant — even if balances are settled.</p>}
+        {!hasExpense && hasPayment && <p style={{fontSize:13,color:'var(--muted)'}}>Leave is greyed out because you have a payment in this group. Delete the recorded payment first, then leave.</p>}
+        {!hasExpense && !hasPayment && hasNonZeroBalance && <p style={{fontSize:13,color:'var(--muted)'}}>Leave is greyed out because your balance in this group isn't zero. Settle it first, then leave.</p>}
         {!leaveBlocked && <p style={{fontSize:13,color:'var(--muted)'}}>You have no expenses, payments or outstanding balance in this group, so you can leave. If you are the last member, the group is deleted (it has nothing to preserve).</p>}
       </div>
     </div>
