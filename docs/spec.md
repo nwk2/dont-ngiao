@@ -80,7 +80,9 @@ API <https://dont-ngiao.wk-io.workers.dev> · D1 database `dont-ngiao`.
   group it was opened from, else the last-opened group, else the first active
   group), message up to 2000 chars. Send is disabled while the message is empty;
   while sending the sheet cannot be dismissed and the label stays "Send" (spinner
-  only). Sender name and build are recorded with the submission and shown in the
+  only). On success the Send button becomes a check-circle + "Sent" and the sheet
+  closes after about a second — there is no separate success screen (the You row
+  is a plain one-liner "Send feedback", no subline, no "New" pill). Sender name and build are recorded with the submission and shown in the
   admin detail, never to the sender. No in-app replies in v1 (the admin replies on
   WhatsApp), no screenshots, no push alert to the admin on new feedback, no
   anonymous submissions. Rate limit: 10 submissions/hour per user.

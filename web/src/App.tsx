@@ -898,13 +898,14 @@ function YouView({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, l
     feedback sheet (the others are the Home and GroupView header
     icons). The row opens the sheet with no group preselected — the
     sheet falls back to the last-opened group, else the first active
-    group. The "New" pill is as in the approved mockup. */}
+    group. The row is a plain one-liner like Change password: it
+    shipped with a two-line subline ("Bugs, ideas, questions — goes
+    straight to Wai.") plus a teal "New" pill, and Wai's live
+    screenshot 2026-11-13 showed that looking off against the
+    one-line sibling rows — subline and pill dropped the same day. */}
     <h3 style={{marginBottom:8}}>Feedback</h3>
     <div style={homeCard}>
-      <button type="button" onClick={()=>onFeedback(null)} style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
-        <span style={{flex:1,minWidth:0}}><span style={{display:'block',fontWeight:600}}>Send feedback</span><span style={{display:'block',fontSize:13,color:'var(--muted)',marginTop:2}}>Bugs, ideas, questions — goes straight to Wai.</span></span>
-        <span style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}><span style={{fontSize:12,background:'var(--tint-bg)',color:'var(--tint-text)',padding:'2px 8px',borderRadius:99}}>New</span><span style={{color:'var(--muted)'}}>›</span></span>
-      </button>
+      <button type="button" onClick={()=>onFeedback(null)} style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}}><span>Send feedback</span><span style={{color:'var(--muted)'}}>›</span></button>
     </div>
     <h3 style={{marginBottom:8}}>Groups</h3>
     <div style={{...homeCard,display:'flex',flexDirection:'column',gap:8}}>
@@ -2250,9 +2251,18 @@ function FeedbackSheet({ initialGroupId, groups, onClose }: any) {
   const [sending, setSending] = useState(false);
   const [fbError, setFbError] = useState('');
   const [sent, setSent] = useState(false);
-  const sendingRef = useRef(false);
-  sendingRef.current = sending;
-  const drag = useSheetDrag(()=>{ if (!sendingRef.current) onClose(); });
+  // SUCCESS, Nov 2026: no separate success screen — on send the button
+  // morphs to a check-circle + "Sent" and the sheet closes after ~1s,
+  // so the user feels the success on the button they just tapped (Wai's
+  // pick 2026-11-13; the "Thanks — sent." screen + Done button shipped
+  // in v170 and were dropped after his screenshot review). locked covers
+  // sending AND that 1s window, so the Sent state is actually seen.
+  const locked = sending || sent;
+  const lockedRef = useRef(false);
+  lockedRef.current = locked;
+  const sentTimerRef = useRef<any>(null);
+  useEffect(()=>()=>{ if (sentTimerRef.current) clearTimeout(sentTimerRef.current); }, []);
+  const drag = useSheetDrag(()=>{ if (!lockedRef.current) onClose(); });
   const groupName = fbGroupId ? (active.find((g:any)=>g.id===fbGroupId)?.name || 'General (no group)') : 'General (no group)';
   async function doSend() {
     const msg = message.trim();
@@ -2262,25 +2272,22 @@ function FeedbackSheet({ initialGroupId, groups, onClose }: any) {
       const buildId = await fetchVersion();
       await api('/api/me/feedback', 'POST', { type: fbType, message: msg, groupId: fbGroupId, buildId });
       setSent(true);
+      sentTimerRef.current = setTimeout(()=>onClose(), 1000);
     } catch (e: any) { setFbError(e?.message || 'Could not send feedback.'); }
     finally { setSending(false); }
   }
-  return (<div role="dialog" aria-modal="true" style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget && !sending) onClose(); }}>
+  return (<div role="dialog" aria-modal="true" style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget && !locked) onClose(); }}>
     <div style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,maxHeight:'88vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
       <div style={{width:36,height:4,borderRadius:99,background:'var(--border)',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><h2 style={{margin:0}}>Send feedback</h2><button type="button" aria-label="Close" title="Close" disabled={sending} onClick={()=>{ if (!sending) onClose(); }} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:sending?'default':'pointer',flexShrink:0,opacity:sending?0.5:1}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
-      {sent ? (<>
-        <p style={{color:'var(--muted)',lineHeight:1.45}}>Thanks — sent.</p>
-        <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={onClose}>Done</AsyncButton>
-      </>) : (<>
-        <div style={{...tabTrack,marginTop:12}}><button style={fbType==='bug'?tabPillActive:tabPill} onClick={()=>setFbType('bug')}>Bug</button><button style={fbType==='idea'?tabPillActive:tabPill} onClick={()=>setFbType('idea')}>Idea</button><button style={fbType==='question'?tabPillActive:tabPill} onClick={()=>setFbType('question')}>Question</button></div>
-        <button type="button" disabled={sending} onClick={()=>setShowGroupPicker(true)} style={{width:'100%',textAlign:'left',background:'var(--field)',border:'1px solid var(--border)',borderRadius:16,padding:14,marginBottom:12,color:'var(--text)',cursor:sending?'default':'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',opacity:sending?0.5:1}}><span><span style={{display:'block',fontSize:12,color:'var(--muted)'}}>Group</span><span style={{display:'block',marginTop:2}}>{groupName}</span></span><span style={{color:'var(--muted)'}}>›</span></button>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><h2 style={{margin:0}}>Send feedback</h2><button type="button" aria-label="Close" title="Close" disabled={locked} onClick={()=>{ if (!locked) onClose(); }} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:locked?'default':'pointer',flexShrink:0,opacity:locked?0.5:1}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
+      <>
+        <div style={{...tabTrack,marginTop:12}}><button disabled={locked} style={fbType==='bug'?tabPillActive:tabPill} onClick={()=>setFbType('bug')}>Bug</button><button disabled={locked} style={fbType==='idea'?tabPillActive:tabPill} onClick={()=>setFbType('idea')}>Idea</button><button disabled={locked} style={fbType==='question'?tabPillActive:tabPill} onClick={()=>setFbType('question')}>Question</button></div>
+        <button type="button" disabled={locked} onClick={()=>setShowGroupPicker(true)} style={{width:'100%',textAlign:'left',background:'var(--field)',border:'1px solid var(--border)',borderRadius:16,padding:14,marginBottom:12,color:'var(--text)',cursor:locked?'default':'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',opacity:locked?0.5:1}}><span><span style={{display:'block',fontSize:12,color:'var(--muted)'}}>Group</span><span style={{display:'block',marginTop:2}}>{groupName}</span></span><span style={{color:'var(--muted)'}}>›</span></button>
         <label>Message</label>
-        <textarea style={{...input,minHeight:120,resize:'vertical'}} placeholder="What happened, or what would you like to see?" value={message} maxLength={2000} disabled={sending} onChange={e=>setMessage(e.target.value)} aria-label="Message" />
+        <textarea style={{...input,minHeight:120,resize:'vertical'}} placeholder="What happened, or what would you like to see?" value={message} maxLength={2000} disabled={locked} onChange={e=>setMessage(e.target.value)} aria-label="Message" />
         {fbError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{fbError}</p>}
-        <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} disabled={sending || !message.trim()} onClick={doSend}>Send</AsyncButton>
-      </>)}
-    </div>
+        <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} disabled={locked || !message.trim()} onClick={doSend}>{sent ? (<span style={{display:'inline-flex',alignItems:'center',gap:8}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>Sent</span>) : 'Send'}</AsyncButton>
+      </>    </div>
     {showGroupPicker && <PickerSheet title="Group" onClose={()=>setShowGroupPicker(false)}>
       <div style={{marginTop:6}}>
         <button key="__general" type="button" onClick={()=>{setFbGroupId(null); setShowGroupPicker(false);}} style={{display:'flex',alignItems:'center',gap:12,width:'100%',background:'transparent',border:'none',padding:'12px 0',color:'var(--text)',cursor:'pointer',textAlign:'left'}}>
