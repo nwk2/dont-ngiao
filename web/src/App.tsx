@@ -1949,7 +1949,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
         </div>);
       })}</div> : <div style={balCard}><div style={{...balRow,color:'var(--muted)'}}>No recorded payments yet.</div></div>}
       <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,margin:'8px 0 0'}}>Delete shows only on payments you're part of — as the person who paid or the person who was paid.</p>
-      <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,margin:'16px 0 0'}}>Recording a payment never moves real money — it only records that money changed hands.</p>
+      <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,margin:'16px 0 0'}}>This only records the payment.</p>
       </>)}
     </>}
     {tab==='members' && <>
@@ -2463,12 +2463,12 @@ function SettleModal({ group, suggestion, onClose, reload, setError }: any) {
     <div style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,width:'100%',maxWidth:640,transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
       <div style={{width:36,height:4,borderRadius:99,background:'var(--border)',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
       <h2 style={{marginTop:0,touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}>Settle</h2><p>{suggestion.fromName} → {suggestion.toName} · {suggestion.currency}</p>
-      <p style={{color:'var(--muted)'}}>Recording a payment never moves real money — it just records that money changed hands.</p>
+      <p style={{color:'var(--muted)'}}>This only records the payment.</p>
       <label>Amount ({suggestion.currency})</label><input style={input} value={amount} onChange={e=>setAmount(e.target.value)} />
       {remaining!==null && remaining>0 && <p style={{color:'var(--warn-text)'}}>Partial payment: {fmt(remaining, suggestion.currency)} will remain outstanding.</p>}
       {remaining!==null && remaining<0 && <p style={{color:'var(--danger-text)'}}>Amount exceeds the outstanding {fmt(suggestion.amountMinor, suggestion.currency)}.</p>}
       <label>Date</label><div style={{marginBottom:10}}><DateField id="pay-date" value={date} onChange={setDate} /></div>
-      <AsyncButton style={primary} disabled={minor===null || minor<=0 || minor>suggestion.amountMinor} onClick={async()=>{try{const d = await api(`/api/groups/${group.id}/payments`,'POST',{fromMemberId:suggestion.fromMemberId,toMemberId:suggestion.toMemberId,amountMinor:minor,currency:suggestion.currency,date}); reload(d);}catch(e:any){setError(e.message);}}}>Settle</AsyncButton>{' '}<button style={btn} onClick={onClose}>Cancel</button>
+      <div style={{display:'flex',gap:8}}><AsyncButton style={{...primary,flex:1}} disabled={minor===null || minor<=0 || minor>suggestion.amountMinor} onClick={async()=>{try{const d = await api(`/api/groups/${group.id}/payments`,'POST',{fromMemberId:suggestion.fromMemberId,toMemberId:suggestion.toMemberId,amountMinor:minor,currency:suggestion.currency,date}); reload(d);}catch(e:any){setError(e.message);}}}>Settle</AsyncButton><button style={{...btn,flex:1}} onClick={onClose}>Cancel</button></div>
     </div>
   </div>);
 }
