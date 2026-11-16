@@ -686,13 +686,13 @@ function OnboardingPrompts() {
   if (!standalone && !dismissedA2hs) {
     const platform = installPlatform();
     const steps = platform === 'ios'
-      ? 'Tap the Share button (square with an arrow) at the bottom of Safari, then "Add to Home Screen", then Add.'
+      ? 'Share > Add to Home Screen > Add, then open it from the new app icon to enable notifications.'
       : platform === 'android'
-      ? 'Tap the three dots in Chrome, then "Add to Home screen", then Add.'
-      : 'Use your browser\'s menu to add this site to your Home Screen.';
+      ? 'Three dots > Add to Home screen > Add, then open it from the new app icon to enable notifications.'
+      : 'Use your browser\'s menu to add this site to your Home Screen, then open it from the new app icon to enable notifications.';
     return (<div style={{...homeCard, background:'var(--tint-bg)', marginBottom:12}}>
       <strong>Add Don&apos;t Ngiao to your Home Screen</strong>
-      <p style={{fontSize:13, color:'var(--muted)', margin:'6px 0 12px'}}>{steps} Then open it from the new icon (the teal ÷) — notifications only work when it&apos;s launched from the Home Screen.</p>
+      <p style={{fontSize:13, color:'var(--muted)', margin:'6px 0 12px'}}>{steps}</p>
       <div style={{display:'flex', gap:8}}><button style={{...btn, flex:1}} onClick={dismissA2hs}>Not now</button></div>
     </div>);
   }
