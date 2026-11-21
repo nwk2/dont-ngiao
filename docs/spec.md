@@ -102,6 +102,11 @@ API <https://dont-ngiao.wk-io.workers.dev> · D1 database `dont-ngiao`.
   Account rows (Edit name, Change/Set password, Link Google account, Admin row for
   admins), Notifications toggle, Archived groups list. Light/dark themes are CSS
   variables, follow the system on first load, manual override persisted.
+  Visual direction (2026-11-22, replaces the 2026-11-06 teal/royal-blue palette):
+  Kopitiam — warm dark brown / warm paper, one green accent (mint dark, deep green
+  light), inverted hero (light card in dark mode, dark card in light mode),
+  Bricolage Grotesque display font for headings, group tiles show the emoji from
+  the name or its first letter, You rows are flat with hairline dividers.
 - **Privacy page:** static `web/public/privacy.html`, served at `/privacy.html`.
 
 Deliberately NOT in this app: expense lock, settle-to-expense allocation, payment method

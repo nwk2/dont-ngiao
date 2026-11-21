@@ -23,7 +23,8 @@ const balHairline = '1px solid var(--hairline)';
 // their current cards until their own chunks. Logic unchanged everywhere:
 // Home group list, archived Restore/Open, account menu, Edit name,
 // group header, changeTab behaviour, tab keys.
-const EXP_CAT_COLORS: Record<string,string> = { 'Food & Drink':'var(--cat-food)', 'Transport':'var(--cat-transport)', 'Accommodation':'var(--cat-accommodation)', 'Activities':'var(--cat-activities)', 'Shopping':'var(--cat-shopping)', 'Other':'var(--cat-other)' };
+// Chip backgrounds (soft tints). The charts in pie.tsx use the stronger --cat-x colours.
+const EXP_CAT_COLORS: Record<string,string> = { 'Food & Drink':'var(--cat-food-bg)', 'Transport':'var(--cat-transport-bg)', 'Accommodation':'var(--cat-accommodation-bg)', 'Activities':'var(--cat-activities-bg)', 'Shopping':'var(--cat-shopping-bg)', 'Other':'var(--cat-other-bg)' };
 // Category glyph colours: white in dark, a darker shade of the
 // category colour in light (white on the light pastels is unreadable).
 const CAT_GLYPH_VARS: Record<string,string> = { 'Food & Drink':'var(--cat-food-glyph)', 'Transport':'var(--cat-transport-glyph)', 'Accommodation':'var(--cat-accommodation-glyph)', 'Activities':'var(--cat-activities-glyph)', 'Shopping':'var(--cat-shopping-glyph)', 'Other':'var(--cat-other-glyph)' };
@@ -65,7 +66,7 @@ function logIcon(type: string) {
 const homeCard: React.CSSProperties = { background:'var(--card)', borderRadius:20, padding:16, marginBottom:12, color:'var(--text)', lineHeight:1.45 };
 const tabTrack: React.CSSProperties = { display:'flex', gap:0, background:'var(--field)', borderRadius:999, padding:3, marginBottom:16 };
 const tabPill: React.CSSProperties = { flex:1, padding:'10px 4px', fontSize:14, color:'var(--muted)', background:'transparent', border:'none', borderRadius:999, fontWeight:400, cursor:'pointer' };
-const tabPillActive: React.CSSProperties = { ...tabPill, color:'#0f172a', background:'#fff', fontWeight:600 };
+const tabPillActive: React.CSSProperties = { ...tabPill, color:'var(--text)', background:'var(--pill-active)', fontWeight:600 };
 const avatar: React.CSSProperties = { width:40, height:40, borderRadius:'50%', background:'var(--avatar-green)', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:15, flexShrink:0 };
 const noAccountChip: React.CSSProperties = { fontSize:11, background:'var(--warn-bg)', color:'var(--warn-text)', padding:'2px 8px', borderRadius:99, fontWeight:600, whiteSpace:'nowrap', marginLeft:8, verticalAlign:'middle' };
 // PAYER PILL, Nov 2026: marks the payer in the expense detail split rows
@@ -588,6 +589,13 @@ function GroupSkeleton() {
   </div>);
 }
 
+// Group tile: the first emoji in the name (e.g. "KL 2026 🍗"), else its first letter.
+function groupMark(name: string): { mark: string; isEmoji: boolean } {
+  const m = (name || '').match(/\p{Extended_Pictographic}(\uFE0F|\u200D\p{Extended_Pictographic}\uFE0F?)*/u);
+  if (m) return { mark: m[0], isEmoji: true };
+  const letter = (name || '?').replace(/[^\p{L}\p{N}]/gu, '').charAt(0) || '?';
+  return { mark: letter.toUpperCase(), isEmoji: false };
+}
 function initials(name: string) {
   return (name || '?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();
 }
@@ -745,13 +753,13 @@ function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, load
     {openTotals.length === 0 ? (<div style={{...homeCard,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:20}}>
       <span>All settled across {activeCount} {activeCount===1 ? 'group' : 'groups'}</span>
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--tint-text)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5" /></svg>
-    </div>) : (<div style={{background:'linear-gradient(135deg,#0f766e,#059669,#10b981)',borderRadius:24,padding:20,marginBottom:20,color:'#fff'}}>
-      <div style={{fontSize:12,letterSpacing:1.5,color:'#ccfbf1',fontWeight:600}}>ACROSS {activeCount} {activeCount===1 ? 'GROUP' : 'GROUPS'}</div>
-      {groupBalancesByVerb(openTotals).map((g:any,gi:number)=>g.items.map((t:any,i:number)=>(<div key={t.currency} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:12,marginTop:10,...(i===0 && gi>0 ? {borderTop:'1px solid rgba(255,255,255,0.25)',paddingTop:10} : {})}}>
-        <span style={{color:'#ccfbf1'}}>{i===0 ? g.verb : ''}</span>
-        <strong style={{fontSize:28,whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'}}>{fmt(Math.abs(t.balance),t.currency)}</strong>
+    </div>) : (<div style={{background:'var(--hero-bg)',borderRadius:24,padding:20,marginBottom:20,color:'var(--hero-text)'}}>
+      <div style={{fontSize:13,color:'var(--hero-muted)'}}>Across {activeCount} {activeCount===1 ? 'group' : 'groups'}</div>
+      {groupBalancesByVerb(openTotals).map((g:any,gi:number)=>g.items.map((t:any,i:number)=>(<div key={t.currency} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:12,marginTop:10,...(i===0 && gi>0 ? {borderTop:'2px dashed var(--hero-rule)',paddingTop:12,marginTop:12} : {})}}>
+        <span style={{color:'var(--hero-muted)'}}>{i===0 ? g.verb : ''}</span>
+        <strong style={{fontFamily:'var(--display)',fontSize:32,fontWeight:800,whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums',color:t.balance>0?'var(--hero-owed)':'var(--hero-owe)'}}>{fmt(Math.abs(t.balance),t.currency)}</strong>
       </div>)))}
-      {openTotals.length > 1 && <p style={{fontSize:13,color:'#ccfbf1',marginBottom:0}}>Each currency stays separate. Nothing is converted.</p>}
+      {openTotals.length > 1 && <p style={{fontSize:13,color:'var(--hero-muted)',marginBottom:0}}>Each currency stays separate. Nothing is converted.</p>}
     </div>)}
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
       <h2 style={{margin:0}}>Your groups</h2>
@@ -763,11 +771,14 @@ function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, load
       const my: any[] = g.myBalances || [];
       const openMy = my.filter((b:any)=>b.balance!==0);
       const noExpenses = (g.expenseCount ?? 0) === 0;
-      return (<div key={g.id} style={{...homeCard,cursor:'pointer'}} onClick={()=>loadGroup(g.id)}>
+      return (<div key={g.id} style={{...homeCard,cursor:'pointer',display:'flex',gap:14,alignItems:'flex-start'}} onClick={()=>loadGroup(g.id)}>
+        <span aria-hidden="true" style={{width:44,height:44,borderRadius:14,background:'var(--field)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'var(--display)',fontWeight:800,fontSize:groupMark(g.name).isEmoji?22:18,flexShrink:0}}>{groupMark(g.name).mark}</span>
+        <div style={{flex:1,minWidth:0}}>
         <strong style={{fontSize:17}}>{g.name}</strong>
         <div style={{fontSize:13,color:'var(--muted)',marginTop:6}}>{g.memberCount ?? '?'} {(g.memberCount===1)?'person':'people'} · {noExpenses ? 'No expenses yet' : `${g.expenseCount} ${g.expenseCount===1?'expense':'expenses'}`}{spent.length>0 ? ` · ${spent.map((s:any)=>fmt(s.amount,s.currency)).join(' + ')} spent` : ''}</div>
         {!noExpenses && openMy.length===0 && <div style={{marginTop:8,fontSize:14,color:'var(--muted)',display:'flex',alignItems:'center',gap:6}}>Settled <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5" /></svg></div>}
         {openMy.length>0 && <div style={{marginTop:8}}>{groupBalancesByVerb(openMy).map((vg:any,gi:number)=>vg.items.map((b:any,i:number)=>(<div key={b.currency} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,fontSize:14,color:b.balance>0?'var(--tint-text)':'var(--danger-text)',...(i===0 && gi>0 ? {borderTop:balHairline,paddingTop:8,marginTop:8} : {})}}><span>{i===0 ? vg.verb : ''}</span><span style={{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums',fontWeight:600}}>{fmt(Math.abs(b.balance),b.currency)}</span></div>)))}</div>}
+        </div>
       </div>);
     })}
     {showCreate && <CreateGroupModal onClose={()=>setShowCreate(false)} onDone={(d:any)=>{setShowCreate(false);
@@ -872,17 +883,17 @@ function YouView({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, l
     <h3 style={{marginBottom:8}}>Appearance</h3>
     <div style={{...homeCard,display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}><span>Theme</span><ThemePill theme={theme} setTheme={setTheme} /></div>
     <h3 style={{marginBottom:8}}>Account</h3>
-    <div style={{...homeCard,display:'flex',flexDirection:'column',gap:8}}>
-      <button style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}} onClick={()=>{setNameDraft(user.name); setEditError(''); setEditingName(true);}}><span>Edit name <span style={{color:'var(--muted)'}}>· Shown to your groups</span></span><span style={{color:'var(--muted)'}}>›</span></button>
-      <button style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}} onClick={()=>{setCpCurrent(''); setCpNew(''); setCpConfirm(''); setCpError(''); setShowChangePassword(true);}}><span>{user.has_password ? 'Change password' : 'Set password'}{!user.has_password && <span style={{color:'var(--muted)'}}> · Add email sign-in</span>}</span><span style={{color:'var(--muted)'}}>›</span></button>
+    <div className="flat-list" style={{...homeCard,padding:0,overflow:'hidden'}}>
+      <button className="flat-row" onClick={()=>{setNameDraft(user.name); setEditError(''); setEditingName(true);}}><span>Edit name <span style={{color:'var(--muted)'}}>· Shown to your groups</span></span><span style={{color:'var(--muted)'}}>›</span></button>
+      <button className="flat-row" onClick={()=>{setCpCurrent(''); setCpNew(''); setCpConfirm(''); setCpError(''); setShowChangePassword(true);}}><span>{user.has_password ? 'Change password' : 'Set password'}{!user.has_password && <span style={{color:'var(--muted)'}}> · Add email sign-in</span>}</span><span style={{color:'var(--muted)'}}>›</span></button>
       {/* GOOGLE SIGN-IN, Nov 2026: link a Google account to sign in
       with Google next time. Shown only until linked; afterwards the
       row reads Linked (informational). Linking does NOT change the
       name — Google only proves identity. */}
       {user.has_google ? (
-        <div style={{...btn,boxSizing:'border-box',width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'default'}}><span>Google account <span style={{color:'var(--muted)'}}>· Linked</span></span><span style={{color:'var(--muted)'}}>✓</span></div>
+        <div className="flat-row" style={{cursor:'default'}}><span>Google account</span><span style={{color:'var(--muted)',fontSize:15}}>Linked</span></div>
       ) : (
-        <button style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}} onClick={()=>{ window.location.href = googleAuthUrl(); }}><span>Link Google account <span style={{color:'var(--muted)'}}>· Sign in with Google</span></span><span style={{color:'var(--muted)'}}>›</span></button>
+        <button className="flat-row" onClick={()=>{ window.location.href = googleAuthUrl(); }}><span>Link Google account <span style={{color:'var(--muted)'}}>· Sign in with Google</span></span><span style={{color:'var(--muted)'}}>›</span></button>
       )}
       {/* ADMIN BUTTON, Nov 2026: the admin screen was only reachable by
       typing ?admin. An Admin row now sits in the Account card, visible
@@ -891,7 +902,7 @@ function YouView({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, l
       session restore (or the admin login form) handles access from
       there, and the admin sign-in stays separate — this button does NOT
       promote the app session to admin. Non-admins never see it. */}
-      {user.is_admin ? (<button style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}} onClick={()=>{ window.location.href = '/?admin'; }}><span>Admin</span><span style={{color:'var(--muted)'}}>›</span></button>) : null}
+      {user.is_admin ? (<button className="flat-row" onClick={()=>{ window.location.href = '/?admin'; }}><span>Admin</span><span style={{color:'var(--muted)'}}>›</span></button>) : null}
     </div>
     <h3 style={{marginBottom:8}}>Notifications</h3>
     <div style={{...homeCard,display:'flex',flexDirection:'column',gap:8}}>
@@ -914,12 +925,12 @@ function YouView({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, l
     screenshot 2026-11-13 showed that looking off against the
     one-line sibling rows — subline and pill dropped the same day. */}
     <h3 style={{marginBottom:8}}>Feedback</h3>
-    <div style={homeCard}>
-      <button type="button" onClick={()=>onFeedback(null)} style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}}><span>Send feedback</span><span style={{color:'var(--muted)'}}>›</span></button>
+    <div className="flat-list" style={{...homeCard,padding:0,overflow:'hidden'}}>
+      <button type="button" onClick={()=>onFeedback(null)} className="flat-row"><span>Send feedback</span><span style={{color:'var(--muted)'}}>›</span></button>
     </div>
     <h3 style={{marginBottom:8}}>Groups</h3>
-    <div style={{...homeCard,display:'flex',flexDirection:'column',gap:8}}>
-      <button style={{...btn,width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}} onClick={()=>setShowArchived(true)}><span>Archive Groups</span><span style={{color:'var(--muted)'}}>{archived.length===0 ? 'No archived groups' : `${archived.length} archived · ${archived[0].name}`} ›</span></button>
+    <div className="flat-list" style={{...homeCard,padding:0,overflow:'hidden'}}>
+      <button className="flat-row" onClick={()=>setShowArchived(true)}><span>Archived groups</span><span style={{color:'var(--muted)'}}>{archived.length===0 ? 'No archived groups' : `${archived.length} archived · ${archived[0].name}`} ›</span></button>
     </div>
     <div style={{marginTop:20}}><AsyncButton style={{...btn,width:'100%',padding:'14px',fontSize:16,background:'var(--danger-bg)',borderColor:'var(--danger-bg)',color:'var(--danger-text)'}} onClick={async()=>{await api('/api/auth/logout','POST'); onLogout();}}>Log out</AsyncButton></div>
     {editingName && (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
@@ -1749,7 +1760,7 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
     </div>
     {error && <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:12}}><span style={{color:'var(--danger-text)'}}>{error}</span><button style={btn} onClick={()=>reload()}>Retry</button></div>}
     <div style={tabTrack}>
-      {(['expenses','balances','members','log'] as const).map(t=>(<button key={t} onClick={()=>changeTab(t)} style={{flex:1,padding:'10px 4px',fontSize:14,color:tab===t?'#0f172a':'var(--muted)',background:tab===t?'#fff':'transparent',border:'none',borderRadius:999,fontWeight:tab===t?600:400,textTransform:'capitalize'}}>{t}</button>))}
+      {(['expenses','balances','members','log'] as const).map(t=>(<button key={t} onClick={()=>changeTab(t)} style={{flex:1,padding:'10px 4px',fontSize:14,color:tab===t?'var(--text)':'var(--muted)',background:tab===t?'var(--pill-active)':'transparent',border:'none',borderRadius:999,fontWeight:tab===t?600:400,textTransform:'capitalize'}}>{t}</button>))}
     </div>
     {tab==='expenses' && <>
       <div style={card}><h3 style={{marginTop:0}}>{catView==='members' ? 'Paid by member' : 'Spend by category'}</h3>
