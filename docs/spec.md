@@ -46,20 +46,26 @@ API <https://dont-ngiao.wk-io.workers.dev> · D1 database `dont-ngiao`.
   Delete payment: debtor/creditor only. Delete or edit expense: any member may do it.
   Edit mode starts as "exact" with the stored per-person amounts and re-scales them
   when the total changes.
-- **Expenses tab:** searchable/filterable list (description substring, Category and
-  Paid-by pickers with faceted counts; frontend-only — the chart is not filtered)
-  plus a per-currency chart with Group | Mine | Members views. Group = whole-group
-  totals; Mine = the requester's own split shares only, computed on the server;
-  Members = every member ranked by total paid (gross) in the selected currency.
-  Chart currency defaults to the group default when it has data, else the first
-  currency with data; an explicit pick always wins.
+- **Expenses tab:** header is a back circle + ⋯ menu (Members, Log, Group settings,
+  Send feedback live there; Members/Log are sub-views with a Done button back to
+  Expenses). A "Your position" card sits above the tabs with your open balances, your
+  simplified debts and a Settle up button. Tabs are Expenses / Balances only. The
+  expense list is day-grouped with per-day totals; each row shows who paid and a net
+  line for you ("you lent" / "you borrowed" / "just you" / "not involved"). The list
+  is searchable/filterable (description substring, Category and Paid-by pickers with
+  faceted counts; frontend-only — the chart is not filtered). The per-currency chart
+  (Group | Mine | Members views) sits behind an "Insights" line, collapsed by default.
+  Group = whole-group totals; Mine = the requester's own split shares only, computed
+  on the server; Members = every member ranked by total paid (gross) in the selected
+  currency. Chart currency defaults to the group default when it has data, else the
+  first currency with data; an explicit pick always wins.
 - **Log tab (money events only):** expense added/edited/deleted, payment
   recorded/deleted. `activity_log` stores member ids; names are resolved live at read.
   Categories: Food & Drink, Transport, Accommodation, Activities, Shopping, Other,
   plus implicit Uncategorized.
 - **Calendar date picker** (button + month grid, prev/next, year jump, Today; no native
   date input) in the add-expense and Settle forms. Add-expense is a bottom sheet opened
-  by the sticky bar.
+  by a floating pill button (bottom-right, inside the 640px column).
 - **Group settings:** rename, default currency, archive (not hard delete, restorable,
   preserves everything, archived banner), Leave. Leave is blocked server-side — and
   greyed out in the UI with an explanation — if you have any expense, any payment, or
@@ -72,11 +78,14 @@ API <https://dont-ngiao.wk-io.workers.dev> · D1 database `dont-ngiao`.
   Archive/Restore, Delete for clean groups only; admin member-remove keeps the money
   guards but overrides the creator-only role check), and Feedback module (every
   submission, Open / Done / All filter (default Open), newest first; detail with sender, group, build and
-  sent date; Mark done / Reopen — the only mutation).
+  sent date; Mark done / Reopen — the only mutation). Admin header is a back circle +
+  ⋯ menu (Back to app, Log out of admin); module tabs show counts; lists have search
+  fields and filter chips; badges are neutral; dates read "4 Nov 2026". Tapping a
+  user opens a detail sheet (email, joined, role) with the password-reset button —
+  there is no per-row Reset button.
 - **Feedback (auth-only, no anonymous path).** Any signed-in user can send feedback
-  from the You view Feedback section or the header icon on Home and Group screens
-  (message-square-text, neutral grey like the gear, 40px circle immediately left of
-  the ThemePill). All three doors open the same bottom sheet: type Bug / Idea /
+  from the You view Feedback section, the header icon on Home
+  (message-square-text, neutral grey, 40px circle), or the Group screen ⋯ menu. All three doors open the same bottom sheet: type Bug / Idea /
   Question (default Bug), group picker (active groups + General, defaulting to the
   group it was opened from, else the last-opened group, else the first active
   group), message up to 2000 chars. Send is disabled while the message is empty;
@@ -106,7 +115,13 @@ API <https://dont-ngiao.wk-io.workers.dev> · D1 database `dont-ngiao`.
   Kopitiam — warm dark brown / warm paper, one green accent (mint dark, deep green
   light), inverted hero (light card in dark mode, dark card in light mode),
   Bricolage Grotesque display font for headings, group tiles show the emoji from
-  the name or its first letter, You rows are flat with hairline dividers.
+  the name or its first letter, You rows are flat with hairline dividers. Your
+  avatar/dot colour is lavender in dark mode (`--avatar-green` #BBA4F7, text
+  `--on-avatar`) and indigo in light mode (#4553C4). Safe-area insets: viewport-fit
+  cover, body + sheets padded for the notch and home indicator; the theme-color
+  meta follows the theme's background. Empty Home is a card ("No groups yet" +
+  "Create a group"). Admin and Auth screens are lazy-loaded (a failed chunk reloads
+  the page instead of a blank screen); Google sign-in constants live in `google.ts`.
 - **Privacy page:** static `web/public/privacy.html`, served at `/privacy.html`.
 
 Deliberately NOT in this app: expense lock, settle-to-expense allocation, payment method
@@ -118,7 +133,12 @@ identity purpose). No hash routing; invite links use `?invite=`.
 
 ```
 web/                 Vite + React frontend, served as static assets by a Worker
-  src/App.tsx        all screens: auth, home, group tabs, modals, settings, admin
+  src/App.tsx        app shell: auth state, routing, theme, force-reload check
+  src/ui.tsx         shared styles, Sheet/CloseButton, pickers, avatars, member colours
+  src/prefs.ts       last-group/theme keys + saved-group restore
+  src/google.ts      Google sign-in constants + auth URL
+  src/screens/       Home.tsx (Home + You), Group.tsx, Auth.tsx, Admin.tsx
+  src/components/    ExpenseSheet.tsx, FeedbackSheet.tsx, Onboarding.tsx
   src/api.ts         API client, currency formatting, minor-unit helpers, push + onboarding helpers
   src/calendar.tsx   calendar date picker
   src/pie.tsx        SVG pie/donut + stacked bar chart

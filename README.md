@@ -49,7 +49,11 @@ use `?invite=`.
 
 ```
 web/                 Vite + React frontend, served as static assets by a Worker
-  src/App.tsx        all screens: auth, home, group tabs, modals, settings, admin
+  src/App.tsx        app shell: auth state, routing between screens, theme
+  src/ui.tsx         shared styles, Sheet/CloseButton, pickers, avatars, member colours
+  src/prefs.ts       saved last group/tab and theme keys
+  src/screens/       Home (+ You), Group, Auth (+ reset password, invites), Admin
+  src/components/    ExpenseSheet (add/edit expense), FeedbackSheet, Onboarding prompts
   src/api.ts         API client, currency formatting, minor-unit helpers, push + onboarding helpers
   src/calendar.tsx   calendar date picker
   src/pie.tsx        SVG pie/donut + stacked bar chart
