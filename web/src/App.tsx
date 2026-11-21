@@ -612,6 +612,9 @@ function initials(name: string) {
 const MEMBER_DOT_COLORS = ['var(--dot-0)','var(--dot-1)','var(--dot-2)','var(--dot-3)','var(--dot-4)','var(--dot-5)','var(--dot-6)','var(--dot-7)'];
 function memberDotColor(group: any, memberId: string | null | undefined) {
   if (!memberId) return 'var(--muted)';
+  // You are always --avatar-green, matching your avatar on Home and You.
+  // Other members keep their sequential palette colour.
+  if (group.myMemberId && memberId===group.myMemberId) return 'var(--avatar-green)';
   const idx = (group.members || []).findIndex((x:any)=>x.id===memberId);
   if (idx < 0) return 'var(--muted)';
   return MEMBER_DOT_COLORS[idx % MEMBER_DOT_COLORS.length];
@@ -724,6 +727,8 @@ function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, load
   // YouView replaces itself with the archived view.
   if (showYou) return <YouView user={user} setUser={setUser} onLogout={onLogout} setAuthNotice={setAuthNotice} groups={groups} loadGroups={loadGroups} loadGroup={loadGroup} onBack={()=>setShowYou(false)} setError={setError}  theme={theme} setTheme={setTheme} onFeedback={onFeedback} />;
     const totals: any[] = groups?.totals || [];
+    const openTotals = totals.filter((t:any)=>t.balance!==0);
+    const activeCount = groups?.active?.length ?? 0;
   return (<div style={S}>
     <div style={{marginBottom:16}}>
       <div style={{display:'flex',alignItems:'center',gap:12}}>
@@ -733,19 +738,21 @@ function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, load
           <div style={{fontSize:13,color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',lineHeight:1.4}}>Mai ngiao, mai drama.</div>
         </div>
         <FeedbackIconButton onClick={()=>onFeedback(null)} />
-        <ThemePill theme={theme} setTheme={setTheme} />
       </div>
     </div>
     {error && <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:12}}><span style={{color:'var(--danger-text)'}}>{error}</span><button style={btn} onClick={()=>loadGroups()}>Retry</button></div>}
     <OnboardingPrompts />
-    <div style={{background:'linear-gradient(135deg,#0f766e,#059669,#10b981)',borderRadius:24,padding:20,marginBottom:20,color:'#fff'}}>
-      <div style={{fontSize:12,letterSpacing:1.5,color:'#ccfbf1',fontWeight:600}}>ALL ACROSS {(groups?.active?.length ?? 0)} {((groups?.active?.length ?? 0) === 1) ? 'GROUP' : 'GROUPS'}</div>
-      {totals.length === 0 || totals.every((t:any)=>t.balance===0) ? (<p style={{margin:'12px 0 0'}}>All settled.</p>) : groupBalancesByVerb(totals).map((g:any,gi:number)=>g.items.map((t:any,i:number)=>(<div key={t.currency} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:12,marginTop:10,...(i===0 && gi>0 ? {borderTop:'1px solid rgba(255,255,255,0.25)',paddingTop:10} : {})}}>
+    {openTotals.length === 0 ? (<div style={{...homeCard,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:20}}>
+      <span>All settled across {activeCount} {activeCount===1 ? 'group' : 'groups'}</span>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--tint-text)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5" /></svg>
+    </div>) : (<div style={{background:'linear-gradient(135deg,#0f766e,#059669,#10b981)',borderRadius:24,padding:20,marginBottom:20,color:'#fff'}}>
+      <div style={{fontSize:12,letterSpacing:1.5,color:'#ccfbf1',fontWeight:600}}>ACROSS {activeCount} {activeCount===1 ? 'GROUP' : 'GROUPS'}</div>
+      {groupBalancesByVerb(openTotals).map((g:any,gi:number)=>g.items.map((t:any,i:number)=>(<div key={t.currency} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:12,marginTop:10,...(i===0 && gi>0 ? {borderTop:'1px solid rgba(255,255,255,0.25)',paddingTop:10} : {})}}>
         <span style={{color:'#ccfbf1'}}>{i===0 ? g.verb : ''}</span>
         <strong style={{fontSize:28,whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'}}>{fmt(Math.abs(t.balance),t.currency)}</strong>
       </div>)))}
-      <p style={{fontSize:13,color:'#ccfbf1',marginBottom:0}}>Balances stay separate per currency. Nothing is converted — tap a group below to see who to pay.</p>
-    </div>
+      {openTotals.length > 1 && <p style={{fontSize:13,color:'#ccfbf1',marginBottom:0}}>Each currency stays separate. Nothing is converted.</p>}
+    </div>)}
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
       <h2 style={{margin:0}}>Your groups</h2>
       <button style={{...primary,borderRadius:999,padding:'10px 18px'}} onClick={()=>setShowCreate(true)}>+ New group</button>
@@ -754,10 +761,13 @@ function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, load
     {groups?.active?.map((g:any)=>{
       const spent: any[] = g.spent || [];
       const my: any[] = g.myBalances || [];
+      const openMy = my.filter((b:any)=>b.balance!==0);
+      const noExpenses = (g.expenseCount ?? 0) === 0;
       return (<div key={g.id} style={{...homeCard,cursor:'pointer'}} onClick={()=>loadGroup(g.id)}>
         <strong style={{fontSize:17}}>{g.name}</strong>
-        <div style={{fontSize:13,color:'var(--muted)',marginTop:6}}>{g.memberCount ?? '?'} {(g.memberCount===1)?'person':'people'} · {g.expenseCount ?? '?'} expenses{spent.length>0 ? ` · ${spent.map((s:any)=>fmt(s.amount,s.currency)).join(' + ')} spent` : ''}</div>
-        {my.length>0 && <div style={{marginTop:8}}>{groupBalancesByVerb(my).map((g:any,gi:number)=>g.items.map((b:any,i:number)=>(<div key={b.currency} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,fontSize:14,color:b.balance>0?'var(--tint-text)':b.balance<0?'var(--danger-text)':'var(--muted)',...(i===0 && gi>0 ? {borderTop:balHairline,paddingTop:8,marginTop:8} : {})}}><span>{i===0 ? g.verb : ''}</span><span style={{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'}}>{fmt(Math.abs(b.balance),b.currency)}</span></div>)))}</div>}
+        <div style={{fontSize:13,color:'var(--muted)',marginTop:6}}>{g.memberCount ?? '?'} {(g.memberCount===1)?'person':'people'} · {noExpenses ? 'No expenses yet' : `${g.expenseCount} ${g.expenseCount===1?'expense':'expenses'}`}{spent.length>0 ? ` · ${spent.map((s:any)=>fmt(s.amount,s.currency)).join(' + ')} spent` : ''}</div>
+        {!noExpenses && openMy.length===0 && <div style={{marginTop:8,fontSize:14,color:'var(--muted)',display:'flex',alignItems:'center',gap:6}}>Settled <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5" /></svg></div>}
+        {openMy.length>0 && <div style={{marginTop:8}}>{groupBalancesByVerb(openMy).map((vg:any,gi:number)=>vg.items.map((b:any,i:number)=>(<div key={b.currency} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,fontSize:14,color:b.balance>0?'var(--tint-text)':'var(--danger-text)',...(i===0 && gi>0 ? {borderTop:balHairline,paddingTop:8,marginTop:8} : {})}}><span>{i===0 ? vg.verb : ''}</span><span style={{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums',fontWeight:600}}>{fmt(Math.abs(b.balance),b.currency)}</span></div>)))}</div>}
       </div>);
     })}
     {showCreate && <CreateGroupModal onClose={()=>setShowCreate(false)} onDone={(d:any)=>{setShowCreate(false);
@@ -857,7 +867,7 @@ function YouView({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, l
       <div style={{width:72,height:72,borderRadius:'50%',background:'var(--avatar-green)',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:28}}>{initials(user.name)}</div>
       <div style={{fontSize:24,fontWeight:700,marginTop:12}}>{user.name}</div>
       <div style={{fontSize:13,color:'var(--muted)',marginTop:4}}>{user.email}</div>
-      {since && <div style={{fontSize:13,color:'var(--muted)',marginTop:4}}>User since {since} · {totalGroups} {totalGroups===1?'group':'groups'}</div>}
+      {since && <div style={{fontSize:13,color:'var(--muted)',marginTop:4}}>User since {since} · {totalGroups} {totalGroups===1?'group':'groups'}{archived.length>0 ? ` (${archived.length} archived)` : ''}</div>}
     </div>
     <h3 style={{marginBottom:8}}>Appearance</h3>
     <div style={{...homeCard,display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}><span>Theme</span><ThemePill theme={theme} setTheme={setTheme} /></div>
@@ -886,7 +896,7 @@ function YouView({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, l
     <h3 style={{marginBottom:8}}>Notifications</h3>
     <div style={{...homeCard,display:'flex',flexDirection:'column',gap:8}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
-        <span>Push notifications <span style={{color:'var(--muted)'}}>· New expense, edited / deleted, settle — only for groups you're in</span></span>
+        <span>Push notifications <span style={{color:'var(--muted)'}}>· Expenses and settle-ups in your groups</span></span>
         <button type="button" role="switch" aria-checked={!!pushEnabled} aria-label="Push notifications" disabled={!pushSupported || pushBusy || pushEnabled === null} onClick={togglePush} style={{flexShrink:0,width:52,height:32,borderRadius:999,border:'1px solid var(--border)',background:pushEnabled ? 'var(--accent)' : 'var(--field)',cursor:(!pushSupported || pushBusy || pushEnabled === null) ? 'default' : 'pointer',opacity:(!pushSupported || pushBusy || pushEnabled === null) ? 0.5 : 1,padding:0,position:'relative'}}>
           <span style={{position:'absolute',top:3,left:pushEnabled ? 25 : 3,width:24,height:24,borderRadius:'50%',background:'#fff',boxShadow:'0 1px 3px rgba(0,0,0,0.3)'}} />
         </button>
@@ -1723,7 +1733,6 @@ function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError
       <button style={btn} onClick={back}>← Groups</button>
       <span style={{display:'flex',gap:8,alignItems:'center'}}>
         <FeedbackIconButton onClick={()=>onFeedback()} />
-        <ThemePill theme={theme} setTheme={setTheme} />
         <button type="button" aria-label="Group settings" title="Group settings" onClick={()=>setShowSettings(true)} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg></button>
       </span>
     </div>
@@ -2306,6 +2315,13 @@ function FeedbackSheet({ initialGroupId, groups, onClose }: any) {
     </PickerSheet>}
   </div>);
 }
+// New expenses start on the category most recently entered in this group
+// (by created_at, not expense date), falling back to Other.
+function lastCategory(group: any): string {
+  let best: any = null;
+  for (const e of group.expenses || []) if (!best || String(e.created_at) > String(best.created_at)) best = e;
+  return best?.category || 'Other';
+}
 function ExpenseModal({ group, expense, onClose, reload }: any) {
   // Add expense as a BOTTOM SHEET (revamp, dark only). REDESIGN 2026-11-06:
   // one grouped card with hairline rows (Description, Category, Currency,
@@ -2326,7 +2342,7 @@ function ExpenseModal({ group, expense, onClose, reload }: any) {
   // the faithful reproduction of the split; switching to Equal/Percent
   // re-derives it. Any member may edit any expense (same rule as delete).
   const [description, setDescription] = useState(expense ? expense.description : ''); const [amount, setAmount] = useState(expense ? fromMinor(expense.amount_minor, expense.currency) : ''); const [currency, setCurrency] = useState(expense ? expense.currency : group.defaultCurrency);
-  const [date, setDate] = useState(expense ? expense.date : todayIso()); const [payer, setPayer] = useState(expense ? expense.paid_by_member_id : (group.myMemberId || group.members[0]?.id || '')); const [category, setCategory] = useState(expense ? expense.category : 'Other');
+  const [date, setDate] = useState(expense ? expense.date : todayIso()); const [payer, setPayer] = useState(expense ? expense.paid_by_member_id : (group.myMemberId || group.members[0]?.id || '')); const [category, setCategory] = useState(expense ? expense.category : lastCategory(group));
   const [splitType, setSplitType] = useState<'equal'|'exact'|'percent'>(expense ? 'exact' : 'equal');
   const [selected, setSelected] = useState<string[]>(expense ? expense.splits.map((s:any)=>s.member_id) : group.members.map((m:any)=>m.id));
   const [percents, setPercents] = useState<Record<string,string>>({}); const [exact, setExact] = useState<Record<string,string>>(expense ? Object.fromEntries(expense.splits.map((s:any)=>[s.member_id, fromMinor(s.amount_minor, expense.currency)])) : {});
@@ -2376,7 +2392,7 @@ function ExpenseModal({ group, expense, onClose, reload }: any) {
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><h2 style={{margin:0}}>{expense ? 'Edit expense' : 'Add expense'}</h2><button type="button" aria-label="Close" title="Close" onClick={onClose} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button></div>
         <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'12px 0 4px'}}><span style={{fontSize:36,fontWeight:700,lineHeight:1}}>{sym(currency)}</span><input style={{width:`${Math.max((amount || '0.00').length, 1)}ch`,background:'transparent',border:'none',color:'var(--text)',fontSize:36,fontWeight:700,lineHeight:1,padding:0,textAlign:'center',outline:'none'}} inputMode="decimal" placeholder="0.00" value={amount} onChange={e=>{ setAmount(e.target.value); rescaleExact(e.target.value); }} onFocus={e=>e.target.select()} aria-label="Amount" /></div>
         <div style={{...balCard,marginBottom:12}}>
-          <label style={{display:'flex',alignItems:'center',gap:12,padding:'13px 14px'}}><span style={{fontSize:15,color:'var(--muted)',flexShrink:0}}>Description</span><input style={{flex:1,minWidth:0,background:'transparent',border:'none',outline:'none',color:'var(--text)',fontSize:16,padding:0,textAlign:'right'}} placeholder="What was it for?" value={description} onChange={e=>setDescription(e.target.value)} aria-label="Description" /></label>
+          <label style={{display:'block',padding:'10px 14px 12px'}}><span style={{display:'block',fontSize:13,color:'var(--muted)',marginBottom:6}}>Description</span><input style={{width:'100%',boxSizing:'border-box',background:'var(--field)',border:'1px solid var(--border)',borderRadius:12,color:'var(--text)',fontSize:16,padding:'11px 12px'}} placeholder="What was it for?" value={description} onChange={e=>setDescription(e.target.value)} aria-label="Description" /></label>
           <button type="button" onClick={()=>setShowCategoryPicker(true)} style={rowBtn}><span style={{fontSize:15,color:'var(--muted)',flexShrink:0}}>Category</span><span style={{flex:1}} /><span style={{display:'flex',alignItems:'center',gap:8}}><span style={{width:28,height:28,borderRadius:8,background:EXP_CAT_COLORS[category] || 'var(--muted)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{catIcon(category)}</span><span style={{fontSize:15}}>{category}</span></span><Chev /></button>
           <button type="button" onClick={()=>setShowCurrencyPicker(true)} style={rowBtn}><span style={{fontSize:15,color:'var(--muted)',flexShrink:0}}>Currency</span><span style={{flex:1}} /><span style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:15}}>{currency}</span><span style={{fontSize:15,color:'var(--muted)'}}>· {CURRENCY_INFO[currency]?.name || ''}</span></span><Chev /></button>
           <button type="button" onClick={()=>setShowPayerPicker(true)} style={rowBtn}><span style={{fontSize:15,color:'var(--muted)',flexShrink:0}}>Paid by</span><span style={{flex:1}} /><span style={{display:'flex',alignItems:'center',gap:8}}><span style={{...avatar,width:28,height:28,fontSize:12,background:memberDotColor(group,payer)}}>{initials(payerPerson.name)}</span><span style={{fontSize:15}}>{payerPerson.label}</span></span><Chev /></button>

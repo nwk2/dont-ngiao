@@ -34,7 +34,8 @@ API <https://dont-ngiao.wk-io.workers.dev> · D1 database `dont-ngiao`.
   re-show/copy the link). Joining is not a Log event; archived groups can't be joined.
 - **Multi-currency expenses:** equal / exact amounts / percentages only (shares rejected),
   19-currency picker, per-group default currency (only pre-selects new expenses, never
-  retroactive). Equal-split rounding: the entire remainder goes to the payer.
+  retroactive). New expenses also default to the last-used category in the group
+  (by created_at, else Other). Equal-split rounding: the entire remainder goes to the payer.
   Money is integer minor units; JPY/KRW/VND are zero-decimal (whole units).
 - **Balances and settle, per currency, never netted or converted (no FX):**
   `balance = paid − share + settlements sent − settlements received`, greedy
