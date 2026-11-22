@@ -98,6 +98,23 @@ async function googleUserFromCode(env: Env, code: string): Promise<{ sub: string
   if (!infoRes.ok || !info?.sub || !info?.email) throw new Error('Google sign-in failed, try again');
   return { sub: String(info.sub), email: String(info.email), email_verified: info.email_verified === true, name: String(info.name || '') };
 }
+// Announcement + unread feedback replies for /api/me (Haven-style). Wrapped
+// so a Worker deployed before migration 0013 still answers /api/me.
+async function meExtras(env: Env, userId: string): Promise<{ announcement: Row | null; unreadReplies: number }> {
+  try {
+    const now = Date.now();
+    const announcement = await env.DB.prepare('SELECT id, text FROM announcements WHERE starts_at <= ?1 AND ends_at > ?1 ORDER BY starts_at DESC LIMIT 1').bind(now).first<Row>();
+    const unread = await env.DB.prepare('SELECT COUNT(*) AS n FROM feedback WHERE user_id=? AND user_unread=1').bind(userId).first<Row>();
+    return { announcement: announcement || null, unreadReplies: Number(unread?.n || 0) };
+  } catch { return { announcement: null, unreadReplies: 0 }; }
+}
+// A feedback thread: the original message first, then replies in order.
+async function feedbackThread(env: Env, f: Row): Promise<any[]> {
+  const rows = await env.DB.prepare('SELECT id, author, text, created_at FROM feedback_messages WHERE feedback_id=? ORDER BY created_at').bind(f.id).all<Row>();
+  return [{ id: `${f.id}-0`, author: 'user', text: f.message, createdAt: f.created_at }, ...(rows.results || []).map((m: Row) => ({ id: m.id, author: m.author, text: m.text, createdAt: m.created_at }))];
+}
+const feedbackLabel = (status: string, hasAdmin: boolean) => (hasAdmin ? 'Replied' : status === 'done' ? 'Done' : 'Sent');
+
 async function authUser(req: Request, env: Env): Promise<Row | null> {
   const tok = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   if (!tok) return null;
@@ -110,7 +127,7 @@ async function authUser(req: Request, env: Env): Promise<Row | null> {
   // Aliases matter: users.created_at and sessions.created_at are
   // different dates; expiry uses the SESSION's dates only.
   let s: Row | null = null;
-  try { s = await env.DB.prepare('SELECT u.id, u.name, u.email, u.created_at, u.is_admin, (u.google_sub IS NOT NULL) AS has_google, (u.password_hash <> \'\') AS has_password, s.created_at AS session_created_at, s.last_seen_at AS session_last_seen_at FROM users u JOIN sessions s ON s.user_id = u.id WHERE s.token=?').bind(tok).first<Row>(); }
+  try { s = await env.DB.prepare('SELECT u.id, u.name, u.email, u.created_at, u.is_admin, (u.google_sub IS NOT NULL) AS has_google, (u.password_hash <> \'\') AS has_password, u.theme, u.mode, s.created_at AS session_created_at, s.last_seen_at AS session_last_seen_at FROM users u JOIN sessions s ON s.user_id = u.id WHERE s.token=?').bind(tok).first<Row>(); }
   catch { s = await env.DB.prepare('SELECT u.id, u.name, u.email, u.created_at, s.created_at AS session_created_at FROM users u JOIN sessions s ON s.user_id = u.id WHERE s.token=?').bind(tok).first<Row>(); }
   if (!s) return null;
   const lastActivity = s.session_last_seen_at || s.session_created_at;
@@ -323,7 +340,7 @@ async function verifyTurnstile(env: Env, token: string | undefined, ip: string, 
       // Include created_at: YouView's "User since" line needs it, and a
       // fresh register session never calls /api/me to fill it in (same
       // omission as login, fixed below).
-      const user = { id, name, email: email.toLowerCase(), created_at: createdAt, is_admin: 0, has_google: false, has_password: true };
+      const user = { id, name, email: email.toLowerCase(), created_at: createdAt, is_admin: 0, has_google: false, has_password: true, theme: 'kopitiam', mode: 'system' };
       const token = uid();
       await env.DB.prepare('INSERT INTO sessions (token,user_id,created_at) VALUES (?,?,?)').bind(token, id, nowIso()).run();
       return json({ user, token }, 200, origin);
@@ -347,7 +364,7 @@ async function verifyTurnstile(env: Env, token: string | undefined, ip: string, 
       // Include created_at (u.created_at): same "User since" reason as
       // register — a fresh login session never calls /api/me, so without
       // this the line silently disappears until the next page reload.
-      const user = { id: u.id, name: u.name, email: u.email, created_at: u.created_at, is_admin: Number(u.is_admin || 0), has_google: !!u.google_sub, has_password: !!u.password_hash };
+      const user = { id: u.id, name: u.name, email: u.email, created_at: u.created_at, is_admin: Number(u.is_admin || 0), has_google: !!u.google_sub, has_password: !!u.password_hash, theme: u.theme || 'kopitiam', mode: u.mode || 'system' };
       const token = uid();
       await env.DB.prepare('INSERT INTO sessions (token,user_id,created_at) VALUES (?,?,?)').bind(token, u.id, nowIso()).run();
       return json({ user, token }, 200, origin);
@@ -398,7 +415,7 @@ async function verifyTurnstile(env: Env, token: string | undefined, ip: string, 
           catch { return err('Google sign-in failed, try again', 400, origin); }
         }
       }
-      const user = { id, name, email, created_at: createdAt, is_admin: isAdmin, has_google: true, has_password: !!u?.password_hash };
+      const user = { id, name, email, created_at: createdAt, is_admin: isAdmin, has_google: true, has_password: !!u?.password_hash, theme: u?.theme || 'kopitiam', mode: u?.mode || 'system' };
       const token = uid();
       await env.DB.prepare('INSERT INTO sessions (token,user_id,created_at) VALUES (?,?,?)').bind(token, id, nowIso()).run();
       return json({ user, token }, 200, origin);
@@ -409,13 +426,24 @@ async function verifyTurnstile(env: Env, token: string | undefined, ip: string, 
       return json({ ok: true }, 200, origin);
     }
     if (path === '/api/me' && req.method === 'GET') {
-      const user = await authUser(req, env); if (!user) return err('Unauthorized', 401, origin); return json({ user }, 200, origin);
+      const user = await authUser(req, env); if (!user) return err('Unauthorized', 401, origin); return json({ user, ...(await meExtras(env, user.id)) }, 200, origin);
     }
+    // PATCH /api/me { name?, theme?, mode? }: edit name, or save appearance
+    // (Haven-style: theme + System/Light/Dark, applied on all devices).
     if (path === '/api/me' && req.method === 'PATCH') {
       const user = await authUser(req, env); if (!user) return err('Unauthorized', 401, origin);
-      if (!body.name) return err('Name is required', 400, origin);
-      await env.DB.prepare('UPDATE users SET name=? WHERE id=?').bind(body.name, user.id).run();
-      return json({ user: { ...user, name: body.name } }, 200, origin);
+      const THEMES = ['kopitiam', 'market', 'tomato', 'night'], MODES = ['system', 'light', 'dark'];
+      if (body.theme !== undefined && !THEMES.includes(body.theme)) return err('Unknown theme', 400, origin);
+      if (body.mode !== undefined && !MODES.includes(body.mode)) return err('Unknown mode', 400, origin);
+      if (body.name !== undefined && !String(body.name).trim()) return err('Name is required', 400, origin);
+      if (body.name === undefined && body.theme === undefined && body.mode === undefined) return err('Name is required', 400, origin);
+      await env.DB.prepare('UPDATE users SET name = COALESCE(?, name), theme = COALESCE(?, theme), mode = COALESCE(?, mode) WHERE id=?')
+        .bind(body.name ?? null, body.theme ?? null, body.mode ?? null, user.id).run();
+      const next: Row = { ...user };
+      if (body.name !== undefined) next.name = body.name;
+      if (body.theme !== undefined) next.theme = body.theme;
+      if (body.mode !== undefined) next.mode = body.mode;
+      return json({ user: next }, 200, origin);
     }
 
     // ---- Change password (authenticated) ----
@@ -537,6 +565,46 @@ async function verifyTurnstile(env: Env, token: string | undefined, ip: string, 
       const id = uid();
       await env.DB.prepare('INSERT INTO feedback (id, user_id, type, message, group_id, build_id, status, created_at) VALUES (?,?,?,?,?,?,?,?)').bind(id, user.id, type, message, groupId, buildId, 'open', nowIso()).run();
       return json({ id }, 200, origin);
+    }
+
+    // ---- Your messages (feedback threads, Haven-style) ----
+    // GET /api/me/feedback: your feedback, most recent activity first,
+    // labelled Sent / Replied / Done, with an unread flag for new replies.
+    // GET /api/me/feedback/:id: the thread; opening it clears unread.
+    // POST /api/me/feedback/:id/messages { text }: reply to the team; the
+    // item goes back to open. Shares the feedback rate limit.
+    if (path === '/api/me/feedback' && req.method === 'GET') {
+      const user = await authUser(req, env); if (!user) return err('Unauthorized', 401, origin);
+      const rows = await env.DB.prepare("SELECT f.id, f.type, f.message, f.status, f.created_at, COALESCE(f.updated_at, f.created_at) AS updated_at, f.user_unread, EXISTS (SELECT 1 FROM feedback_messages m WHERE m.feedback_id = f.id AND m.author = 'admin') AS has_admin FROM feedback f WHERE f.user_id=? ORDER BY COALESCE(f.updated_at, f.created_at) DESC LIMIT 50").bind(user.id).all<Row>();
+      return json({ items: (rows.results || []).map((r: Row) => ({ id: r.id, type: r.type, message: r.message, status: r.status, createdAt: r.created_at, updatedAt: r.updated_at, unread: !!r.user_unread, label: feedbackLabel(r.status, !!r.has_admin) })) }, 200, origin);
+    }
+    const mf = path.match(/^\/api\/me\/feedback\/([^/]+)(\/messages)?$/);
+    if (mf) {
+      const user = await authUser(req, env); if (!user) return err('Unauthorized', 401, origin);
+      const fid = decodeURIComponent(mf[1]);
+      const f = await env.DB.prepare('SELECT * FROM feedback WHERE id=? AND user_id=?').bind(fid, user.id).first<Row>();
+      if (!f) return err('Feedback not found', 404, origin);
+      if (!mf[2] && req.method === 'GET') {
+        const messages = await feedbackThread(env, f);
+        if (f.user_unread) await env.DB.prepare('UPDATE feedback SET user_unread=0 WHERE id=?').bind(fid).run();
+        return json({ id: f.id, type: f.type, status: f.status, createdAt: f.created_at, label: feedbackLabel(f.status, messages.some((m: any) => m.author === 'admin')), messages }, 200, origin);
+      }
+      if (mf[2] && req.method === 'POST') {
+        const text = String(body.text || '').trim();
+        if (!text) return err('A message is required', 400, origin);
+        if (text.length > 2000) return err('Message must be 2000 characters or fewer', 400, origin);
+        const now = Date.now();
+        await ratePrune(env, now);
+        if (await rateCount(env, 'feedback', user.id, FEEDBACK_WINDOW_MS, now) >= FEEDBACK_LIMIT_PER_HOUR) return err('Too many messages, try again later', 429, origin);
+        await rateRecord(env, 'feedback', user.id, now);
+        const at = nowIso();
+        await env.DB.batch([
+          env.DB.prepare("INSERT INTO feedback_messages (id, feedback_id, author, text, created_at) VALUES (?, ?, 'user', ?, ?)").bind(uid(), fid, text, at),
+          env.DB.prepare("UPDATE feedback SET status='open', updated_at=? WHERE id=?").bind(at, fid),
+        ]);
+        return json({ ok: true }, 200, origin);
+      }
+      return err('Not found', 404, origin);
     }
 
     // ---- Password reset (public, token is the auth) ----
@@ -767,12 +835,37 @@ async function verifyTurnstile(env: Env, token: string | undefined, ip: string, 
       return env.DB.prepare('SELECT f.*, u.name AS sender_name, u.created_at AS sender_created_at, g.name AS group_name FROM feedback f JOIN users u ON u.id = f.user_id LEFT JOIN groups g ON g.id = f.group_id WHERE f.id=?').bind(id).first<Row>();
     }
     function mapFeedbackRow(r: Row): any {
-      return { id: r.id, type: r.type, message: r.message, status: r.status, buildId: r.build_id || null, createdAt: r.created_at, groupId: r.group_id || null, groupName: r.group_name || null, senderId: r.user_id, senderName: r.sender_name, senderCreatedAt: r.sender_created_at };
+      return { id: r.id, type: r.type, message: r.message, status: r.status, buildId: r.build_id || null, createdAt: r.created_at, groupId: r.group_id || null, groupName: r.group_name || null, senderId: r.user_id, senderName: r.sender_name, senderCreatedAt: r.sender_created_at, replied: !!r.has_admin, replyCount: Number(r.reply_count || 0), updatedAt: r.updated_at || r.created_at };
     }
     if (path === '/api/admin/feedback' && req.method === 'GET') {
       const admin = await authAdmin(req, env); if (!admin) return err('Admin access required', 403, origin);
-      const rows = await env.DB.prepare('SELECT f.*, u.name AS sender_name, u.created_at AS sender_created_at, g.name AS group_name FROM feedback f JOIN users u ON u.id = f.user_id LEFT JOIN groups g ON g.id = f.group_id ORDER BY f.created_at DESC').bind().all<Row>();
+      const rows = await env.DB.prepare("SELECT f.*, u.name AS sender_name, u.created_at AS sender_created_at, g.name AS group_name, (SELECT COUNT(*) FROM feedback_messages m WHERE m.feedback_id = f.id) AS reply_count, EXISTS (SELECT 1 FROM feedback_messages m WHERE m.feedback_id = f.id AND m.author = 'admin') AS has_admin FROM feedback f JOIN users u ON u.id = f.user_id LEFT JOIN groups g ON g.id = f.group_id ORDER BY COALESCE(f.updated_at, f.created_at) DESC").bind().all<Row>();
       return json({ feedback: (rows.results || []).map(mapFeedbackRow) }, 200, origin);
+    }
+    // GET /api/admin/feedback/:id: the item plus its thread.
+    // POST /api/admin/feedback/:id/reply { text }: reply in the app (Haven-
+    // style). Marks it unread for the sender and pushes them a notification;
+    // the status is left alone so you can Mark done separately.
+    const afr = path.match(/^\/api\/admin\/feedback\/([^/]+)(\/reply)?$/);
+    if (afr && (req.method === 'GET' || (afr[2] && req.method === 'POST'))) {
+      const admin = await authAdmin(req, env); if (!admin) return err('Admin access required', 403, origin);
+      const id = decodeURIComponent(afr[1]);
+      const row = await feedbackRow(env, id);
+      if (!row) return err('Feedback not found', 404, origin);
+      if (afr[2]) {
+        const text = String(body.text || '').trim();
+        if (!text) return err('A reply is required', 400, origin);
+        if (text.length > 2000) return err('Reply must be 2000 characters or fewer', 400, origin);
+        const at = nowIso();
+        await env.DB.batch([
+          env.DB.prepare("INSERT INTO feedback_messages (id, feedback_id, author, text, created_at) VALUES (?, ?, 'admin', ?, ?)").bind(uid(), id, text, at),
+          env.DB.prepare('UPDATE feedback SET user_unread=1, updated_at=? WHERE id=?').bind(at, id),
+        ]);
+        ctx.waitUntil(notifyUsers(env, [row.user_id], { title: "Don't Ngiao team replied", body: text.length > 120 ? text.slice(0, 117) + '…' : text, url: '/?messages=1', tag: `feedback-${id}` }));
+      }
+      const fresh = await feedbackRow(env, id) as Row;
+      const messages = await feedbackThread(env, fresh);
+      return json({ ...mapFeedbackRow(fresh), replied: messages.some((m: any) => m.author === 'admin'), replyCount: messages.length - 1, messages }, 200, origin);
     }
     const af = path.match(/^\/api\/admin\/feedback\/([^/]+)$/);
     if (af && req.method === 'PATCH') {
@@ -785,6 +878,33 @@ async function verifyTurnstile(env: Env, token: string | undefined, ip: string, 
       await env.DB.prepare('UPDATE feedback SET status=? WHERE id=?').bind(status, id).run();
       const updated = await feedbackRow(env, id);
       return json(mapFeedbackRow(updated as Row), 200, origin);
+    }
+
+    // ---- Admin: Announcements (Haven-style banner) ----
+    // GET lists current and upcoming; POST { text, startsAt, endsAt } (epoch
+    // ms, text up to 280 chars) schedules one; DELETE removes it early.
+    if (path === '/api/admin/announcements' && req.method === 'GET') {
+      const admin = await authAdmin(req, env); if (!admin) return err('Admin access required', 403, origin);
+      const rows = await env.DB.prepare('SELECT id, text, starts_at, ends_at FROM announcements WHERE ends_at > ? ORDER BY starts_at').bind(Date.now()).all<Row>();
+      return json({ announcements: (rows.results || []).map((r: Row) => ({ id: r.id, text: r.text, startsAt: Number(r.starts_at), endsAt: Number(r.ends_at) })) }, 200, origin);
+    }
+    if (path === '/api/admin/announcements' && req.method === 'POST') {
+      const admin = await authAdmin(req, env); if (!admin) return err('Admin access required', 403, origin);
+      const text = String(body.text || '').trim();
+      const startsAt = Number(body.startsAt), endsAt = Number(body.endsAt);
+      if (!text) return err('A message is required', 400, origin);
+      if (text.length > 280) return err('Keep it to 280 characters', 400, origin);
+      if (!Number.isFinite(startsAt) || !Number.isFinite(endsAt) || !(endsAt > startsAt)) return err('"Until" must be after "Show from"', 400, origin);
+      if (endsAt <= Date.now()) return err('"Until" is already in the past', 400, origin);
+      const id = uid();
+      await env.DB.prepare('INSERT INTO announcements (id, text, starts_at, ends_at) VALUES (?,?,?,?)').bind(id, text, startsAt, endsAt).run();
+      return json({ id }, 200, origin);
+    }
+    const aa = path.match(/^\/api\/admin\/announcements\/([^/]+)$/);
+    if (aa && req.method === 'DELETE') {
+      const admin = await authAdmin(req, env); if (!admin) return err('Admin access required', 403, origin);
+      await env.DB.prepare('DELETE FROM announcements WHERE id=?').bind(decodeURIComponent(aa[1])).run();
+      return json({ ok: true }, 200, origin);
     }
 
     // ---- Groups list / create ----

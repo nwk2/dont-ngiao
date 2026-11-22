@@ -78,7 +78,7 @@ API <https://dont-ngiao.wk-io.workers.dev> · D1 database `dont-ngiao`.
   Archive/Restore, Delete for clean groups only; admin member-remove keeps the money
   guards but overrides the creator-only role check), and Feedback module (every
   submission, Open / Done / All filter (default Open), newest first; detail with sender, group, build and
-  sent date; Mark done / Reopen — the only mutation). Admin header is a back circle +
+  sent date and the reply thread; Send reply (lands in the sender's Your messages, marks it unread for them and sends a push; status is left alone) and Mark done / Reopen), and Banner module (Haven-style announcement: message up to 280 chars with Show from / Until; current and upcoming listed with Remove; the active one, latest start wins, is returned by /api/me and shown as an info banner at the top of Home for everyone, no per-user dismiss). Admin header is a back circle +
   ⋯ menu (Back to app, Log out of admin); module tabs show counts; lists have search
   fields and filter chips; badges are neutral; dates read "4 Nov 2026". Tapping a
   user opens a detail sheet (email, joined, role) with the password-reset button —
@@ -93,9 +93,7 @@ API <https://dont-ngiao.wk-io.workers.dev> · D1 database `dont-ngiao`.
   only). On success the Send button becomes a check-circle + "Sent" and the sheet
   closes after about a second — there is no separate success screen (the You row
   is a plain one-liner "Send feedback", no subline, no "New" pill). Sender name and build are recorded with the submission and shown in the
-  admin detail, never to the sender. No in-app replies in v1 (the admin replies on
-  WhatsApp), no screenshots, no push alert to the admin on new feedback, no
-  anonymous submissions. Rate limit: 10 submissions/hour per user.
+  admin detail, never to the sender. Replies happen in the app (Haven-style): You → Feedback → Your messages lists what you sent, newest activity first, labelled Sent / Replied / Done, with a dot for unread replies; a thread shows your message and the team's replies, and you can reply back (the item reopens; shares the feedback rate limit). An unread reply shows a dot on the Home avatar, a "The Don't Ngiao team replied" banner on Home, and a "N new" pill on the Your messages row; a reply push opens /?messages=1. Original message stays in feedback.message; replies are in feedback_messages. No screenshots, no push alert to the admin on new feedback, no anonymous submissions. Rate limit: 10 submissions/hour per user (replies count too).
 - **PWA + push notifications.** Installable (Add to Home Screen; iOS 16.4+), manifest +
   service worker with runtime caching only (no precache; `/api/` and `/version.json`
   are never cached). Web Push on new/edited/deleted expense and settle/payment, only
@@ -107,10 +105,19 @@ API <https://dont-ngiao.wk-io.workers.dev> · D1 database `dont-ngiao`.
   checks it on mount and on returning to the foreground and force-reloads when the
   `buildId` changes — even if a form is open (unsaved drafts can be lost; accepted,
   deploys are infrequent).
-- **You view:** avatar + name, "User since {Mon, YYYY} · N groups", appearance pill,
+- **You view:** avatar + name, "User since {Mon, YYYY} · N groups", Appearance (Theme list + Mode),
   Account rows (Edit name, Change/Set password, Link Google account, Admin row for
-  admins), Notifications toggle, Archived groups list. Light/dark themes are CSS
-  variables, follow the system on first load, manual override persisted.
+  admins), Notifications toggle, Archived groups list. Appearance follows nwk2/haven: a theme (Kopitiam default, Market Green,
+  Tomato & Ink, Night Utility; the last three ported from Haven's tokens) plus a mode
+  (System / Light / Dark), saved to the account (users.theme / users.mode via PATCH
+  /api/me) and applied on every device. Theme/mode changes apply instantly, with no
+  cross-fade (a view transition blended dark↔light through grey — removed, same as
+  Haven). Each theme sets colours, corner radii,
+  border/outline widths, shadow and fonts (themes.json → scripts/generate-themes.mjs
+  → src/themes.css, [data-theme][data-mode] on <html>). Signed-out screens (sign-in,
+  ?reset, ?admin) always use the base theme; signed in, index.html paints the cached
+  choice for the last user before React loads, confirmed from /api/me. A light/dark
+  choice saved on a device by an older build moves to the account once.
   Visual direction (2026-11-22, replaces the 2026-11-06 teal/royal-blue palette):
   Kopitiam — warm dark brown / warm paper, one green accent (mint dark, deep green
   light), inverted hero (light card in dark mode, dark card in light mode),

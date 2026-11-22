@@ -51,7 +51,9 @@ use `?invite=`.
 web/                 Vite + React frontend, served as static assets by a Worker
   src/App.tsx        app shell: auth state, routing between screens, theme
   src/ui.tsx         shared styles, Sheet/CloseButton, pickers, avatars, member colours
-  src/prefs.ts       saved last group/tab and theme keys
+  src/prefs.ts       saved last group/tab key
+  src/themes.ts      theme list + appearance (theme x System/Light/Dark) helpers
+  themes.json        theme tokens; scripts/generate-themes.mjs builds src/themes.css
   src/screens/       Home (+ You), Group, Auth (+ reset password, invites), Admin
   src/components/    ExpenseSheet (add/edit expense), FeedbackSheet, Onboarding prompts
   src/api.ts         API client, currency formatting, minor-unit helpers, push + onboarding helpers

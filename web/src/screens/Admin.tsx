@@ -36,8 +36,8 @@ export function fuzzyMatch(query: string, text: string): boolean {
 // Admin-only helpers: unambiguous dates ("4 Nov 2026"), neutral chips,
 // filter chips, and a search field with an icon.
 export function fmtDay(iso: string) { const d = new Date(iso); return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }); }
-export const adminChip: React.CSSProperties = { fontSize:12, background:'var(--field)', color:'var(--muted)', padding:'2px 8px', borderRadius:99, marginLeft:8, fontWeight:600, verticalAlign:'middle' };
-export const filterChip = (on: boolean): React.CSSProperties => ({ height:34, padding:'0 14px', borderRadius:999, border:`1px solid ${on ? 'var(--text)' : 'var(--border)'}`, background:on ? 'var(--text)' : 'transparent', color:on ? 'var(--bg)' : 'var(--text)', fontSize:14, fontWeight:on ? 600 : 400, cursor:'pointer' });
+export const adminChip: React.CSSProperties = { fontSize:12, background:'var(--field)', color:'var(--muted)', padding:'2px 8px', borderRadius:'var(--radius-pill)', marginLeft:8, fontWeight:600, verticalAlign:'middle' };
+export const filterChip = (on: boolean): React.CSSProperties => ({ height:34, padding:'0 14px', borderRadius:'var(--radius-pill)', border:`1px solid ${on ? 'var(--text)' : 'var(--border)'}`, background:on ? 'var(--text)' : 'transparent', color:on ? 'var(--bg)' : 'var(--text)', fontSize:14, fontWeight:on ? 600 : 400, cursor:'pointer' });
 export function SearchField({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
   return (<div style={{display:'flex',alignItems:'center',gap:8,background:'var(--field)',borderRadius:12,padding:'10px 12px',margin:'0 0 12px'}}>
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" aria-hidden="true" style={{flexShrink:0}}><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
@@ -63,7 +63,7 @@ export function AdminView() {
   // detail object (null = list). groupBusy names the in-flight admin
   // action ('archive' | 'restore' | 'delete' | 'revoke' |
   // 'remove:<memberId>') so its button can disable + show progress.
-  const [adminModule, setAdminModule] = useState<'users'|'groups'|'feedback'>('users');
+  const [adminModule, setAdminModule] = useState<'users'|'groups'|'feedback'|'banner'>('users');
   const [groups, setGroups] = useState<any[]>([]);
   const [groupSearch, setGroupSearch] = useState('');
   const [groupFilter, setGroupFilter] = useState<'all'|'active'|'archived'>('all');
@@ -74,15 +74,54 @@ export function AdminView() {
   const [confirm, setConfirm] = useState<any>(null);
   // FEEDBACK MODULE, Nov 2026: triage for the in-app feedback
   // submissions. List (All / Open / Done, newest first) + detail with
-  // the sender, group, build and full message. Mark done / Reopen is
-  // the only mutation — no in-app replies in v1, no push alert on new
-  // feedback.
+  // the sender, group, build and the thread. You can reply in the app
+  // (Haven-style: it lands in their Your messages, with a push) and
+  // Mark done / Reopen.
   const [feedback, setFeedback] = useState<any[]>([]);
   const [feedbackFilter, setFeedbackFilter] = useState<'all'|'open'|'done'>('open');
   const [selectedFeedback, setSelectedFeedback] = useState<any>(null);
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [showAdminMenu, setShowAdminMenu] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [reply, setReply] = useState('');
+  // Four module tabs with counts: keep each label on one line on a phone.
+  const modTab: React.CSSProperties = { whiteSpace:'nowrap', fontSize:13, padding:'10px 2px' };
+  // ANNOUNCEMENTS (Haven-style banner): current + upcoming, and a form to
+  // schedule one. The active one shows at the top of Home for everyone.
+  const [announcements, setAnnouncements] = useState<any[] | null>(null);
+  const [annText, setAnnText] = useState('');
+  const [annFrom, setAnnFrom] = useState('');
+  const [annUntil, setAnnUntil] = useState('');
+  async function loadAnnouncements() {
+    try { const d = await adminApi('/api/admin/announcements', 'GET'); setAnnouncements(d.announcements || []); }
+    catch (e: any) { setError(e.message); setAnnouncements([]); }
+  }
+  async function scheduleAnnouncement() {
+    setError('');
+    try {
+      await adminApi('/api/admin/announcements', 'POST', { text: annText, startsAt: new Date(annFrom).getTime(), endsAt: new Date(annUntil).getTime() });
+      setAnnText(''); setAnnFrom(''); setAnnUntil(''); await loadAnnouncements();
+    } catch (e: any) { setError(e.message); }
+  }
+  async function removeAnnouncement(id: string) {
+    setError('');
+    try { await adminApi(`/api/admin/announcements/${id}`, 'DELETE'); await loadAnnouncements(); }
+    catch (e: any) { setError(e.message); }
+  }
+  async function openFeedback(f: any) {
+    setSelectedFeedback(f); setReply('');
+    try { const d = await adminApi(`/api/admin/feedback/${f.id}`, 'GET'); setSelectedFeedback(d); }
+    catch (e: any) { setError(e.message); }
+  }
+  async function sendReply() {
+    if (!selectedFeedback || !reply.trim()) return;
+    setError('');
+    try {
+      const d = await adminApi(`/api/admin/feedback/${selectedFeedback.id}/reply`, 'POST', { text: reply });
+      setSelectedFeedback(d); setReply('');
+      setFeedback((list:any[])=>list.map((x:any)=>x.id===d.id ? { ...x, replied: true, replyCount: d.replyCount, updatedAt: d.updatedAt } : x));
+    } catch (e: any) { setError(e.message); }
+  }
   async function loadFeedback() {
     setFeedbackLoading(true);
     try { const d = await adminApi('/api/admin/feedback', 'GET'); setFeedback(d.feedback || []); }
@@ -93,12 +132,12 @@ export function AdminView() {
     setError('');
     try {
       const d = await adminApi(`/api/admin/feedback/${f.id}`, 'PATCH', { status });
-      setSelectedFeedback(d);
-      setFeedback((list:any[])=>list.map((x:any)=>x.id===d.id ? d : x));
+      setSelectedFeedback((cur:any)=>({ ...cur, ...d, replied: cur?.replied, replyCount: cur?.replyCount, messages: cur?.messages }));
+      setFeedback((list:any[])=>list.map((x:any)=>x.id===d.id ? { ...x, status: d.status } : x));
     } catch (e: any) { setError(e.message); }
   }
-  const fbTypeBadge = (t: string) => t==='bug' ? <span style={{fontSize:12,background:'var(--danger-bg)',color:'var(--danger-text)',padding:'2px 8px',borderRadius:99}}>Bug</span> : t==='idea' ? <span style={{fontSize:12,background:'var(--field)',color:'var(--text)',padding:'2px 8px',borderRadius:99}}>Idea</span> : <span style={{fontSize:12,background:'var(--field)',color:'var(--muted)',padding:'2px 8px',borderRadius:99}}>Question</span>;
-  const fbStatusPill = (s: string) => s==='open' ? <span style={{fontSize:12,background:'var(--warn-bg)',color:'var(--warn-text)',padding:'2px 8px',borderRadius:99}}>Open</span> : <span style={{fontSize:12,background:'var(--tint-bg)',color:'var(--tint-text)',padding:'2px 8px',borderRadius:99}}>Done</span>;
+  const fbTypeBadge = (t: string) => t==='bug' ? <span style={{fontSize:12,background:'var(--danger-bg)',color:'var(--danger-text)',padding:'2px 8px',borderRadius:'var(--radius-pill)'}}>Bug</span> : t==='idea' ? <span style={{fontSize:12,background:'var(--field)',color:'var(--text)',padding:'2px 8px',borderRadius:'var(--radius-pill)'}}>Idea</span> : <span style={{fontSize:12,background:'var(--field)',color:'var(--muted)',padding:'2px 8px',borderRadius:'var(--radius-pill)'}}>Question</span>;
+  const fbStatusPill = (s: string) => s==='open' ? <span style={{fontSize:12,background:'var(--warn-bg)',color:'var(--warn-text)',padding:'2px 8px',borderRadius:'var(--radius-pill)'}}>Open</span> : <span style={{fontSize:12,background:'var(--tint-bg)',color:'var(--tint-text)',padding:'2px 8px',borderRadius:'var(--radius-pill)'}}>Done</span>;
   const filteredFeedback = feedback.filter((f:any) => feedbackFilter==='all' || f.status===feedbackFilter);
   const fbOpenCount = feedback.filter((f:any)=>f.status==='open').length;
   const fbDoneCount = feedback.filter((f:any)=>f.status==='done').length;
@@ -205,7 +244,7 @@ export function AdminView() {
   </div>
     {showAdminMenu && <PickerSheet title="Admin" onClose={()=>setShowAdminMenu(false)}>
       <p style={{color:'var(--muted)',fontSize:14,margin:'8px 0 12px'}}>Signed in as {adminUser.name} ({adminUser.email})</p>
-      <div className="flat-list" style={{background:'var(--field)',borderRadius:16,overflow:'hidden'}}>
+      <div className="flat-list" style={{background:'var(--field)',borderRadius:'var(--radius-card)',overflow:'hidden'}}>
         <button className="flat-row" onClick={()=>{ window.location.href = '/'; }}><span>Back to app</span><span style={{color:'var(--muted)'}}>›</span></button>
         <button className="flat-row" style={{color:'var(--danger-text)'}} onClick={()=>{ setShowAdminMenu(false); doAdminLogout(); }}><span>Log out of admin</span></button>
       </div>
@@ -217,7 +256,7 @@ export function AdminView() {
         above, not in the tab row — they used to share a row with the
         tabTrack, which mixed a tab with standalone buttons (different
         heights/fonts, stray track margin). */}
-    <div style={tabTrack}><button style={adminModule==='users'?tabPillActive:tabPill} onClick={()=>{setError(''); setAdminModule('users'); setSelectedGroup(null); setSelectedFeedback(null);}}>Users · {users.length}</button><button style={adminModule==='groups'?tabPillActive:tabPill} onClick={()=>{setError(''); setAdminModule('groups'); setSelectedGroup(null); setSelectedFeedback(null); if (groups.length===0) loadGroups();}}>Groups{groups.length ? ` · ${groups.length}` : ''}</button><button style={adminModule==='feedback'?tabPillActive:tabPill} onClick={()=>{setError(''); setAdminModule('feedback'); setSelectedGroup(null); setSelectedFeedback(null); if (feedback.length===0) loadFeedback();}}>Feedback{feedback.length ? ` · ${fbOpenCount}` : ''}</button></div>
+    <div style={tabTrack}><button style={adminModule==='users'?{...tabPillActive,...modTab}:{...tabPill,...modTab}} onClick={()=>{setError(''); setAdminModule('users'); setSelectedGroup(null); setSelectedFeedback(null);}}>Users · {users.length}</button><button style={adminModule==='groups'?{...tabPillActive,...modTab}:{...tabPill,...modTab}} onClick={()=>{setError(''); setAdminModule('groups'); setSelectedGroup(null); setSelectedFeedback(null); if (groups.length===0) loadGroups();}}>Groups{groups.length ? ` · ${groups.length}` : ''}</button><button style={adminModule==='feedback'?{...tabPillActive,...modTab}:{...tabPill,...modTab}} onClick={()=>{setError(''); setAdminModule('feedback'); setSelectedGroup(null); setSelectedFeedback(null); if (feedback.length===0) loadFeedback();}}>Feedback{feedback.length ? ` · ${fbOpenCount}` : ''}</button><button style={adminModule==='banner'?{...tabPillActive,...modTab}:{...tabPill,...modTab}} onClick={()=>{setError(''); setAdminModule('banner'); setSelectedGroup(null); setSelectedFeedback(null); if (announcements===null) loadAnnouncements();}}>Banner</button></div>
     {error && <p style={{color:'var(--danger-text)'}}>{error}</p>}
     {adminModule==='users' && (<>
     {resetResult && <div style={homeCard}><strong>Reset link for {resetResult.user.name} ({resetResult.user.email})</strong><p style={{fontSize:13,color:'var(--muted)'}}>Single-use, expires {fmtDay(resetResult.expiresAt)}, {new Date(resetResult.expiresAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}. Send this link to the user yourself — the app does not email it.</p><input readOnly style={input} value={resetResult.link} onFocus={e=>e.target.select()} /><button style={btn} onClick={async()=>{ try { await navigator.clipboard.writeText(resetResult.link); setCopyStatus('Copied to clipboard.'); } catch { setCopyStatus('Could not copy automatically.'); } }}>Copy link again</button>{copyStatus && <p style={{fontSize:13,color:'var(--muted)'}}>{copyStatus}</p>}</div>}
@@ -256,6 +295,27 @@ export function AdminView() {
     {!selectedGroup.isClean && <p style={{fontSize:13,color:'var(--muted)'}}>Delete is only available for groups with no expenses or payments — this group has money history, so archive it instead.</p>}
     </div>
     </>)}
+    {adminModule==='banner' && (<>
+    <p style={{color:'var(--muted)',fontSize:14,marginTop:0}}>A short message at the top of Home for everyone, between the times you set. Only one shows at a time: the latest to start.</p>
+    {announcements===null && <AdminSkeleton />}
+    {announcements!==null && announcements.length>0 && <div style={balCard}>{announcements.map((a:any,ai:number,arr:any[])=>{
+      const live = a.startsAt <= Date.now();
+      return (<div key={a.id} style={{...balRow,borderBottom:ai===arr.length-1?'none':balHairline,alignItems:'flex-start'}}>
+        <div style={{flex:1,minWidth:0}}><div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}><span style={adminChip}>{live ? 'Showing now' : 'Scheduled'}</span></div><div style={{fontSize:15,whiteSpace:'pre-wrap'}}>{a.text}</div><div style={{fontSize:13,color:'var(--muted)',marginTop:4}}>{fmtDay(new Date(a.startsAt).toISOString())}, {new Date(a.startsAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})} – {fmtDay(new Date(a.endsAt).toISOString())}, {new Date(a.endsAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</div></div>
+        <AsyncButton style={{...btn,flexShrink:0}} onClick={()=>removeAnnouncement(a.id)}>Remove</AsyncButton>
+      </div>);
+    })}</div>}
+    <div style={homeCard}>
+      <label style={{display:'block'}}><span style={{display:'block',fontSize:13,color:'var(--muted)',marginBottom:6}}>Message (up to 280 characters)</span>
+        <textarea value={annText} onChange={e=>setAnnText(e.target.value)} rows={3} maxLength={280} style={{...input,resize:'vertical',fontFamily:'inherit'}} /></label>
+      <div style={{fontSize:12,color:'var(--muted)',textAlign:'right',marginTop:-6,marginBottom:8}}>{annText.length}/280</div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:10}}>
+        <label><span style={{display:'block',fontSize:13,color:'var(--muted)',marginBottom:6}}>Show from</span><input type="datetime-local" value={annFrom} onChange={e=>setAnnFrom(e.target.value)} style={{...input,margin:0}} /></label>
+        <label><span style={{display:'block',fontSize:13,color:'var(--muted)',marginBottom:6}}>Until</span><input type="datetime-local" value={annUntil} onChange={e=>setAnnUntil(e.target.value)} style={{...input,margin:0}} /></label>
+      </div>
+      <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16,marginTop:14}} disabled={!annText.trim() || !annFrom || !annUntil} onClick={scheduleAnnouncement}>Schedule</AsyncButton>
+    </div>
+    </>)}
     {adminModule==='feedback' && !selectedFeedback && (<>
     {/* REBUILD 2026-11-14: no build fired for c8b07d0b — re-trigger. */}
     {/* FEEDBACK FILTER, Nov 2026: Open / Done / All, default Open (Wai
@@ -263,7 +323,7 @@ export function AdminView() {
     <div style={{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap'}}><button style={filterChip(feedbackFilter==='open')} onClick={()=>setFeedbackFilter('open')}>Open · {fbOpenCount}</button><button style={filterChip(feedbackFilter==='done')} onClick={()=>setFeedbackFilter('done')}>Done · {fbDoneCount}</button><button style={filterChip(feedbackFilter==='all')} onClick={()=>setFeedbackFilter('all')}>All · {feedback.length}</button></div>
     {feedbackLoading && <AdminSkeleton />}
     {!feedbackLoading && filteredFeedback.length===0 && <div style={{...homeCard,textAlign:'center',padding:'24px 16px'}}><div style={{fontWeight:600}}>{feedbackFilter==='open' ? 'No open feedback' : feedbackFilter==='done' ? 'Nothing marked done yet' : 'No feedback yet'}</div><div style={{fontSize:14,color:'var(--muted)',marginTop:6}}>Anything people send from the app shows up here.</div></div>}
-    {!feedbackLoading && filteredFeedback.length>0 && <div style={balCard}>{filteredFeedback.map((f:any,fi:number,arr:any[])=>(<div key={f.id} style={{...balRow,borderBottom:fi===arr.length-1?'none':balHairline,cursor:'pointer'}} onClick={()=>setSelectedFeedback(f)}><div style={{flex:1,minWidth:0}}><div style={{display:'flex',alignItems:'center',gap:8}}>{fbTypeBadge(f.type)}<strong>{f.senderName}</strong>{fbStatusPill(f.status)}</div><div style={{fontSize:13,color:'var(--muted)'}}>{f.groupName || 'General (no group)'} · {fmtDay(f.createdAt)}</div><div style={{fontSize:14,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.message}</div></div><span style={{color:'var(--muted)',flexShrink:0}}>›</span></div>))}</div>}
+    {!feedbackLoading && filteredFeedback.length>0 && <div style={balCard}>{filteredFeedback.map((f:any,fi:number,arr:any[])=>(<div key={f.id} style={{...balRow,borderBottom:fi===arr.length-1?'none':balHairline,cursor:'pointer'}} onClick={()=>openFeedback(f)}><div style={{flex:1,minWidth:0}}><div style={{display:'flex',alignItems:'center',gap:8}}>{fbTypeBadge(f.type)}<strong>{f.senderName}</strong>{fbStatusPill(f.status)}{f.replied && <span style={adminChip}>Replied</span>}</div><div style={{fontSize:13,color:'var(--muted)'}}>{f.groupName || 'General (no group)'} · {fmtDay(f.createdAt)}</div><div style={{fontSize:14,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.message}</div></div><span style={{color:'var(--muted)',flexShrink:0}}>›</span></div>))}</div>}
     </>)}
     {adminModule==='feedback' && selectedFeedback && (<>
     <p><button style={btn} onClick={()=>{setSelectedFeedback(null); loadFeedback();}}>← Back to feedback</button></p>
@@ -280,9 +340,19 @@ export function AdminView() {
         <div style={{display:'flex',justifyContent:'space-between',padding:'7px 0',borderTop:balHairline}}><span style={{color:'var(--muted)'}}>Sent</span><span>{fmtDay(selectedFeedback.createdAt)}, {new Date(selectedFeedback.createdAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</span></div>
       </div>
     </div>
-    <div style={homeCard}><div style={{fontSize:15,lineHeight:1.55,whiteSpace:'pre-wrap'}}>{selectedFeedback.message}</div></div>
+    <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:12}}>
+      {(selectedFeedback.messages || [{ id:'orig', author:'user', text: selectedFeedback.message, createdAt: selectedFeedback.createdAt }]).map((m:any)=>(<div key={m.id} style={{...homeCard,marginBottom:0,background:m.author==='admin'?'var(--info-bg)':'var(--card)',marginLeft:m.author==='admin'?32:0,marginRight:m.author==='admin'?0:32}}>
+        <div style={{fontSize:12,fontWeight:600,color:'var(--muted)',marginBottom:4}}>{m.author==='admin' ? 'You (Don\u2019t Ngiao team)' : selectedFeedback.senderName} · {fmtDay(m.createdAt)}, {new Date(m.createdAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</div>
+        <div style={{fontSize:15,lineHeight:1.55,whiteSpace:'pre-wrap'}}>{m.text}</div>
+      </div>))}
+    </div>
+    <label style={{display:'block',marginBottom:12}}>
+      <span style={{display:'block',fontSize:13,color:'var(--muted)',marginBottom:6}}>Reply to {selectedFeedback.senderName} (shows in their Your messages, with a notification)</span>
+      <textarea value={reply} onChange={e=>setReply(e.target.value)} rows={3} maxLength={2000} style={{...input,resize:'vertical',margin:0,fontFamily:'inherit'}} />
+    </label>
+    <AsyncButton style={{...btn,width:'100%',padding:'12px',fontSize:15,marginBottom:10}} disabled={!reply.trim()} onClick={sendReply}>Send reply</AsyncButton>
     <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={async()=>{ await doFeedbackStatus(selectedFeedback, selectedFeedback.status==='open' ? 'done' : 'open'); }}>{selectedFeedback.status==='open' ? 'Mark done' : 'Reopen'}</AsyncButton>
-    <p style={{fontSize:13,color:'var(--muted)',textAlign:'center'}}>No in-app replies in v1 — reply on WhatsApp.</p>
+
     </>)}
     {confirm && <ConfirmSheet title={confirm.title} message={confirm.message} confirmLabel={confirm.confirmLabel} onCancel={()=>setConfirm(null)} onConfirm={async()=>{try{await confirm.action();}catch(er:any){if (confirm.onError) confirm.onError(er.message); else setError(er.message);}finally{setConfirm(null);}}} />}
   </div>);

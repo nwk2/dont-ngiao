@@ -10,7 +10,6 @@
 // group content, and the API still enforces membership on restore, so a
 // stale or forged id simply fails to load and falls back to Home.
 export const LAST_GROUP_KEY = 'dont-ngiao-last-group';
-export const THEME_KEY = 'dont-ngiao-theme';
 export const VALID_TABS = ['expenses','balances','members','log'] as const;
 export function readSavedGroup(): { groupId: string; tab: typeof VALID_TABS[number] } | null {
   try {

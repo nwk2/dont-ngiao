@@ -25,7 +25,7 @@ export function GroupSkeleton() {
   </div>);
 }
 
-export function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError, theme, setTheme, justJoined, onFeedback }: any) {
+export function GroupView({ group, setGroup, tab, setTab, back, reload, error, setError, justJoined, onFeedback }: any) {
   const [showExpense, setShowExpense] = useState(false);
   const [editExpense, setEditExpense] = useState<any>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -285,7 +285,7 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
         is N-ary (picker fits). appearance:none + custom chevron, so the
         native select arrows don't double up with the chevron. */}
         <div style={{display:'flex',gap:8,alignItems:'center',justifyContent:'space-between',flexWrap:'wrap'}}>
-          <div style={{display:'flex',background:'var(--field)',borderRadius:999,padding:3,flexShrink:0}}>
+          <div style={{display:'flex',background:'var(--field)',borderRadius:'var(--radius-pill)',padding:3,flexShrink:0}}>
             <button style={catView==='group'?{...tabPillActive,flex:'none',padding:'8px 16px'}:{...tabPill,flex:'none',padding:'8px 16px'}} onClick={()=>setCatView('group')}>Group</button>
             <button style={catView==='mine'?{...tabPillActive,flex:'none',padding:'8px 16px'}:{...tabPill,flex:'none',padding:'8px 16px'}} onClick={()=>setCatView('mine')}>Mine</button>
             <button style={catView==='members'?{...tabPillActive,flex:'none',padding:'8px 16px'}:{...tabPill,flex:'none',padding:'8px 16px'}} onClick={()=>setCatView('members')}>Members</button>
@@ -331,7 +331,7 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
                 </span>
                 <span style={{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'}}>{fmt(r.total, cur)} ({pct.toFixed(1)}%)</span>
               </div>
-              <div style={{height:6,borderRadius:999,background:'var(--field)',marginTop:4,overflow:'hidden'}}><div style={{height:'100%',width:`${pct}%`,background:memberDotColor(group, r.memberId),borderRadius:999}} /></div>
+              <div style={{height:6,borderRadius:'var(--radius-pill)',background:'var(--field)',marginTop:4,overflow:'hidden'}}><div style={{height:'100%',width:`${pct}%`,background:memberDotColor(group, r.memberId),borderRadius:'var(--radius-pill)'}} /></div>
             </div>);
           })}
         </div>)}
@@ -344,7 +344,7 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
       </div>}
       {group.expenses.length===0 && <div style={{...homeCard,textAlign:'center',padding:'24px 16px'}}><div style={{fontWeight:600}}>No expenses yet</div>{!group.isArchived && <div style={{fontSize:14,color:'var(--muted)',marginTop:6}}>Tap Add expense to log the first one.</div>}</div>}
       {group.expenses.length>0 && (<div style={{marginBottom:12}}>
-        <div style={{display:'flex',alignItems:'center',gap:8,background:'var(--field)',borderRadius:10,padding:'10px 12px'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,background:'var(--field)',borderRadius:'var(--radius-control)',padding:'10px 12px'}}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" style={{flexShrink:0}}><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
           <input style={{flex:1,minWidth:0,background:'transparent',border:'none',outline:'none',color:'var(--text)',fontSize:16,padding:0}} placeholder="Search expenses" value={expSearch} onChange={e=>setExpSearch(e.target.value)} aria-label="Search expenses" />
           {expSearch && <button type="button" aria-label="Clear search" onClick={()=>setExpSearch('')} style={{background:'transparent',border:'none',color:'var(--muted)',cursor:'pointer',fontSize:18,lineHeight:1,padding:0}}>×</button>}
@@ -384,7 +384,7 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
           })}</div>
         </div>));
       })()}
-      {!showExpense && !group.isArchived && <button type="button" onClick={()=>setShowExpense(true)} style={{position:'fixed',zIndex:20,right:'max(16px, calc((100vw - 640px) / 2 + 16px))',bottom:'calc(20px + env(safe-area-inset-bottom, 0px))',height:56,padding:'0 22px 0 18px',borderRadius:999,border:'none',background:'var(--text)',color:'var(--bg)',display:'flex',alignItems:'center',gap:8,fontWeight:700,fontSize:15,boxShadow:'0 8px 24px rgba(0,0,0,0.25)',cursor:'pointer'}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>Add expense</button>}
+      {!showExpense && !group.isArchived && <button type="button" onClick={()=>setShowExpense(true)} style={{position:'fixed',zIndex:20,right:'max(16px, calc((100vw - 640px) / 2 + 16px))',bottom:'calc(20px + env(safe-area-inset-bottom, 0px))',height:56,padding:'0 22px 0 18px',borderRadius:'var(--radius-pill)',border:'none',background:'var(--text)',color:'var(--bg)',display:'flex',alignItems:'center',gap:8,fontWeight:700,fontSize:15,boxShadow:'0 8px 24px rgba(0,0,0,0.25)',cursor:'pointer'}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>Add expense</button>}
       {showExpCat && <CategoryPickerSheet current={expCat} allowAll counts={catCounts} allCount={allCatCount} onPick={(c:any)=>{setExpCat(c); setShowExpCat(false);}} onClose={()=>setShowExpCat(false)} />}
       {showExpPayer && <PayerPickerSheet group={group} current={expPayer} allowAll counts={payerCounts} allCount={allPayerCount} onPick={(m:any)=>{setExpPayer(m); setShowExpPayer(false);}} onClose={()=>setShowExpPayer(false)} />}
     </>}
@@ -541,7 +541,7 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
       {activityError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{activityError}</p>}
     </>}
     {showMenu && <PickerSheet title={group.name} onClose={()=>setShowMenu(false)}>
-      <div className="flat-list" style={{marginTop:12,background:'var(--field)',borderRadius:16,overflow:'hidden'}}>
+      <div className="flat-list" style={{marginTop:12,background:'var(--field)',borderRadius:'var(--radius-card)',overflow:'hidden'}}>
         <button className="flat-row" onClick={()=>{setShowMenu(false); changeTab('members');}}><span>Members</span><span style={{color:'var(--muted)'}}>{group.members.length} ›</span></button>
         <button className="flat-row" onClick={()=>{setShowMenu(false); changeTab('log');}}><span>Log</span><span style={{color:'var(--muted)'}}>›</span></button>
         <button className="flat-row" onClick={()=>{setShowMenu(false); setShowSettings(true);}}><span>Group settings</span><span style={{color:'var(--muted)'}}>›</span></button>
@@ -669,9 +669,9 @@ export function ExpenseDetailSheet({ group, expense: e, onClose, setConfirm, rel
   const [sheetError, setSheetError] = useState('');
   const drag = useSheetDrag(onClose);
   return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
-    <div style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,paddingBottom:'calc(16px + env(safe-area-inset-bottom, 0px))',width:'100%',maxWidth:640,maxHeight:'80vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
-      <div style={{width:36,height:4,borderRadius:99,background:'var(--border)',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><div style={{flex:1,minWidth:0}}><h2 style={{margin:0,marginBottom:4}}>{e.description}</h2><div style={{marginBottom:6}}><strong style={{fontSize:20}}>{e.display}</strong></div><div><span style={{fontSize:12,background:EXP_CAT_COLORS[e.category] || 'var(--muted)',color:CAT_GLYPH_VARS[e.category] || 'var(--text)',padding:'2px 6px',borderRadius:99}}>{e.category}</span></div><div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:12,fontSize:13,color:'var(--muted)',marginTop:6}}><span style={{minWidth:0}}>Split between {e.splits.length} people</span><span style={{whiteSpace:'nowrap',flexShrink:0}}>{fmtDate(e.date)}</span></div></div><CloseButton onClick={onClose} /></div>
+    <div style={{background:'var(--card)',borderRadius:'var(--radius-card) var(--radius-card) 0 0',padding:16,paddingBottom:'calc(16px + env(safe-area-inset-bottom, 0px))',width:'100%',maxWidth:640,maxHeight:'80vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
+      <div style={{width:36,height:4,borderRadius:'var(--radius-pill)',background:'var(--border)',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><div style={{flex:1,minWidth:0}}><h2 style={{margin:0,marginBottom:4}}>{e.description}</h2><div style={{marginBottom:6}}><strong style={{fontSize:20}}>{e.display}</strong></div><div><span style={{fontSize:12,background:EXP_CAT_COLORS[e.category] || 'var(--muted)',color:CAT_GLYPH_VARS[e.category] || 'var(--text)',padding:'2px 6px',borderRadius:'var(--radius-pill)'}}>{e.category}</span></div><div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:12,fontSize:13,color:'var(--muted)',marginTop:6}}><span style={{minWidth:0}}>Split between {e.splits.length} people</span><span style={{whiteSpace:'nowrap',flexShrink:0}}>{fmtDate(e.date)}</span></div></div><CloseButton onClick={onClose} /></div>
       <div style={{marginTop:12}}>{e.splits.map((s:any)=>{const member = group.members.find((x:any)=>x.id===s.member_id); const pd = personDisplay(group, s.member_id, member?.name); const isMine = group.myMemberId && s.member_id===group.myMemberId; return (<div key={s.member_id} style={{...rowCard,display:'flex',alignItems:'center',gap:12,background:isMine?'var(--tint-bg)':'var(--card)'}}>
         <div style={{...avatar,background:memberDotColor(group, pd.memberId)}}>{initials(pd.name)}</div>
         <div style={{flex:1,minWidth:0,fontWeight:600,lineHeight:1.4}}>{pd.label}{s.member_id===e.paid_by_member_id ? <span style={payerChip}>Payer</span> : null}{member && !member.hasAccount ? <span style={noAccountChip}>No account yet</span> : null}</div>

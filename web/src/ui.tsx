@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { CATEGORIES, CURRENCIES } from './api';
 
 export const S = { maxWidth: 640, margin: '0 auto', padding: '16px', paddingBottom: 90 } as const; // DESKTOP CAP, Nov 2026: maxW was a typo (not a real CSS property), so the 640px cap never applied and the main content stretched full-width on desktop. maxWidth makes every view using S a centred 640px column on wide screens, matching the sheets (which already cap at 640) — on a phone (<640px) it is full-width as before.
-export const card: React.CSSProperties = { background:'var(--card)', border:'1px solid var(--hairline)', borderRadius:16, padding:14, marginBottom:12, color:'var(--text)', lineHeight:1.45 };
+export const card: React.CSSProperties = { background:'var(--card)', boxShadow:'var(--shadow)', border:'var(--border-w) solid var(--hairline)', borderRadius:'var(--radius-card)', padding:14, marginBottom:12, color:'var(--text)', lineHeight:1.45 };
 export const rowCard: React.CSSProperties = { ...card, padding:'12px 14px', lineHeight:1.4 };
 // BALANCES REVAMP 2026-11-05 (dark only, restyle only): rows inside one
 // borderless card (radius 20, no var(--hairline) border) with hairline dividers,
@@ -11,7 +11,7 @@ export const rowCard: React.CSSProperties = { ...card, padding:'12px 14px', line
 // Logic below is unchanged: net-only Your position, per-member Paid/share,
 // creditor-only Settle (with placeholder-debtor exception), debtor-or-
 // creditor-only payment deletion.
-export const balCard: React.CSSProperties = { background:'var(--card)', borderRadius:20, padding:'6px 0', marginBottom:12, color:'var(--text)', lineHeight:1.45 };
+export const balCard: React.CSSProperties = { background:'var(--card)', border:'var(--outline-w) solid var(--border)', boxShadow:'var(--shadow)', borderRadius:'var(--radius-card)', padding:'6px 0', marginBottom:12, color:'var(--text)', lineHeight:1.45 };
 export const balRow: React.CSSProperties = { display:'flex', alignItems:'center', gap:12, padding:'12px 14px' };
 export const balHairline = '1px solid var(--hairline)';
 // HOME + TABS REVAMP 2026-11-05 (dark only, restyle only): borderless
@@ -61,28 +61,28 @@ export function logIcon(type: string) {
   };
   return (<span style={{width:28,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><svg {...common}>{paths[type] || paths['expense_added']}</svg></span>);
 }
-export const homeCard: React.CSSProperties = { background:'var(--card)', borderRadius:20, padding:16, marginBottom:12, color:'var(--text)', lineHeight:1.45 };
-export const tabTrack: React.CSSProperties = { display:'flex', gap:0, background:'var(--field)', borderRadius:999, padding:3, marginBottom:16 };
-export const tabPill: React.CSSProperties = { flex:1, padding:'10px 4px', fontSize:14, color:'var(--muted)', background:'transparent', border:'none', borderRadius:999, fontWeight:400, cursor:'pointer' };
+export const homeCard: React.CSSProperties = { background:'var(--card)', border:'var(--outline-w) solid var(--border)', boxShadow:'var(--shadow)', borderRadius:'var(--radius-card)', padding:16, marginBottom:12, color:'var(--text)', lineHeight:1.45 };
+export const tabTrack: React.CSSProperties = { display:'flex', gap:0, background:'var(--field)', borderRadius:'var(--radius-pill)', padding:3, marginBottom:16 };
+export const tabPill: React.CSSProperties = { flex:1, padding:'10px 4px', fontSize:14, color:'var(--muted)', background:'transparent', border:'none', borderRadius:'var(--radius-pill)', fontWeight:400, cursor:'pointer' };
 export const tabPillActive: React.CSSProperties = { ...tabPill, color:'var(--text)', background:'var(--pill-active)', fontWeight:600 };
 export const avatar: React.CSSProperties = { width:40, height:40, borderRadius:'50%', background:'var(--avatar-green)', color:'var(--on-avatar)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:15, flexShrink:0 };
-export const noAccountChip: React.CSSProperties = { fontSize:11, background:'var(--warn-bg)', color:'var(--warn-text)', padding:'2px 8px', borderRadius:99, fontWeight:600, whiteSpace:'nowrap', marginLeft:8, verticalAlign:'middle' };
+export const noAccountChip: React.CSSProperties = { fontSize:11, background:'var(--warn-bg)', color:'var(--warn-text)', padding:'2px 8px', borderRadius:'var(--radius-pill)', fontWeight:600, whiteSpace:'nowrap', marginLeft:8, verticalAlign:'middle' };
 // PAYER PILL, Nov 2026: marks the payer in the expense detail split rows
 // (the "Paid by" subline was dropped — the pill is now the payer
 // indicator). Bordered teal so it reads on both the card background and
 // the tinted "You" row; labelled "Payer" (not "Paid") so it is not
 // confused with settling.
-export const payerChip: React.CSSProperties = { fontSize:11, background:'transparent', border:'1px solid var(--tint-text)', color:'var(--tint-text)', padding:'1px 7px', borderRadius:99, fontWeight:600, whiteSpace:'nowrap', marginLeft:8, verticalAlign:'middle' };
-export const currencyChip: React.CSSProperties = { fontSize:12, background:'var(--tint-bg)', padding:'3px 10px', borderRadius:99, color:'var(--tint-text)', fontWeight:600, whiteSpace:'nowrap' };
-export const btn: React.CSSProperties = { padding:'9px 14px', borderRadius:999, border:'1px solid var(--border)', background:'var(--field)', color:'var(--text)' };
+export const payerChip: React.CSSProperties = { fontSize:11, background:'transparent', border:'1px solid var(--tint-text)', color:'var(--tint-text)', padding:'1px 7px', borderRadius:'var(--radius-pill)', fontWeight:600, whiteSpace:'nowrap', marginLeft:8, verticalAlign:'middle' };
+export const currencyChip: React.CSSProperties = { fontSize:12, background:'var(--tint-bg)', padding:'3px 10px', borderRadius:'var(--radius-pill)', color:'var(--tint-text)', fontWeight:600, whiteSpace:'nowrap' };
+export const btn: React.CSSProperties = { padding:'9px 14px', borderRadius:'var(--radius-pill)', border:'var(--border-w) solid var(--border)', background:'var(--field)', color:'var(--text)' };
 export const primary: React.CSSProperties = { ...btn, background:'var(--accent)', color:'var(--accent-text)', borderColor:'var(--accent)', fontWeight:600 };
 // Chunk 9: one shared compact style for the Spend by category controls, so
 // Group, Mine, and the currency select look like a set. Compact (down from
 // the inherited ~16px button size), explicit height so the native select
 // matches the buttons. Other buttons in the app keep btn/primary untouched.
-export const catControl: React.CSSProperties = { padding:'8px 14px', fontSize:14, lineHeight:1.4, height:36, boxSizing:'border-box', borderRadius:10, border:'1px solid var(--border)', background:'var(--field)', color:'var(--text)' };
+export const catControl: React.CSSProperties = { padding:'8px 14px', fontSize:14, lineHeight:1.4, height:36, boxSizing:'border-box', borderRadius:'var(--radius-control)', border:'var(--border-w) solid var(--border)', background:'var(--field)', color:'var(--text)' };
 export const catControlActive: React.CSSProperties = { ...catControl, background:'var(--accent)', color:'var(--accent-text)', borderColor:'var(--accent)', fontWeight:600 };
-export const input: React.CSSProperties = { width:'100%', boxSizing:'border-box', padding:'10px', border:'1px solid var(--border)', borderRadius:10, margin:'4px 0 10px', background:'var(--field)', color:'var(--text)', fontSize:16 };
+export const input: React.CSSProperties = { width:'100%', boxSizing:'border-box', padding:'10px', border:'var(--border-w) solid var(--border)', borderRadius:'var(--radius-control)', margin:'4px 0 10px', background:'var(--field)', color:'var(--text)', fontSize:16 };
 // Group icon: REMOVED 2026-11-04 at Wai's request ("revert the emoji
 // change, i rather user inputs the emoji into the group name itself").
 // There is no separate icon field, picker, or icon prefix anywhere in
@@ -205,15 +205,15 @@ export function useSheetDrag(onClose: () => void) {
 // the same; full-screen Group settings and the expense detail header are the
 // two deliberate exceptions.
 export function CloseButton({ onClick }: { onClick: () => void }) {
-  return (<button type="button" aria-label="Close" title="Close" onClick={onClick} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button>);
+  return (<button type="button" aria-label="Close" title="Close" onClick={onClick} style={{width:40,height:40,borderRadius:'50%',border:'var(--border-w) solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button>);
 }
 export type SheetProps = { title?: React.ReactNode; onClose: () => void; children?: React.ReactNode; showClose?: boolean; draggable?: boolean; closeOnBackdrop?: boolean; maxHeight?: string; zIndex?: number };
 export function Sheet({ title, onClose, children, showClose = true, draggable = true, closeOnBackdrop = true, maxHeight, zIndex = 50 }: SheetProps) {
   const drag = useSheetDrag(onClose);
   const grab = draggable ? { touchAction: 'none' as const, cursor: 'grab' } : {};
   return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={closeOnBackdrop ? (e)=>{ if (e.target===e.currentTarget) onClose(); } : undefined}>
-    <div style={{background:'var(--card)',borderRadius:'20px 20px 0 0',padding:16,paddingBottom:'calc(16px + env(safe-area-inset-bottom, 0px))',width:'100%',maxWidth:640,...(maxHeight ? {maxHeight,overflowY:'auto' as const} : {}),...(draggable ? {transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'} : {})}}>
-      {draggable && <div style={{width:36,height:4,borderRadius:99,background:'var(--border)',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />}
+    <div style={{background:'var(--card)',borderRadius:'var(--radius-card) var(--radius-card) 0 0',padding:16,paddingBottom:'calc(16px + env(safe-area-inset-bottom, 0px))',width:'100%',maxWidth:640,...(maxHeight ? {maxHeight,overflowY:'auto' as const} : {}),...(draggable ? {transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'} : {})}}>
+      {draggable && <div style={{width:36,height:4,borderRadius:'var(--radius-pill)',background:'var(--border)',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />}
       {title !== undefined && <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,...grab}} onPointerDown={draggable ? drag.onPointerDown : undefined}><h2 style={{margin:0}}>{title}</h2>{showClose && <CloseButton onClick={onClose} />}</div>}
       {children}
     </div>
@@ -228,26 +228,8 @@ export function ConfirmSheet({ title, message, confirmLabel, onConfirm, onCancel
       </div>
   </Sheet>);
 }
-// Theme pill (shared, 2026-11-06 L3): the sun/moon segmented toggle,
-// used in the Home header, the You screen Appearance row, and the group
-// header. Tapping it flips dark <-> light and persists the choice
-// (THEME_KEY). The highlighted side follows the active theme. A third
-// scheme later becomes a third segment here (and one more theme key).
-export function ThemePill({ theme, setTheme }: any) {
-  const seg = (active: boolean) => ({flex:1,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:999,background:active?'var(--pill-active)':'transparent',color:active?'var(--text)':'var(--muted)'} as React.CSSProperties);
-  return (<button type="button" aria-label="Colour scheme" title="Switch colour scheme" onClick={()=>setTheme(theme==='dark'?'light':'dark')} style={{width:88,height:40,borderRadius:999,border:'1px solid var(--border)',background:'var(--field)',padding:3,boxSizing:'border-box',display:'flex',alignItems:'stretch',cursor:'pointer',flexShrink:0}}>
-    <span aria-hidden="true" style={seg(theme==='light')}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg></span>
-    <span aria-hidden="true" style={seg(theme==='dark')}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z" /></svg></span>
-  </button>);
-}
-// FEEDBACK ENTRY, Nov 2026: the 40px circle icon button that opens
-// the feedback sheet from the Home and GroupView headers, immediately
-// left of the ThemePill. Icon is Feather message-square-text (square
-// bubble with two lines). Neutral grey like the gear button — NOT
-// accent blue (blue was tried in the mockup and dropped: too loud for
-// the least-used feature). Same shape as the GroupView gear button.
 export function FeedbackIconButton({ onClick }: any) {
-  return (<button type="button" aria-label="Send feedback" title="Send feedback" onClick={onClick} style={{width:40,height:40,borderRadius:'50%',border:'1px solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /><path d="M13 8H7" /><path d="M17 12H7" /></svg></button>);
+  return (<button type="button" aria-label="Send feedback" title="Send feedback" onClick={onClick} style={{width:40,height:40,borderRadius:'50%',border:'var(--border-w) solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /><path d="M13 8H7" /><path d="M17 12H7" /></svg></button>);
 }
 
 // Skeleton screens: grey blocks in the exact shape of the content that is
@@ -369,7 +351,7 @@ export function CurrencyPickerSheet({ current, onPick, onClose }: any) {
   const ql = q.trim().toLowerCase();
   const list = CURRENCIES.filter(c => !ql || c.toLowerCase().includes(ql) || (CURRENCY_INFO[c]?.name || '').toLowerCase().includes(ql) || (CURRENCY_INFO[c]?.sym || '').toLowerCase().includes(ql));
   return (<PickerSheet title="Currency" onClose={onClose}>
-    <div style={{display:'flex',alignItems:'center',gap:8,background:'var(--field)',borderRadius:10,padding:'10px 12px',margin:'12px 0 6px'}}>
+    <div style={{display:'flex',alignItems:'center',gap:8,background:'var(--field)',borderRadius:'var(--radius-control)',padding:'10px 12px',margin:'12px 0 6px'}}>
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" style={{flexShrink:0}}><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
       <input style={{flex:1,minWidth:0,background:'transparent',border:'none',outline:'none',color:'var(--text)',fontSize:16,padding:0}} placeholder="Search currencies" value={q} onChange={e=>setQ(e.target.value)} aria-label="Search currencies" />
     </div>
@@ -394,7 +376,7 @@ export function CategoryPickerSheet({ current, onPick, onClose, allowAll, counts
   const rows: (string | null)[] = allowAll ? [null, ...CATEGORIES] : [...CATEGORIES];
   return (<PickerSheet title="Category" onClose={onClose}>
     <div style={{marginTop:6}}>{rows.map((c, i) => (<button key={c || '__all'} type="button" onClick={()=>onPick(c)} style={{display:'flex',alignItems:'center',gap:12,width:'100%',background:'transparent',border:'none',borderTop:i===0?'none':balHairline,padding:'12px 0',color:'var(--text)',cursor:'pointer',textAlign:'left'}}>
-      {c ? (<><span style={{width:36,height:36,borderRadius:10,background:EXP_CAT_COLORS[c] || 'var(--muted)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{catIcon(c)}</span><span style={{flex:1,minWidth:0,fontWeight:600}}>{c}</span>{counts && <span style={pickCount}>{counts[c] || 0}</span>}</>) : (<><span style={{width:36,height:36,borderRadius:10,background:'var(--field)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg></span><span style={{flex:1,minWidth:0,fontWeight:600}}>All categories</span>{counts && <span style={pickCount}>{allCount ?? 0}</span>}</>)}
+      {c ? (<><span style={{width:36,height:36,borderRadius:'var(--radius-control)',background:EXP_CAT_COLORS[c] || 'var(--muted)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{catIcon(c)}</span><span style={{flex:1,minWidth:0,fontWeight:600}}>{c}</span>{counts && <span style={pickCount}>{counts[c] || 0}</span>}</>) : (<><span style={{width:36,height:36,borderRadius:'var(--radius-control)',background:'var(--field)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg></span><span style={{flex:1,minWidth:0,fontWeight:600}}>All categories</span>{counts && <span style={pickCount}>{allCount ?? 0}</span>}</>)}
       {c===current && pickCheck}
     </button>))}</div>
   </PickerSheet>);

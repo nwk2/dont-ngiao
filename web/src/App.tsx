@@ -1,8 +1,9 @@
 import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { api, fetchVersion, getToken, setToken } from './api';
 import { FeedbackSheet } from './components/FeedbackSheet';
-import { LAST_GROUP_KEY, THEME_KEY, readSavedGroup } from './prefs';
+import { LAST_GROUP_KEY, readSavedGroup } from './prefs';
 import { GOOGLE_STATE_KEY } from './google';
+import { Appearance, BASE, applyAppearance, cacheAppearance, forgetAppearance, fromUser, takeLegacyChoice } from './themes';
 // Admin and the signed-out screens load on demand, so signed-in users don't
 // download them. If a chunk fails to load (usually because a new build
 // replaced its hashed file while this tab was open), reload to pick up the
@@ -28,6 +29,10 @@ import { S, btn, primary } from './ui';
 // change is what the user sees while the check is in flight.
 export default function App() {
   const [user, setUser] = useState<any>(null);
+  // From /api/me alongside the user (Haven-style): the active admin
+  // announcement and how many feedback replies you haven't read.
+  const [announcement, setAnnouncement] = useState<any>(null);
+  const [unreadReplies, setUnreadReplies] = useState(0);
   const [authState, setAuthState] = useState<'checking'|'guest'|'authed'>(()=> getToken() ? 'checking' : 'guest');
   const [groups, setGroups] = useState<any>(null);
   const [group, setGroup] = useState<any>(null);
@@ -90,30 +95,13 @@ export default function App() {
   const [tab, setTab] = useState<'expenses'|'balances'|'members'|'log'>('expenses');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  // THEME, 2026-11-06 (light mode L1): the theme is a named key
-  // ('dark' | 'light'), not a boolean — a third scheme later is one more
-  // key, one more :root[data-theme="..."] block in index.html, and one
-  // more option in the You screen picker. Colours live as CSS variables
-  // in index.html (:root = dark values, [data-theme="light"] overrides);
-  // inline styles reference var(--x), so no component needs the theme
-  // in JS — the palette functions (memberDotColor, EXP_CAT_COLORS,
-  // catIcon glyphs) return var(--dot-N) / var(--cat-x) references instead
-  // of hex. First load follows the system (prefers-color-scheme); a
-  // manual choice is persisted under THEME_KEY and wins after that.
-  // L3: the pill (ThemePill, shared by Home/You/Group) is wired, and
-  // first load follows the system; a manual choice persists under
-  // THEME_KEY and wins after that.
-  const [theme, setTheme] = useState<'dark'|'light'>(()=>{
-    try { const saved = localStorage.getItem(THEME_KEY); if (saved==='light'||saved==='dark') return saved; } catch { /* ignore */ }
-    return (typeof window!=='undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
-  });
-  useEffect(()=>{
-    document.documentElement.dataset.theme = theme;
-    try { localStorage.setItem(THEME_KEY, theme); } catch { /* ignore */ }
-    // Status bar / address bar / app switcher colour follows the theme's background.
-    const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', bg || '#15110D');
-  },[theme]);
+  // APPEARANCE (same model as nwk2/haven): theme + System/Light/Dark,
+  // saved to the account and applied on every device. The applying effect
+  // sits below, next to the URL checks it depends on.
+  const setAppearance = (next: Appearance) => {
+    setUser((u: any) => u ? { ...u, theme: next.theme, mode: next.mode } : u);
+    api('/api/me', 'PATCH', next).catch(() => { /* offline: the local change still applies; it saves next time */ });
+  };
   async function loadGroups() { try { setGroups(await api('/api/groups')); setError(''); } catch(e:any){ setError(e.message); } }
   // skeleton=true only for a first tap into a group (Home -> group): show
   // the group skeleton immediately so the tap feels instant, instead of
@@ -173,7 +161,7 @@ export default function App() {
   async function checkAuth() {
     if (!getToken()) return;
     setAuthError('');
-    try { const d = await api('/api/me'); setUser(d.user); setAuthState('authed'); await loadGroups(); await restoreSaved(); }
+    try { const d = await api('/api/me'); setUser(d.user); setAnnouncement(d.announcement || null); setUnreadReplies(Number(d.unreadReplies || 0)); setAuthState('authed'); await loadGroups(); await restoreSaved(); }
     catch (e: any) {
       if (e?.status === 401) { setToken(null); setUser(null); setAuthState('guest'); }
       else { setAuthError(e.message || 'Could not reach the server'); }
@@ -246,7 +234,22 @@ export default function App() {
       if (linking) { await checkAuth(); setError(msg); } else { setError(msg); setAuthState('guest'); }
     } finally { setLoading(false); }
   }
-  function doLogout() { try { localStorage.removeItem(LAST_GROUP_KEY); } catch { /* ignore */ } setToken(null); setUser(null); setGroup(null); setGroups(null); setAuthState('guest'); }
+  // Refresh the announcement + unread replies: after signing in, when the
+  // app comes back to the foreground, and after reading a thread.
+  async function refreshMeta() {
+    if (!getToken()) return;
+    try { const d = await api('/api/me'); setAnnouncement(d.announcement || null); setUnreadReplies(Number(d.unreadReplies || 0)); } catch { /* keep what we have */ }
+  }
+  const metaUser = useRef<string | null>(null);
+  useEffect(()=>{
+    if (authState !== 'authed' || !user?.id) { metaUser.current = null; return; }
+    if (metaUser.current !== user.id) { const first = metaUser.current === null && (announcement !== null || unreadReplies > 0); metaUser.current = user.id; if (!first) refreshMeta(); }
+    const onVisible = () => { if (document.visibilityState === 'visible') refreshMeta(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[authState, user?.id]);
+  function doLogout() { try { localStorage.removeItem(LAST_GROUP_KEY); } catch { /* ignore */ } forgetAppearance(); setAnnouncement(null); setUnreadReplies(0); setToken(null); setUser(null); setGroup(null); setGroups(null); setAuthState('guest'); }
   // INVITE LINK (?invite=<token>), Nov 2026: the token survives the
   // login/register flow because it stays in the URL — a guest sees the
   // normal Auth screen, and once authed the invite check below shows
@@ -293,6 +296,33 @@ export default function App() {
   const resetToken = urlParams.get('reset');
   const isAdminPage = urlParams.has('admin');
   const inviteToken = urlParams.get('invite');
+  // Signed-out screens (sign-in, password reset, the separate admin login)
+  // always use the base theme; signed in, the account's choice. While the
+  // session is still being checked, leave whatever index.html painted from
+  // the cache. A light/dark choice saved on this device by an older build
+  // is moved to the account once.
+  const signedIn = authState === 'authed' && !!user && !resetToken && !isAdminPage;
+  const appearance: Appearance = signedIn ? fromUser(user) : BASE;
+  useEffect(()=>{
+    if (authState === 'checking' && !resetToken && !isAdminPage) return;
+    applyAppearance(appearance);
+    if (signedIn) {
+      cacheAppearance(user.id, appearance);
+      const legacy = takeLegacyChoice();
+      if (legacy && appearance.theme === BASE.theme && appearance.mode === BASE.mode) setAppearance(legacy);
+    }
+    // Status bar / address bar / app switcher colour follows the theme's
+    // background, including when the device flips light/dark under System.
+    const syncThemeColor = () => requestAnimationFrame(()=>{
+      const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', bg || '#15110D');
+    });
+    syncThemeColor();
+    const mq = window.matchMedia?.('(prefers-color-scheme: light)');
+    mq?.addEventListener?.('change', syncThemeColor);
+    return () => mq?.removeEventListener?.('change', syncThemeColor);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[authState, signedIn, user?.id, appearance.theme, appearance.mode]);
   if (resetToken) return <Suspense fallback={<div style={S} />}><ResetPasswordView token={resetToken} /></Suspense>;
   if (isAdminPage) return <Suspense fallback={<div style={S} />}><AdminView /></Suspense>;
   if (authError) return (<div style={S}><h1>Don't Ngiao</h1><p style={{color:'var(--muted)'}}>Couldn't check your session — your login is kept, this may just be a network hiccup.</p><p style={{color:'var(--danger-text)'}}>{authError}</p><button style={{...primary, width:'100%'}} onClick={()=>checkAuth()}>Retry</button><p><button style={btn} onClick={()=>{ setToken(null); setUser(null); setAuthError(''); setAuthState('guest'); }}>Use a different account</button></p></div>);
@@ -310,7 +340,7 @@ export default function App() {
   // Members landed back on Expenses, hiding the updated data). Refetch
   // (keepTab) is only the fallback for writes that return no detail
   // (archive/restore/leave from Settings, Home restore via loadGroups).
-  if (group) return (<><GroupView group={group} setGroup={setGroup} tab={tab} setTab={setTab} justJoined={justJoinedId === group.id} back={()=>{setJustJoinedId(null); setGroup(null); loadGroups();}} reload={(detail?: any)=> detail && detail.id ? (setGroup(detail), setError(''), Promise.resolve(true)) : loadGroup(group.id, { keepTab: true })} error={error} setError={setError}  theme={theme} setTheme={setTheme} onFeedback={()=>openFeedback(group.id)} />{showFeedback && <FeedbackSheet initialGroupId={feedbackGroupId} groups={groups?.active || []} onClose={()=>setShowFeedback(false)} />}</>);
+  if (group) return (<><GroupView group={group} setGroup={setGroup} tab={tab} setTab={setTab} justJoined={justJoinedId === group.id} back={()=>{setJustJoinedId(null); setGroup(null); loadGroups();}} reload={(detail?: any)=> detail && detail.id ? (setGroup(detail), setError(''), Promise.resolve(true)) : loadGroup(group.id, { keepTab: true })} error={error} setError={setError}  onFeedback={()=>openFeedback(group.id)} />{showFeedback && <FeedbackSheet initialGroupId={feedbackGroupId} groups={groups?.active || []} onClose={()=>setShowFeedback(false)} />}</>);
   if (!groups) return <HomeSkeleton user={user} />;
-  return (<><Home user={user} setUser={setUser} onLogout={doLogout} setAuthNotice={setAuthNotice} groups={groups} loadGroups={loadGroups} loadGroup={(id: string)=>loadGroup(id, { skeleton: true })} error={error} setError={setError}  theme={theme} setTheme={setTheme} onFeedback={openFeedback} />{showFeedback && <FeedbackSheet initialGroupId={feedbackGroupId} groups={groups?.active || []} onClose={()=>setShowFeedback(false)} />}</>);
+  return (<><Home user={user} setUser={setUser} onLogout={doLogout} setAuthNotice={setAuthNotice} groups={groups} loadGroups={loadGroups} loadGroup={(id: string)=>loadGroup(id, { skeleton: true })} error={error} setError={setError}  appearance={appearance} setAppearance={setAppearance} announcement={announcement} unreadReplies={unreadReplies} refreshMeta={refreshMeta} openMessages={urlParams.get('messages')==='1'} onMessagesOpened={()=>{ const q = new URLSearchParams(window.location.search); if (q.has('messages')) { q.delete('messages'); const s = q.toString(); window.history.replaceState(null, '', window.location.pathname + (s ? `?${s}` : '')); setUrlParams(q); } }} onFeedback={openFeedback} />{showFeedback && <FeedbackSheet initialGroupId={feedbackGroupId} groups={groups?.active || []} onClose={()=>setShowFeedback(false)} />}</>);
 }
