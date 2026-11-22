@@ -84,16 +84,35 @@ API <https://dont-ngiao.wk-io.workers.dev> · D1 database `dont-ngiao`.
   user opens a detail sheet (email, joined, role) with the password-reset button —
   there is no per-row Reset button.
 - **Feedback (auth-only, no anonymous path).** Any signed-in user can send feedback
-  from the You view Feedback section, the header icon on Home
-  (message-square-text, neutral grey, 40px circle), or the Group screen ⋯ menu. All three doors open the same bottom sheet: type Bug / Idea /
+  from the Settings screen Help and feedback section, or the Group screen ⋯ menu. Both doors open the same bottom sheet: type Bug / Idea /
   Question (default Bug), group picker (active groups + General, defaulting to the
   group it was opened from, else the last-opened group, else the first active
   group), message up to 2000 chars. Send is disabled while the message is empty;
   while sending the sheet cannot be dismissed and the label stays "Send" (spinner
   only). On success the Send button becomes a check-circle + "Sent" and the sheet
-  closes after about a second — there is no separate success screen (the You row
+  closes after about a second — there is no separate success screen (the Settings row
   is a plain one-liner "Send feedback", no subline, no "New" pill). Sender name and build are recorded with the submission and shown in the
-  admin detail, never to the sender. Replies happen in the app (Haven-style): You → Feedback → Your messages lists what you sent, newest activity first, labelled Sent / Replied / Done, with a dot for unread replies; a thread shows your message and the team's replies, and you can reply back (the item reopens; shares the feedback rate limit). An unread reply shows a dot on the Home avatar, a "The Don't Ngiao team replied" banner on Home, and a "N new" pill on the Your messages row; a reply push opens /?messages=1. Original message stays in feedback.message; replies are in feedback_messages. No screenshots, no push alert to the admin on new feedback, no anonymous submissions. Rate limit: 10 submissions/hour per user (replies count too).
+  admin detail, never to the sender. Replies happen in the app (Haven-style): Settings → Help and feedback → Your messages lists what you sent, newest activity first, labelled Sent / Replied / Done, with a dot for unread replies; a thread shows your message and the team's replies, and you can reply back (the item reopens; shares the feedback rate limit). An unread reply shows a dot on the Home gear, a "The Don't Ngiao team replied" banner on Home, and a "N new" pill on the Your messages row; a reply push opens /?messages=1. Original message stays in feedback.message; replies are in feedback_messages. No screenshots, no push alert to the admin on new feedback, no anonymous submissions. Rate limit: 10 submissions/hour per user (replies count too).
+- **Home currency (estimates only, no FX in the money).** Each account has a home
+  currency (users.home_currency; NULL = not chosen yet, 'none' = off). Existing accounts
+  were set to SGD by migration 0014; new accounts pick one on a one-time screen after first
+  sign-in (suggestion from the device's locale / time zone, preselected). Amounts in other
+  currencies get a muted "≈ S$36" (whole units from 100 up) on the Home hero (plus "About
+  S$26 owed to you overall" when 2+ currencies are open), Home group cards, the group
+  position card, the Insights total ("about S$1,356 in total"), the add-expense amount
+  (live) and the expense detail (total + your share). Never on expense rows, per-member
+  balances, settle, the Log or pushes. The group header shows "1 MYR ≈ S$0.30 ⓘ" when the
+  group uses another currency; that and every estimate open a Today's rates sheet (both
+  directions, updated time, source Frankfurter, a disclaimer, a small converter). Rates:
+  GET /api/fx?base=… (signed-in), Worker fetches api.frankfurter.dev (free, keyless,
+  mid-market) at most every 6 h and caches in D1 fx_rates; on failure the last cache is
+  served; the app also caches per device. Balances, splits and settling are never converted.
+- **Design language follows nwk2/haven.** Shared styles mirror Haven's components
+  (.h-card, .h-seg, .h-btn primary/secondary, .h-chip, .h-input, .h-icon-btn, section
+  titles, dashed empty states, switch, sheet), reading only theme variables (radius,
+  border/outline width, shadow, fonts, overlays). Home's top-right is a gear that opens
+  Settings (dot = unread reply); Send feedback and Your messages live under Settings →
+  Help and feedback (the group ⋯ menu keeps Send feedback).
 - **PWA + push notifications.** Installable (Add to Home Screen; iOS 16.4+), manifest +
   service worker with runtime caching only (no precache; `/api/` and `/version.json`
   are never cached). Web Push on new/edited/deleted expense and settle/payment, only
@@ -105,10 +124,11 @@ API <https://dont-ngiao.wk-io.workers.dev> · D1 database `dont-ngiao`.
   checks it on mount and on returning to the foreground and force-reloads when the
   `buildId` changes — even if a form is open (unsaved drafts can be lost; accepted,
   deploys are infrequent).
-- **You view:** avatar + name, "User since {Mon, YYYY} · N groups", Appearance (Theme list + Mode),
+- **Settings screen:** avatar + name, "User since {Mon, YYYY} · N groups", Appearance (Theme list + Mode),
   Account rows (Edit name, Change/Set password, Link Google account, Admin row for
-  admins), Notifications toggle, Archived groups list. Appearance follows nwk2/haven: a theme (Kopitiam default, Market Green,
-  Tomato & Ink, Night Utility; the last three ported from Haven's tokens) plus a mode
+  admins), Notifications toggle, Archived groups list. Appearance follows nwk2/haven: a theme (Market Green default,
+  Tomato & Ink, Night Utility, ported from Haven's tokens; Kopitiam was retired and its
+  users moved to Market Green by migration 0014) plus a mode
   (System / Light / Dark), saved to the account (users.theme / users.mode via PATCH
   /api/me) and applied on every device. Theme/mode changes apply instantly, with no
   cross-fade (a view transition blended dark↔light through grey — removed, same as

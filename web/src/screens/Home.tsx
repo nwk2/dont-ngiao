@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { CURRENCIES, VAPID_PUBLIC_KEY, api, fmt } from '../api';
 import { OnboardingPrompts } from '../components/Onboarding';
-import { AsyncButton, FeedbackIconButton, S, Sheet, Sk, balHairline, btn, card, catControl, catControlActive, groupBalancesByVerb, groupMark, homeCard, initials, input, primary, tabPill, tabPillActive, tabTrack } from '../ui';
+import { AsyncButton, CURRENCY_INFO, S, Sheet, Sk, balHairline, btn, card, catControl, catControlActive, emptyBox, gearIcon, groupBalancesByVerb, groupMark, homeCard, iconBtn, initials, input, primary, sectionTitle, switchKnob, switchStyle, tabPill, tabPillActive, tabTrack } from '../ui';
 import { googleAuthUrl } from '../google';
 import { THEMES, resolvedMode } from '../themes';
 import { MessagesSheet } from '../components/MessagesSheet';
+import { Estimate, HomeCurrencySheet } from '../components/Fx';
+import { totalInHome, fmtEstimate, useFx } from '../fx';
 
 export function HomeSkeleton({ user }: { user: any }) {
   return (<div style={S} aria-label="Loading">
@@ -16,36 +18,40 @@ export function HomeSkeleton({ user }: { user: any }) {
 }
 
 export function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, loadGroup, error, setError, appearance, setAppearance, onFeedback, announcement, unreadReplies, refreshMeta, openMessages, onMessagesOpened }: any) {
+  const fx = useFx();
   const [showCreate, setShowCreate] = useState(false);
-  const [showYou, setShowYou] = useState(false);
-  // Your messages can be opened from the reply banner, from You, or from a
+  const [showSettings, setShowSettings] = useState(false);
+  // Your messages can be opened from the reply banner, from Settings, or from a
   // reply push notification (/?messages=1).
   const [showMessages, setShowMessages] = useState(false);
-  useEffect(()=>{ if (openMessages) { setShowYou(true); setShowMessages(true); onMessagesOpened?.(); } },[openMessages]);
-  // BUG FIX, 2026-11-05: YouView used to render inline at the BOTTOM of
-  // Home ({showYou && <YouView/>} after all Home content), so tapping
+  useEffect(()=>{ if (openMessages) { setShowSettings(true); setShowMessages(true); onMessagesOpened?.(); } },[openMessages]);
+  // BUG FIX, 2026-11-05: SettingsView used to render inline at the BOTTOM of
+  // Home ({showSettings && <SettingsView/>} after all Home content), so tapping
   // the avatar appended a second page below Home in the same scroll —
   // Home, then You, then scrolling back to Home. It now replaces Home
   // via an early return, like App replaces Home with GroupView and like
-  // YouView replaces itself with the archived view.
-  if (showYou) return <YouView user={user} setUser={setUser} onLogout={onLogout} setAuthNotice={setAuthNotice} groups={groups} loadGroups={loadGroups} loadGroup={loadGroup} onBack={()=>setShowYou(false)} setError={setError}  appearance={appearance} setAppearance={setAppearance} onFeedback={onFeedback} unreadReplies={unreadReplies} showMessages={showMessages} setShowMessages={setShowMessages} refreshMeta={refreshMeta} />;
+  // SettingsView replaces itself with the archived view.
+  if (showSettings) return <SettingsView user={user} setUser={setUser} onLogout={onLogout} setAuthNotice={setAuthNotice} groups={groups} loadGroups={loadGroups} loadGroup={loadGroup} onBack={()=>setShowSettings(false)} setError={setError}  appearance={appearance} setAppearance={setAppearance} onFeedback={onFeedback} unreadReplies={unreadReplies} showMessages={showMessages} setShowMessages={setShowMessages} refreshMeta={refreshMeta} />;
     const totals: any[] = groups?.totals || [];
     const openTotals = totals.filter((t:any)=>t.balance!==0);
+    // One rough net figure in your home currency when money is open in 2+
+    // currencies (an estimate across currencies; the lines above stay exact).
+    const heroOverall = openTotals.length > 1 ? totalInHome(fx, openTotals.map((t:any)=>({ minor: t.balance, cur: t.currency }))) : null;
     const activeCount = groups?.active?.length ?? 0;
   return (<div style={S}>
     <div style={{marginBottom:16}}>
       <div style={{display:'flex',alignItems:'center',gap:12}}>
-        <button aria-label={unreadReplies ? 'You, new reply' : 'You'} style={{position:'relative',width:48,height:48,borderRadius:'50%',background:'var(--avatar-green)',color:'var(--on-avatar)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:18,flexShrink:0,border:'none',padding:0,cursor:'pointer'}} onClick={()=>setShowYou(true)}>{initials(user.name)}{unreadReplies>0 && <span aria-hidden="true" style={{position:'absolute',top:0,right:0,width:12,height:12,borderRadius:'50%',background:'var(--danger-text)',border:'2px solid var(--bg)'}} />}</button>
+        <span aria-hidden="true" style={{width:48,height:48,borderRadius:'50%',background:'var(--avatar-green)',color:'var(--on-avatar)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:18,flexShrink:0}}>{initials(user.name)}</span>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:20,fontWeight:700}}>{user.name}</div>
           <div style={{fontSize:13,color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',lineHeight:1.4}}>Mai ngiao, mai drama.</div>
         </div>
-        <FeedbackIconButton onClick={()=>onFeedback(null)} />
+        <button type="button" aria-label={unreadReplies ? 'Settings, new reply' : 'Settings'} title="Settings" onClick={()=>setShowSettings(true)} style={iconBtn}>{gearIcon}{unreadReplies>0 && <span aria-hidden="true" style={{position:'absolute',top:8,right:8,width:9,height:9,borderRadius:5,background:'var(--accent)',border:'2px solid var(--bg)'}} />}</button>
       </div>
     </div>
     {error && <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:12}}><span style={{color:'var(--danger-text)'}}>{error}</span><button style={btn} onClick={()=>loadGroups()}>Retry</button></div>}
     {announcement && <p role="status" style={{background:'var(--info-bg)',color:'var(--text)',borderRadius:'var(--radius-card)',padding:'12px 14px',fontSize:14,margin:'0 0 12px',whiteSpace:'pre-wrap'}}>{announcement.text}</p>}
-    {unreadReplies>0 && <button type="button" role="status" onClick={()=>{ setShowYou(true); setShowMessages(true); }} style={{display:'block',width:'100%',textAlign:'left',background:'var(--info-bg)',color:'var(--text)',border:'none',borderRadius:'var(--radius-card)',padding:'12px 14px',fontSize:14,margin:'0 0 12px',cursor:'pointer'}}><strong>The Don’t Ngiao team replied</strong> to your feedback. Tap to read.</button>}
+    {unreadReplies>0 && <button type="button" role="status" onClick={()=>{ setShowSettings(true); setShowMessages(true); }} style={{display:'block',width:'100%',textAlign:'left',background:'var(--info-bg)',color:'var(--text)',border:'none',borderRadius:'var(--radius-card)',padding:'12px 14px',fontSize:14,margin:'0 0 12px',cursor:'pointer'}}><strong>The Don’t Ngiao team replied</strong> to your feedback. Tap to read.</button>}
     <OnboardingPrompts />
     {openTotals.length === 0 ? (<div style={{...homeCard,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:20}}>
       <span>All settled across {activeCount} {activeCount===1 ? 'group' : 'groups'}</span>
@@ -54,15 +60,19 @@ export function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroup
       <div style={{fontSize:13,color:'var(--hero-muted)'}}>Across {activeCount} {activeCount===1 ? 'group' : 'groups'}</div>
       {groupBalancesByVerb(openTotals).map((g:any,gi:number)=>g.items.map((t:any,i:number)=>(<div key={t.currency} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:12,marginTop:10,...(i===0 && gi>0 ? {borderTop:'2px dashed var(--hero-rule)',paddingTop:12,marginTop:12} : {})}}>
         <span style={{color:'var(--hero-muted)'}}>{i===0 ? g.verb : ''}</span>
-        <strong style={{fontFamily:'var(--display)',fontSize:32,fontWeight:800,whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums',color:t.balance>0?'var(--hero-owed)':'var(--hero-owe)'}}>{fmt(Math.abs(t.balance),t.currency)}</strong>
+        <span style={{display:'flex',flexDirection:'column',alignItems:'flex-end'}}>
+          <strong style={{fontFamily:'var(--display)',fontSize:32,fontWeight:800,whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums',color:t.balance>0?'var(--hero-owed)':'var(--hero-owe)'}}>{fmt(Math.abs(t.balance),t.currency)}</strong>
+          <Estimate minor={t.balance} cur={t.currency} style={{color:'var(--hero-muted)',fontSize:14}} />
+        </span>
       </div>)))}
-      {openTotals.length > 1 && <p style={{fontSize:13,color:'var(--hero-muted)',marginBottom:0}}>Each currency stays separate. Nothing is converted.</p>}
+      {heroOverall !== null && <div style={{borderTop:'1px solid var(--hero-rule)',marginTop:12,paddingTop:12,fontSize:14}}>About {fmtEstimate(fx.home as string, Math.abs(heroOverall))} {heroOverall >= 0 ? 'owed to you' : 'you owe'} overall <span style={{color:'var(--hero-muted)',fontSize:12}}>· today’s rate</span></div>}
+      {openTotals.length > 1 && heroOverall === null && <p style={{fontSize:13,color:'var(--hero-muted)',marginBottom:0}}>Each currency stays separate. Nothing is converted.</p>}
     </div>)}
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
       <h2 style={{margin:0}}>Your groups</h2>
       <button style={{...primary,borderRadius:'var(--radius-pill)',padding:'10px 18px'}} onClick={()=>setShowCreate(true)}>+ New group</button>
     </div>
-    {groups?.active?.length === 0 && <div style={{...homeCard,textAlign:'center',padding:'28px 20px'}}>
+    {groups?.active?.length === 0 && <div style={{...emptyBox,padding:'28px 20px'}}>
       <div style={{fontFamily:'var(--display)',fontSize:20,fontWeight:700}}>No groups yet</div>
       <p style={{color:'var(--muted)',margin:'8px 0 16px'}}>Make one for a trip, your flat or a regular makan crew, then share the invite link.</p>
       <button style={{...primary,padding:'12px 20px'}} onClick={()=>setShowCreate(true)}>Create a group</button>
@@ -78,7 +88,7 @@ export function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroup
         <strong style={{fontSize:17}}>{g.name}</strong>
         <div style={{fontSize:13,color:'var(--muted)',marginTop:6}}>{g.memberCount ?? '?'} {(g.memberCount===1)?'person':'people'} · {noExpenses ? 'No expenses yet' : `${g.expenseCount} ${g.expenseCount===1?'expense':'expenses'}`}{spent.length>0 ? ` · ${spent.map((s:any)=>fmt(s.amount,s.currency)).join(' + ')} spent` : ''}</div>
         {!noExpenses && openMy.length===0 && <div style={{marginTop:8,fontSize:14,color:'var(--muted)',display:'flex',alignItems:'center',gap:6}}>Settled <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5" /></svg></div>}
-        {openMy.length>0 && <div style={{marginTop:8}}>{groupBalancesByVerb(openMy).map((vg:any,gi:number)=>vg.items.map((b:any,i:number)=>(<div key={b.currency} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,fontSize:14,color:b.balance>0?'var(--tint-text)':'var(--danger-text)',...(i===0 && gi>0 ? {borderTop:balHairline,paddingTop:8,marginTop:8} : {})}}><span>{i===0 ? vg.verb : ''}</span><span style={{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums',fontWeight:600}}>{fmt(Math.abs(b.balance),b.currency)}</span></div>)))}</div>}
+        {openMy.length>0 && <div style={{marginTop:8}}>{groupBalancesByVerb(openMy).map((vg:any,gi:number)=>vg.items.map((b:any,i:number)=>(<div key={b.currency} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,fontSize:14,color:b.balance>0?'var(--tint-text)':'var(--danger-text)',...(i===0 && gi>0 ? {borderTop:balHairline,paddingTop:8,marginTop:8} : {})}}><span>{i===0 ? vg.verb : ''}</span><span style={{display:'inline-flex',alignItems:'baseline',gap:8}}><Estimate minor={b.balance} cur={b.currency} /><span style={{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums',fontWeight:600}}>{fmt(Math.abs(b.balance),b.currency)}</span></span></div>)))}</div>}
         </div>
       </div>);
     })}
@@ -98,7 +108,9 @@ export function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroup
 }
 
 
-export function YouView({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, loadGroup, onBack, setError, appearance, setAppearance, onFeedback, unreadReplies, showMessages, setShowMessages, refreshMeta }: any) {
+export function SettingsView({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, loadGroup, onBack, setError, appearance, setAppearance, onFeedback, unreadReplies, showMessages, setShowMessages, refreshMeta }: any) {
+  const [showHomeCur, setShowHomeCur] = useState(false);
+  const fx = useFx();
   const [showArchived, setShowArchived] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(user.name || '');
@@ -174,14 +186,23 @@ export function YouView({ user, setUser, onLogout, setAuthNotice, groups, loadGr
     {archived.map((g:any)=>(<div key={g.id} style={{...homeCard,display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}><strong style={{flex:1,minWidth:0}}>{g.name}</strong><span style={{display:'flex',gap:8,flexShrink:0}}><AsyncButton style={btn} onClick={async()=>{await api(`/api/groups/${g.id}/restore`,'POST'); loadGroups(); setShowArchived(false);}}>Restore</AsyncButton><AsyncButton style={btn} onClick={()=>loadGroup(g.id)}>Open</AsyncButton></span></div>))}
   </div>);
   return (<div style={S}>
-    <button style={{...btn,borderRadius:'var(--radius-pill)',padding:'10px 18px',marginBottom:16}} onClick={onBack}>← Home</button>
-    <div style={{display:'flex',flexDirection:'column',alignItems:'center',textAlign:'center',marginBottom:20}}>
+    <div style={{display:'flex',alignItems:'center',gap:4,marginBottom:12,marginLeft:-10}}>
+      <button type="button" aria-label="Back to Home" onClick={onBack} style={iconBtn}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg></button>
+      <h1 style={{margin:0,fontSize:24}}>Settings</h1>
+    </div>
+    <div style={{display:'flex',flexDirection:'column',alignItems:'center',textAlign:'center',marginBottom:8}}>
       <div style={{width:72,height:72,borderRadius:'50%',background:'var(--avatar-green)',color:'var(--on-avatar)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:28}}>{initials(user.name)}</div>
       <div style={{fontSize:24,fontWeight:700,marginTop:12}}>{user.name}</div>
       <div style={{fontSize:13,color:'var(--muted)',marginTop:4}}>{user.email}</div>
       {since && <div style={{fontSize:13,color:'var(--muted)',marginTop:4}}>User since {since} · {totalGroups} {totalGroups===1?'group':'groups'}{archived.length>0 ? ` (${archived.length} archived)` : ''}</div>}
     </div>
-    <h3 style={{marginBottom:8}}>Appearance</h3>
+    <h2 style={sectionTitle}>Money</h2>
+    <div className="flat-list" style={{...homeCard,padding:0,overflow:'hidden',marginBottom:6}}>
+      <button type="button" className="flat-row" onClick={()=>setShowHomeCur(true)}><span>Home currency</span><span style={{color:'var(--muted)'}}>{!user.home_currency || user.home_currency==='none' ? 'Off' : `${user.home_currency} · ${CURRENCY_INFO[user.home_currency]?.name || ''}`} ›</span></button>
+    </div>
+    <p style={{fontSize:13,color:'var(--muted)',margin:'0 4px 4px',lineHeight:1.45}}>{fx.home ? `Other currencies get a rough ≈ ${fx.home} estimate. Balances and settling stay in the original currency.${fx.fetchedAt ? ` Rates updated ${new Date(fx.fetchedAt).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}.` : ''}` : 'Estimates are off. Turn them on to see rough amounts in your currency.'}</p>
+    {showHomeCur && <HomeCurrencySheet value={user.home_currency || null} onClose={()=>setShowHomeCur(false)} onPick={async (code)=>{ const prev = user; setUser({ ...user, home_currency: code }); try { const d = await api('/api/me', 'PATCH', { homeCurrency: code }); setUser(d.user); } catch (e: any) { setUser(prev); setError?.(e.message); } }} />}
+    <h2 style={sectionTitle}>Appearance</h2>
     <div role="radiogroup" aria-label="Theme" className="flat-list" style={{...homeCard,padding:0,overflow:'hidden'}}>
       {THEMES.map(t=>{
         const on = appearance.theme===t.id;
@@ -196,13 +217,13 @@ export function YouView({ user, setUser, onLogout, setAuthNotice, groups, loadGr
         </button>);
       })}
     </div>
-    <h3 style={{marginBottom:8}}>Mode</h3>
+    <h2 style={sectionTitle}>Mode</h2>
     <div role="radiogroup" aria-label="Mode" style={tabTrack}>
       {(['system','light','dark'] as const).map(m=>(<button key={m} type="button" role="radio" aria-checked={appearance.mode===m} style={appearance.mode===m?tabPillActive:tabPill} onClick={()=>setAppearance({ ...appearance, mode: m })}>{m==='system'?'System':m==='light'?'Light':'Dark'}</button>))}
     </div>
     <p style={{fontSize:13,color:'var(--muted)',margin:'-8px 0 16px'}}>{appearance.mode==='system' ? 'Follows your device.' : `Always ${appearance.mode}, whatever your device says.`}</p>
     <p style={{fontSize:13,color:'var(--muted)',margin:'0 0 16px'}}>Only changes how the app looks for you. Saved to your account and applied on all your devices.</p>
-    <h3 style={{marginBottom:8}}>Account</h3>
+    <h2 style={sectionTitle}>Account</h2>
     <div className="flat-list" style={{...homeCard,padding:0,overflow:'hidden'}}>
       <button className="flat-row" onClick={()=>{setNameDraft(user.name); setEditError(''); setEditingName(true);}}><span>Edit name <span style={{color:'var(--muted)'}}>· Shown to your groups</span></span><span style={{color:'var(--muted)'}}>›</span></button>
       <button className="flat-row" onClick={()=>{setCpCurrent(''); setCpNew(''); setCpConfirm(''); setCpError(''); setShowChangePassword(true);}}><span>{user.has_password ? 'Change password' : 'Set password'}{!user.has_password && <span style={{color:'var(--muted)'}}> · Add email sign-in</span>}</span><span style={{color:'var(--muted)'}}>›</span></button>
@@ -224,13 +245,11 @@ export function YouView({ user, setUser, onLogout, setAuthNotice, groups, loadGr
       promote the app session to admin. Non-admins never see it. */}
       {user.is_admin ? (<button className="flat-row" onClick={()=>{ window.location.href = '/?admin'; }}><span>Admin</span><span style={{color:'var(--muted)'}}>›</span></button>) : null}
     </div>
-    <h3 style={{marginBottom:8}}>Notifications</h3>
+    <h2 style={sectionTitle}>Notifications</h2>
     <div style={{...homeCard,display:'flex',flexDirection:'column',gap:8}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
         <span>Push notifications <span style={{color:'var(--muted)'}}>· Expenses and settle-ups in your groups</span></span>
-        <button type="button" role="switch" aria-checked={!!pushEnabled} aria-label="Push notifications" disabled={!pushSupported || pushBusy || pushEnabled === null} onClick={togglePush} style={{flexShrink:0,width:52,height:32,borderRadius:'var(--radius-pill)',border:'var(--border-w) solid var(--border)',background:pushEnabled ? 'var(--accent)' : 'var(--field)',cursor:(!pushSupported || pushBusy || pushEnabled === null) ? 'default' : 'pointer',opacity:(!pushSupported || pushBusy || pushEnabled === null) ? 0.5 : 1,padding:0,position:'relative'}}>
-          <span style={{position:'absolute',top:3,left:pushEnabled ? 25 : 3,width:24,height:24,borderRadius:'50%',background:'#fff',boxShadow:'0 1px 3px rgba(0,0,0,0.3)'}} />
-        </button>
+        <button type="button" role="switch" aria-checked={!!pushEnabled} aria-label="Push notifications" disabled={!pushSupported || pushBusy || pushEnabled === null} onClick={togglePush} style={switchStyle(!!pushEnabled, !pushSupported || pushBusy || pushEnabled === null)}><span style={switchKnob(!!pushEnabled)} /></button>
       </div>
       {pushError && <div style={{color:'var(--danger-text)',fontSize:13}}>{pushError}</div>}
       {!pushSupported && <div style={{color:'var(--muted)',fontSize:13}}>Push notifications are not supported in this browser. On iPhone, add the app to your Home Screen first (iOS 16.4+).</div>}
@@ -244,13 +263,13 @@ export function YouView({ user, setUser, onLogout, setAuthNotice, groups, loadGr
     straight to Wai.") plus a teal "New" pill, and Wai's live
     screenshot 2026-11-13 showed that looking off against the
     one-line sibling rows — subline and pill dropped the same day. */}
-    <h3 style={{marginBottom:8}}>Feedback</h3>
+    <h2 style={sectionTitle}>Help and feedback</h2>
     <div className="flat-list" style={{...homeCard,padding:0,overflow:'hidden'}}>
       <button type="button" onClick={()=>onFeedback(null)} className="flat-row"><span>Send feedback</span><span style={{color:'var(--muted)'}}>›</span></button>
       <button type="button" onClick={()=>setShowMessages(true)} className="flat-row"><span>Your messages</span><span style={{display:'flex',alignItems:'center',gap:8,color:'var(--muted)'}}>{unreadReplies>0 && <span style={{background:'var(--danger-text)',color:'var(--bg)',fontSize:12,fontWeight:700,borderRadius:'var(--radius-pill)',padding:'1px 8px'}}>{unreadReplies} new</span>}›</span></button>
     </div>
     {showMessages && <MessagesSheet onClose={()=>{ setShowMessages(false); refreshMeta?.(); }} onChanged={()=>refreshMeta?.()} />}
-    <h3 style={{marginBottom:8}}>Groups</h3>
+    <h2 style={sectionTitle}>Groups</h2>
     <div className="flat-list" style={{...homeCard,padding:0,overflow:'hidden'}}>
       <button className="flat-row" onClick={()=>setShowArchived(true)}><span>Archived groups</span><span style={{color:'var(--muted)'}}>{archived.length===0 ? 'No archived groups' : `${archived.length} archived · ${archived[0].name}`} ›</span></button>
     </div>

@@ -1,141 +1,10 @@
 {
- "$note": "Theme tokens. scripts/generate-themes.mjs turns this into src/themes.css as [data-theme][data-mode] blocks (Haven's model: theme x System/Light/Dark). Market Green, Tomato & Ink and Night Utility are ported from nwk2/haven packages/tokens/tokens.json and mapped onto this app's variables; member dots and category colours come from Kopitiam.",
+ "$note": "Theme tokens. scripts/generate-themes.mjs turns this into src/themes.css as [data-theme][data-mode] blocks (Haven's model: theme x System/Light/Dark). Market Green (base), Tomato & Ink and Night Utility are ported from nwk2/haven packages/tokens/tokens.json and mapped onto this app's variables (Kopitiam, the original palette, was retired); member dots and category colours come from that original palette.",
  "base": {
-  "theme": "kopitiam",
+  "theme": "market",
   "mode": "system"
  },
  "themes": {
-  "kopitiam": {
-   "name": "Kopitiam",
-   "tag": "Warm and local",
-   "shape": {
-    "radius-card": "20px",
-    "radius-control": "10px",
-    "radius-pill": "999px",
-    "border-w": "1px",
-    "outline-w": "0px",
-    "font-heading": "Bricolage Grotesque",
-    "font-body": "system-ui",
-    "heading-weight": 800,
-    "heading-tracking": "-0.01em"
-   },
-   "light": {
-    "bg": "#F6F1E9",
-    "card": "#FFFFFF",
-    "field": "#EDE5D8",
-    "subtle-bg": "#EDE5D8",
-    "border": "#E0D6C6",
-    "hairline": "#E9E0D2",
-    "text": "#1D1813",
-    "muted": "#6B6155",
-    "accent": "#1F6B45",
-    "accent-text": "#FFFFFF",
-    "accent-disabled": "#C9DDD0",
-    "accent-text-disabled": "#6B6155",
-    "tint-bg": "#DCEEE2",
-    "tint-text": "#1F6B45",
-    "danger-bg": "#FBE3D8",
-    "danger-text": "#B13E1C",
-    "warn-bg": "#FBEBC8",
-    "warn-text": "#7A4F08",
-    "avatar-green": "#4553C4",
-    "on-avatar": "#FFFFFF",
-    "pill-active": "#FFFFFF",
-    "check-border": "#B3A898",
-    "hero-bg": "#1D1813",
-    "hero-text": "#F6F1E9",
-    "hero-muted": "#C9BFAF",
-    "hero-rule": "#4A4036",
-    "hero-owed": "#8FDDB0",
-    "hero-owe": "#FFA47F",
-    "dot-0": "#1F8A5B",
-    "dot-1": "#6366F1",
-    "dot-2": "#E0577A",
-    "dot-3": "#C98A12",
-    "dot-4": "#3B7DB3",
-    "dot-5": "#A64FA0",
-    "dot-6": "#5E8F3E",
-    "dot-7": "#D0662F",
-    "cat-food": "#D9A23A",
-    "cat-transport": "#5D8DB3",
-    "cat-accommodation": "#B9709F",
-    "cat-activities": "#6E9E5C",
-    "cat-shopping": "#D07A50",
-    "cat-other": "#9A9086",
-    "cat-food-bg": "#F6E2B8",
-    "cat-transport-bg": "#D6E5F1",
-    "cat-accommodation-bg": "#EEDAEB",
-    "cat-activities-bg": "#DCEBD4",
-    "cat-shopping-bg": "#F8DCCB",
-    "cat-other-bg": "#E7E1D8",
-    "cat-food-glyph": "#7A4F08",
-    "cat-transport-glyph": "#2A5576",
-    "cat-accommodation-glyph": "#74356C",
-    "cat-activities-glyph": "#3A6629",
-    "cat-shopping-glyph": "#8E3A17",
-    "cat-other-glyph": "#5E564C",
-    "shadow": "none",
-    "info-bg": "#D6E5F1"
-   },
-   "dark": {
-    "bg": "#15110D",
-    "card": "#211B16",
-    "field": "#2B241E",
-    "subtle-bg": "#2B241E",
-    "border": "#3A3129",
-    "hairline": "#332B23",
-    "text": "#F4EEE4",
-    "muted": "#A89E90",
-    "accent": "#7BD3A0",
-    "accent-text": "#0E2619",
-    "accent-disabled": "#2A4A37",
-    "accent-text-disabled": "#8FA597",
-    "tint-bg": "#17321F",
-    "tint-text": "#7BD3A0",
-    "danger-bg": "#3A2118",
-    "danger-text": "#FF9C78",
-    "warn-bg": "#3A2D12",
-    "warn-text": "#F2C66D",
-    "avatar-green": "#BBA4F7",
-    "on-avatar": "#15110D",
-    "pill-active": "#3A3129",
-    "check-border": "#5C5348",
-    "hero-bg": "#F4EEE4",
-    "hero-text": "#15110D",
-    "hero-muted": "#5C5348",
-    "hero-rule": "#CFC5B6",
-    "hero-owed": "#1F6B45",
-    "hero-owe": "#B13E1C",
-    "dot-0": "#7BD3A0",
-    "dot-1": "#A5B4FC",
-    "dot-2": "#F4A3B4",
-    "dot-3": "#F2C66D",
-    "dot-4": "#8DBBE0",
-    "dot-5": "#E2A6D8",
-    "dot-6": "#A6D38E",
-    "dot-7": "#F3A07E",
-    "cat-food": "#F2C66D",
-    "cat-transport": "#8DBBE0",
-    "cat-accommodation": "#E2A6D8",
-    "cat-activities": "#A6D38E",
-    "cat-shopping": "#F3A07E",
-    "cat-other": "#C9BFB2",
-    "cat-food-bg": "#3F2F1B",
-    "cat-transport-bg": "#1C2B38",
-    "cat-accommodation-bg": "#331F30",
-    "cat-activities-bg": "#1F2E1A",
-    "cat-shopping-bg": "#3A2118",
-    "cat-other-bg": "#2C2722",
-    "cat-food-glyph": "#F2C66D",
-    "cat-transport-glyph": "#8DBBE0",
-    "cat-accommodation-glyph": "#E2A6D8",
-    "cat-activities-glyph": "#A6D38E",
-    "cat-shopping-glyph": "#F3A07E",
-    "cat-other-glyph": "#C9BFB2",
-    "shadow": "none",
-    "info-bg": "#1C2B38"
-   }
-  },
   "market": {
    "name": "Market Green",
    "tag": "Calm and practical",
@@ -148,7 +17,8 @@
     "font-heading": "Plus Jakarta Sans",
     "font-body": "Plus Jakarta Sans",
     "heading-weight": 700,
-    "heading-tracking": "-0.02em"
+    "heading-tracking": "-0.02em",
+    "row-height": "56px"
    },
    "light": {
     "bg": "#FBFAF6",
@@ -206,7 +76,11 @@
     "cat-shopping-glyph": "#8E3A17",
     "cat-other-glyph": "#5E564C",
     "shadow": "none",
-    "info-bg": "#D9E6F3"
+    "info-bg": "#D9E6F3",
+    "overlay-hover": "rgba(0,0,0,0.08)",
+    "overlay-pressed": "rgba(0,0,0,0.16)",
+    "scrim": "rgba(28,36,32,0.45)",
+    "accent-2": "#B4602A"
    },
    "dark": {
     "bg": "#141815",
@@ -264,7 +138,11 @@
     "cat-shopping-glyph": "#F3A07E",
     "cat-other-glyph": "#C9BFB2",
     "shadow": "none",
-    "info-bg": "#17222F"
+    "info-bg": "#17222F",
+    "overlay-hover": "rgba(255,255,255,0.10)",
+    "overlay-pressed": "rgba(255,255,255,0.18)",
+    "scrim": "rgba(0,0,0,0.55)",
+    "accent-2": "#E0915D"
    }
   },
   "tomato": {
@@ -279,7 +157,8 @@
     "font-heading": "Bricolage Grotesque",
     "font-body": "DM Sans",
     "heading-weight": 800,
-    "heading-tracking": "-0.03em"
+    "heading-tracking": "-0.03em",
+    "row-height": "56px"
    },
    "light": {
     "bg": "#FFFFFF",
@@ -337,7 +216,11 @@
     "cat-shopping-glyph": "#8E3A17",
     "cat-other-glyph": "#5E564C",
     "shadow": "3px 3px 0 #161311",
-    "info-bg": "#FFF0C2"
+    "info-bg": "#FFF0C2",
+    "overlay-hover": "rgba(0,0,0,0.08)",
+    "overlay-pressed": "rgba(0,0,0,0.16)",
+    "scrim": "rgba(28,36,32,0.45)",
+    "accent-2": "#F2C14E"
    },
    "dark": {
     "bg": "#161311",
@@ -395,7 +278,11 @@
     "cat-shopping-glyph": "#F3A07E",
     "cat-other-glyph": "#C9BFB2",
     "shadow": "3px 3px 0 #FFF6EC",
-    "info-bg": "#3A3016"
+    "info-bg": "#3A3016",
+    "overlay-hover": "rgba(255,255,255,0.10)",
+    "overlay-pressed": "rgba(255,255,255,0.18)",
+    "scrim": "rgba(0,0,0,0.55)",
+    "accent-2": "#F2C14E"
    }
   },
   "night": {
@@ -410,7 +297,8 @@
     "font-heading": "Inter",
     "font-body": "Inter",
     "heading-weight": 600,
-    "heading-tracking": "-0.01em"
+    "heading-tracking": "-0.01em",
+    "row-height": "48px"
    },
    "light": {
     "bg": "#F4F6F4",
@@ -468,7 +356,11 @@
     "cat-shopping-glyph": "#8E3A17",
     "cat-other-glyph": "#5E564C",
     "shadow": "none",
-    "info-bg": "#DCE8F6"
+    "info-bg": "#DCE8F6",
+    "overlay-hover": "rgba(0,0,0,0.08)",
+    "overlay-pressed": "rgba(0,0,0,0.16)",
+    "scrim": "rgba(28,36,32,0.45)",
+    "accent-2": "#2F6FBF"
    },
    "dark": {
     "bg": "#111413",
@@ -526,7 +418,11 @@
     "cat-shopping-glyph": "#F3A07E",
     "cat-other-glyph": "#C9BFB2",
     "shadow": "none",
-    "info-bg": "#162434"
+    "info-bg": "#162434",
+    "overlay-hover": "rgba(255,255,255,0.10)",
+    "overlay-pressed": "rgba(255,255,255,0.18)",
+    "scrim": "rgba(0,0,0,0.55)",
+    "accent-2": "#7FB2F0"
    }
   }
  }

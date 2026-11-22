@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { fmt } from '../api';
-import { AsyncButton, ConfirmSheet, PickerSheet, S, Sk, avatar, balCard, balHairline, balRow, btn, homeCard, initials, input, noAccountChip, primary, tabPill, tabPillActive, tabTrack } from '../ui';
+import { AsyncButton, ConfirmSheet, PickerSheet, S, Sk, avatar, balCard, balHairline, balRow, btn, catControl, catControlActive, homeCard, iconBtn, initials, input, noAccountChip, primary, tabPill, tabPillActive, tabTrack } from '../ui';
 
 // ---- Admin (separate user, separate page) ----
 // Admin token lives under its own localStorage key, NOT the regular
@@ -37,9 +37,9 @@ export function fuzzyMatch(query: string, text: string): boolean {
 // filter chips, and a search field with an icon.
 export function fmtDay(iso: string) { const d = new Date(iso); return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }); }
 export const adminChip: React.CSSProperties = { fontSize:12, background:'var(--field)', color:'var(--muted)', padding:'2px 8px', borderRadius:'var(--radius-pill)', marginLeft:8, fontWeight:600, verticalAlign:'middle' };
-export const filterChip = (on: boolean): React.CSSProperties => ({ height:34, padding:'0 14px', borderRadius:'var(--radius-pill)', border:`1px solid ${on ? 'var(--text)' : 'var(--border)'}`, background:on ? 'var(--text)' : 'transparent', color:on ? 'var(--bg)' : 'var(--text)', fontSize:14, fontWeight:on ? 600 : 400, cursor:'pointer' });
+export const filterChip = (on: boolean): React.CSSProperties => (on ? catControlActive : catControl);
 export function SearchField({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
-  return (<div style={{display:'flex',alignItems:'center',gap:8,background:'var(--field)',borderRadius:12,padding:'10px 12px',margin:'0 0 12px'}}>
+  return (<div style={{display:'flex',alignItems:'center',gap:8,background:'var(--card)',border:'var(--border-w) solid var(--muted)',borderRadius:'var(--radius-card)',minHeight:44,boxSizing:'border-box',padding:'0 12px',margin:'0 0 12px'}}>
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" aria-hidden="true" style={{flexShrink:0}}><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
     <input style={{flex:1,minWidth:0,background:'transparent',border:'none',outline:'none',color:'var(--text)',fontSize:16,padding:0}} placeholder={placeholder} value={value} onChange={e=>onChange(e.target.value)} aria-label={placeholder} />
     {value && <button type="button" aria-label="Clear search" onClick={()=>onChange('')} style={{background:'transparent',border:'none',color:'var(--muted)',cursor:'pointer',fontSize:18,lineHeight:1,padding:0}}>×</button>}
@@ -238,9 +238,9 @@ export function AdminView() {
     } catch (e: any) { setError(e.message); } finally { setResettingId(null); }
   }
   return (<div style={S}><div style={{display:'flex',alignItems:'center',gap:12,marginBottom:16}}>
-    <button type="button" aria-label="Back to app" onClick={()=>{ window.location.href = '/'; }} style={{width:44,height:44,borderRadius:'50%',border:'none',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg></button>
+    <button type="button" aria-label="Back to app" onClick={()=>{ window.location.href = '/'; }} style={iconBtn}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg></button>
     <h1 style={{margin:0,flex:1}}>Admin</h1>
-    <button type="button" aria-label="Admin menu" onClick={()=>setShowAdminMenu(true)} style={{width:44,height:44,borderRadius:'50%',border:'none',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg></button>
+    <button type="button" aria-label="Admin menu" onClick={()=>setShowAdminMenu(true)} style={iconBtn}><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg></button>
   </div>
     {showAdminMenu && <PickerSheet title="Admin" onClose={()=>setShowAdminMenu(false)}>
       <p style={{color:'var(--muted)',fontSize:14,margin:'8px 0 12px'}}>Signed in as {adminUser.name} ({adminUser.email})</p>

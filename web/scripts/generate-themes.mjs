@@ -13,6 +13,7 @@ const shapeVars = (s) => ({
   'border-w': s['border-w'], 'outline-w': s['outline-w'],
   display: stack(s['font-heading']), 'font-body': stack(s['font-body']),
   'heading-weight': s['heading-weight'], 'heading-tracking': s['heading-tracking'],
+  'row-height': s['row-height'] || '56px', 'min-target': '44px',
 });
 
 const base = t.themes[t.base.theme];

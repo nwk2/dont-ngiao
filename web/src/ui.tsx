@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { CATEGORIES, CURRENCIES } from './api';
 
 export const S = { maxWidth: 640, margin: '0 auto', padding: '16px', paddingBottom: 90 } as const; // DESKTOP CAP, Nov 2026: maxW was a typo (not a real CSS property), so the 640px cap never applied and the main content stretched full-width on desktop. maxWidth makes every view using S a centred 640px column on wide screens, matching the sheets (which already cap at 640) — on a phone (<640px) it is full-width as before.
-export const card: React.CSSProperties = { background:'var(--card)', boxShadow:'var(--shadow)', border:'var(--border-w) solid var(--hairline)', borderRadius:'var(--radius-card)', padding:14, marginBottom:12, color:'var(--text)', lineHeight:1.45 };
+export const card: React.CSSProperties = { background:'var(--card)', border:'var(--border-w) solid var(--border)', boxShadow:'var(--shadow)', borderRadius:'var(--radius-card)', padding:14, marginBottom:12, color:'var(--text)', lineHeight:1.45 };
 export const rowCard: React.CSSProperties = { ...card, padding:'12px 14px', lineHeight:1.4 };
 // BALANCES REVAMP 2026-11-05 (dark only, restyle only): rows inside one
 // borderless card (radius 20, no var(--hairline) border) with hairline dividers,
@@ -11,7 +11,7 @@ export const rowCard: React.CSSProperties = { ...card, padding:'12px 14px', line
 // Logic below is unchanged: net-only Your position, per-member Paid/share,
 // creditor-only Settle (with placeholder-debtor exception), debtor-or-
 // creditor-only payment deletion.
-export const balCard: React.CSSProperties = { background:'var(--card)', border:'var(--outline-w) solid var(--border)', boxShadow:'var(--shadow)', borderRadius:'var(--radius-card)', padding:'6px 0', marginBottom:12, color:'var(--text)', lineHeight:1.45 };
+export const balCard: React.CSSProperties = { background:'var(--card)', border:'var(--border-w) solid var(--border)', boxShadow:'var(--shadow)', borderRadius:'var(--radius-card)', padding:'6px 0', marginBottom:12, color:'var(--text)', lineHeight:1.45 };
 export const balRow: React.CSSProperties = { display:'flex', alignItems:'center', gap:12, padding:'12px 14px' };
 export const balHairline = '1px solid var(--hairline)';
 // HOME + TABS REVAMP 2026-11-05 (dark only, restyle only): borderless
@@ -61,10 +61,20 @@ export function logIcon(type: string) {
   };
   return (<span style={{width:28,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><svg {...common}>{paths[type] || paths['expense_added']}</svg></span>);
 }
-export const homeCard: React.CSSProperties = { background:'var(--card)', border:'var(--outline-w) solid var(--border)', boxShadow:'var(--shadow)', borderRadius:'var(--radius-card)', padding:16, marginBottom:12, color:'var(--text)', lineHeight:1.45 };
-export const tabTrack: React.CSSProperties = { display:'flex', gap:0, background:'var(--field)', borderRadius:'var(--radius-pill)', padding:3, marginBottom:16 };
-export const tabPill: React.CSSProperties = { flex:1, padding:'10px 4px', fontSize:14, color:'var(--muted)', background:'transparent', border:'none', borderRadius:'var(--radius-pill)', fontWeight:400, cursor:'pointer' };
-export const tabPillActive: React.CSSProperties = { ...tabPill, color:'var(--text)', background:'var(--pill-active)', fontWeight:600 };
+// HAVEN COMPONENTS (nwk2/haven packages/ui): the shared styles below follow
+// Haven's .h-card / .h-seg / .h-btn / .h-chip / .h-input / .h-icon-btn /
+// .h-section-title, reading only theme variables, so every screen picks up
+// the theme's radius, border width, outline and shadow.
+export const iconBtn: React.CSSProperties = { width:44, height:44, display:'inline-flex', alignItems:'center', justifyContent:'center', border:0, background:'transparent', color:'var(--text)', borderRadius:'var(--radius-card)', padding:0, cursor:'pointer', flexShrink:0, position:'relative' };
+export const sectionTitle: React.CSSProperties = { margin:'22px 0 8px', fontFamily:'inherit', fontSize:13, fontWeight:700, letterSpacing:0, color:'var(--muted)' };
+export const emptyBox: React.CSSProperties = { border:'1.5px dashed var(--muted)', borderRadius:'var(--radius-card)', padding:18, textAlign:'center', display:'flex', flexDirection:'column', gap:6, alignItems:'center', marginBottom:12 };
+export const switchStyle = (on: boolean, disabled = false): React.CSSProperties => ({ width:52, height:32, borderRadius:16, border:0, padding:0, position:'relative', background:on ? 'var(--accent)' : 'var(--muted)', cursor:disabled ? 'default' : 'pointer', opacity:disabled ? 0.5 : 1, flexShrink:0 });
+export const switchKnob = (on: boolean): React.CSSProperties => ({ position:'absolute', top:3, left:on ? 23 : 3, width:26, height:26, borderRadius:13, background:on ? 'var(--accent-text)' : 'var(--card)', transition:'left 120ms' });
+export const gearIcon = (<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>);
+export const homeCard: React.CSSProperties = { background:'var(--card)', border:'var(--border-w) solid var(--border)', boxShadow:'var(--shadow)', borderRadius:'var(--radius-card)', padding:16, marginBottom:12, color:'var(--text)', lineHeight:1.45 };
+export const tabTrack: React.CSSProperties = { display:'grid', gridAutoFlow:'column', gridAutoColumns:'1fr', gap:4, padding:4, border:'1px solid var(--border)', borderRadius:'var(--radius-card)', background:'var(--card)', marginBottom:16 };
+export const tabPill: React.CSSProperties = { minHeight:40, padding:'0 4px', fontSize:14, color:'var(--muted)', background:'transparent', border:0, borderRadius:'var(--radius-control)', fontWeight:700, fontFamily:'inherit', cursor:'pointer' };
+export const tabPillActive: React.CSSProperties = { ...tabPill, color:'var(--bg)', background:'var(--text)' };
 export const avatar: React.CSSProperties = { width:40, height:40, borderRadius:'50%', background:'var(--avatar-green)', color:'var(--on-avatar)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:15, flexShrink:0 };
 export const noAccountChip: React.CSSProperties = { fontSize:11, background:'var(--warn-bg)', color:'var(--warn-text)', padding:'2px 8px', borderRadius:'var(--radius-pill)', fontWeight:600, whiteSpace:'nowrap', marginLeft:8, verticalAlign:'middle' };
 // PAYER PILL, Nov 2026: marks the payer in the expense detail split rows
@@ -74,15 +84,15 @@ export const noAccountChip: React.CSSProperties = { fontSize:11, background:'var
 // confused with settling.
 export const payerChip: React.CSSProperties = { fontSize:11, background:'transparent', border:'1px solid var(--tint-text)', color:'var(--tint-text)', padding:'1px 7px', borderRadius:'var(--radius-pill)', fontWeight:600, whiteSpace:'nowrap', marginLeft:8, verticalAlign:'middle' };
 export const currencyChip: React.CSSProperties = { fontSize:12, background:'var(--tint-bg)', padding:'3px 10px', borderRadius:'var(--radius-pill)', color:'var(--tint-text)', fontWeight:600, whiteSpace:'nowrap' };
-export const btn: React.CSSProperties = { padding:'9px 14px', borderRadius:'var(--radius-pill)', border:'var(--border-w) solid var(--border)', background:'var(--field)', color:'var(--text)' };
-export const primary: React.CSSProperties = { ...btn, background:'var(--accent)', color:'var(--accent-text)', borderColor:'var(--accent)', fontWeight:600 };
+export const btn: React.CSSProperties = { minHeight:44, boxSizing:'border-box', padding:'0 18px', display:'inline-flex', alignItems:'center', justifyContent:'center', gap:8, borderRadius:'var(--radius-pill)', border:'var(--border-w) solid var(--muted)', background:'var(--card)', color:'var(--text)', fontFamily:'inherit', fontSize:15, fontWeight:600, boxShadow:'var(--shadow)', cursor:'pointer', textDecoration:'none' };
+export const primary: React.CSSProperties = { ...btn, background:'var(--accent)', color:'var(--accent-text)', borderColor:'var(--accent)' };
 // Chunk 9: one shared compact style for the Spend by category controls, so
 // Group, Mine, and the currency select look like a set. Compact (down from
 // the inherited ~16px button size), explicit height so the native select
 // matches the buttons. Other buttons in the app keep btn/primary untouched.
-export const catControl: React.CSSProperties = { padding:'8px 14px', fontSize:14, lineHeight:1.4, height:36, boxSizing:'border-box', borderRadius:'var(--radius-control)', border:'var(--border-w) solid var(--border)', background:'var(--field)', color:'var(--text)' };
-export const catControlActive: React.CSSProperties = { ...catControl, background:'var(--accent)', color:'var(--accent-text)', borderColor:'var(--accent)', fontWeight:600 };
-export const input: React.CSSProperties = { width:'100%', boxSizing:'border-box', padding:'10px', border:'var(--border-w) solid var(--border)', borderRadius:'var(--radius-control)', margin:'4px 0 10px', background:'var(--field)', color:'var(--text)', fontSize:16 };
+export const catControl: React.CSSProperties = { minHeight:36, height:36, boxSizing:'border-box', padding:'0 14px', fontSize:13, fontWeight:600, lineHeight:1.4, fontFamily:'inherit', borderRadius:18, border:'1px solid var(--muted)', background:'var(--card)', color:'var(--text)', cursor:'pointer' };
+export const catControlActive: React.CSSProperties = { ...catControl, background:'var(--text)', color:'var(--bg)', borderColor:'var(--text)' };
+export const input: React.CSSProperties = { width:'100%', boxSizing:'border-box', minHeight:44, padding:'10px 12px', border:'var(--border-w) solid var(--muted)', borderRadius:'var(--radius-card)', margin:'4px 0 10px', background:'var(--card)', color:'var(--text)', fontSize:16, fontFamily:'inherit' };
 // Group icon: REMOVED 2026-11-04 at Wai's request ("revert the emoji
 // change, i rather user inputs the emoji into the group name itself").
 // There is no separate icon field, picker, or icon prefix anywhere in
@@ -211,9 +221,9 @@ export type SheetProps = { title?: React.ReactNode; onClose: () => void; childre
 export function Sheet({ title, onClose, children, showClose = true, draggable = true, closeOnBackdrop = true, maxHeight, zIndex = 50 }: SheetProps) {
   const drag = useSheetDrag(onClose);
   const grab = draggable ? { touchAction: 'none' as const, cursor: 'grab' } : {};
-  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={closeOnBackdrop ? (e)=>{ if (e.target===e.currentTarget) onClose(); } : undefined}>
-    <div style={{background:'var(--card)',borderRadius:'var(--radius-card) var(--radius-card) 0 0',padding:16,paddingBottom:'calc(16px + env(safe-area-inset-bottom, 0px))',width:'100%',maxWidth:640,...(maxHeight ? {maxHeight,overflowY:'auto' as const} : {}),...(draggable ? {transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'} : {})}}>
-      {draggable && <div style={{width:36,height:4,borderRadius:'var(--radius-pill)',background:'var(--border)',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />}
+  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'var(--scrim)',zIndex,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={closeOnBackdrop ? (e)=>{ if (e.target===e.currentTarget) onClose(); } : undefined}>
+    <div style={{background:'var(--bg)',borderTop:'var(--outline-w) solid var(--border)',borderRadius:'22px 22px 0 0',padding:16,paddingTop:8,paddingBottom:'calc(24px + env(safe-area-inset-bottom, 0px))',width:'100%',maxWidth:640,...(maxHeight ? {maxHeight,overflowY:'auto' as const} : {}),...(draggable ? {transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'} : {})}}>
+      {draggable && <div style={{width:40,height:5,borderRadius:3,background:'var(--muted)',opacity:0.5,margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />}
       {title !== undefined && <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,...grab}} onPointerDown={draggable ? drag.onPointerDown : undefined}><h2 style={{margin:0}}>{title}</h2>{showClose && <CloseButton onClick={onClose} />}</div>}
       {children}
     </div>
@@ -227,9 +237,6 @@ export function ConfirmSheet({ title, message, confirmLabel, onConfirm, onCancel
         <button style={btn} onClick={onCancel}>Cancel</button>
       </div>
   </Sheet>);
-}
-export function FeedbackIconButton({ onClick }: any) {
-  return (<button type="button" aria-label="Send feedback" title="Send feedback" onClick={onClick} style={{width:40,height:40,borderRadius:'50%',border:'var(--border-w) solid var(--border)',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /><path d="M13 8H7" /><path d="M17 12H7" /></svg></button>);
 }
 
 // Skeleton screens: grey blocks in the exact shape of the content that is

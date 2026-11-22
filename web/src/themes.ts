@@ -6,17 +6,18 @@
 // always use the base theme. Signed-in screens use the account's choice,
 // cached per user on this device so the next launch paints it before the
 // app loads (see the script in index.html), then confirmed from /api/me.
-export type ThemeId = 'kopitiam' | 'market' | 'tomato' | 'night';
+export type ThemeId = 'market' | 'tomato' | 'night';
 export type Mode = 'system' | 'light' | 'dark';
 export type Appearance = { theme: ThemeId; mode: Mode };
 
 export const THEMES: { id: ThemeId; name: string; tag: string }[] = [
-  { id: 'kopitiam', name: 'Kopitiam', tag: 'Warm and local' },
   { id: 'market', name: 'Market Green', tag: 'Calm and practical' },
   { id: 'tomato', name: 'Tomato & Ink', tag: 'Loud and friendly' },
   { id: 'night', name: 'Night Utility', tag: 'Dense and quiet' },
 ];
-export const BASE: Appearance = { theme: 'kopitiam', mode: 'system' };
+// Market Green is the base, as in Haven. A saved 'kopitiam' (retired) is
+// not a known theme any more, so it falls back to this, keeping the mode.
+export const BASE: Appearance = { theme: 'market', mode: 'system' };
 
 const LAST_USER_KEY = 'dont-ngiao:lastUser';
 const cacheKey = (userId: string) => `dont-ngiao:appearance:${userId}`;
@@ -42,7 +43,7 @@ export function takeLegacyChoice(): Appearance | null {
   try {
     const v = localStorage.getItem(LEGACY_THEME_KEY);
     localStorage.removeItem(LEGACY_THEME_KEY);
-    return v === 'light' || v === 'dark' ? { theme: 'kopitiam', mode: v } : null;
+    return v === 'light' || v === 'dark' ? { theme: 'market', mode: v } : null;
   } catch { return null; }
 }
 export function resolvedMode(mode: Mode): 'light' | 'dark' {

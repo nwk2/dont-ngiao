@@ -1,6 +1,8 @@
 import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { api, fetchVersion, getToken, setToken } from './api';
 import { FeedbackSheet } from './components/FeedbackSheet';
+import { HomeCurrencyPrompt, RateSheet } from './components/Fx';
+import { refreshRates, setHomeCurrency } from './fx';
 import { LAST_GROUP_KEY, readSavedGroup } from './prefs';
 import { GOOGLE_STATE_KEY } from './google';
 import { Appearance, BASE, applyAppearance, cacheAppearance, forgetAppearance, fromUser, takeLegacyChoice } from './themes';
@@ -42,9 +44,9 @@ export default function App() {
   // a different group, so it does not reappear on a later visit.
   const [justJoinedId, setJustJoinedId] = useState<string | null>(null);
   // FEEDBACK, Nov 2026: the shared sheet state lives here (not in
-  // Home/GroupView/YouView) because all three doors open the same
+  // GroupView/SettingsView) because both doors open the same
   // sheet. openFeedback(groupId) sets the default group for the
-  // sheet: the current group from GroupView, null from Home/You (the
+  // sheet: the current group from GroupView, null from Settings (the
   // sheet then falls back to the last-opened group, else the first
   // active group). The sheet mounts fresh on every open, so the form
   // always starts fresh.
@@ -249,6 +251,13 @@ export default function App() {
     return () => document.removeEventListener('visibilitychange', onVisible);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[authState, user?.id]);
+  // Home-currency estimates follow the signed-in user's setting.
+  useEffect(()=>{ setHomeCurrency(authState === 'authed' ? user?.home_currency : null); },[authState, user?.home_currency]);
+  useEffect(()=>{
+    const onVisible = () => { if (document.visibilityState === 'visible') refreshRates(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  },[]);
   function doLogout() { try { localStorage.removeItem(LAST_GROUP_KEY); } catch { /* ignore */ } forgetAppearance(); setAnnouncement(null); setUnreadReplies(0); setToken(null); setUser(null); setGroup(null); setGroups(null); setAuthState('guest'); }
   // INVITE LINK (?invite=<token>), Nov 2026: the token survives the
   // login/register flow because it stays in the URL — a guest sees the
@@ -331,6 +340,9 @@ export default function App() {
     return <HomeSkeleton user={null} />;
   }
   if (authState === 'guest' || !user) return <Suspense fallback={<div style={S} />}><Auth onAuth={doAuth} error={error} loading={loading} notice={authNotice} inviteToken={inviteToken} onInvalidInvite={clearInviteParam} /></Suspense>;
+  // New accounts choose a home currency once (existing ones were set to
+  // SGD by migration 0014). undefined means an older Worker: don't ask.
+  if (user.home_currency === null) return <HomeCurrencyPrompt onDone={async (code) => { const d = await api('/api/me', 'PATCH', { homeCurrency: code }); setUser(d.user); }} />;
   if (inviteToken) return <Suspense fallback={<div style={S} />}><InviteView token={inviteToken} onJoined={handleInviteJoined} onCancel={clearInviteParam} /></Suspense>;
   if (groupLoading) return <GroupSkeleton />;
   // Reload with a detail object when the write already returned one:
@@ -340,7 +352,7 @@ export default function App() {
   // Members landed back on Expenses, hiding the updated data). Refetch
   // (keepTab) is only the fallback for writes that return no detail
   // (archive/restore/leave from Settings, Home restore via loadGroups).
-  if (group) return (<><GroupView group={group} setGroup={setGroup} tab={tab} setTab={setTab} justJoined={justJoinedId === group.id} back={()=>{setJustJoinedId(null); setGroup(null); loadGroups();}} reload={(detail?: any)=> detail && detail.id ? (setGroup(detail), setError(''), Promise.resolve(true)) : loadGroup(group.id, { keepTab: true })} error={error} setError={setError}  onFeedback={()=>openFeedback(group.id)} />{showFeedback && <FeedbackSheet initialGroupId={feedbackGroupId} groups={groups?.active || []} onClose={()=>setShowFeedback(false)} />}</>);
+  if (group) return (<><GroupView group={group} setGroup={setGroup} tab={tab} setTab={setTab} justJoined={justJoinedId === group.id} back={()=>{setJustJoinedId(null); setGroup(null); loadGroups();}} reload={(detail?: any)=> detail && detail.id ? (setGroup(detail), setError(''), Promise.resolve(true)) : loadGroup(group.id, { keepTab: true })} error={error} setError={setError}  onFeedback={()=>openFeedback(group.id)} />{showFeedback && <FeedbackSheet initialGroupId={feedbackGroupId} groups={groups?.active || []} onClose={()=>setShowFeedback(false)} />}<RateSheet /></>);
   if (!groups) return <HomeSkeleton user={user} />;
-  return (<><Home user={user} setUser={setUser} onLogout={doLogout} setAuthNotice={setAuthNotice} groups={groups} loadGroups={loadGroups} loadGroup={(id: string)=>loadGroup(id, { skeleton: true })} error={error} setError={setError}  appearance={appearance} setAppearance={setAppearance} announcement={announcement} unreadReplies={unreadReplies} refreshMeta={refreshMeta} openMessages={urlParams.get('messages')==='1'} onMessagesOpened={()=>{ const q = new URLSearchParams(window.location.search); if (q.has('messages')) { q.delete('messages'); const s = q.toString(); window.history.replaceState(null, '', window.location.pathname + (s ? `?${s}` : '')); setUrlParams(q); } }} onFeedback={openFeedback} />{showFeedback && <FeedbackSheet initialGroupId={feedbackGroupId} groups={groups?.active || []} onClose={()=>setShowFeedback(false)} />}</>);
+  return (<><Home user={user} setUser={setUser} onLogout={doLogout} setAuthNotice={setAuthNotice} groups={groups} loadGroups={loadGroups} loadGroup={(id: string)=>loadGroup(id, { skeleton: true })} error={error} setError={setError}  appearance={appearance} setAppearance={setAppearance} announcement={announcement} unreadReplies={unreadReplies} refreshMeta={refreshMeta} openMessages={urlParams.get('messages')==='1'} onMessagesOpened={()=>{ const q = new URLSearchParams(window.location.search); if (q.has('messages')) { q.delete('messages'); const s = q.toString(); window.history.replaceState(null, '', window.location.pathname + (s ? `?${s}` : '')); setUrlParams(q); } }} onFeedback={openFeedback} />{showFeedback && <FeedbackSheet initialGroupId={feedbackGroupId} groups={groups?.active || []} onClose={()=>setShowFeedback(false)} />}<RateSheet /></>);
 }

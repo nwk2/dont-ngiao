@@ -15,7 +15,7 @@ detail — lives in [docs/spec.md](docs/spec.md).
 
 ## The rules that define the app
 
-- **No FX, ever.** Balances are per currency, never netted or converted. 19
+- **No FX in the money.** Balances are per currency, never netted or converted; home-currency figures are labelled estimates for display only. 19
   currencies; JPY/KRW/VND are whole units, the rest integer cents.
 - **One Settle flow**, amount editable for partial payments. Payments are records
   only, never move real money, and can't exceed the outstanding amount. Settle is

@@ -1,10 +1,12 @@
+import { Estimate, RateLine } from '../components/Fx';
+import { fmtEstimate, totalInHome, useFx } from '../fx';
 import React, { useEffect, useRef, useState } from 'react';
 import { CURRENCIES, api, fmt, fromMinor, toMinor } from '../api';
 import { DateField, fmtDate, todayIso } from '../calendar';
 import { ExpenseModal } from '../components/ExpenseSheet';
 import { OnboardingPrompts } from '../components/Onboarding';
 import { DailyBar, Pie } from '../pie';
-import { AsyncButton, CAT_GLYPH_VARS, CategoryPickerSheet, Chev, CloseButton, ConfirmSheet, EXP_CAT_COLORS, PayerPickerSheet, PickerSheet, S, Sheet, Sk, avatar, balCard, balHairline, balRow, btn, card, catIcon, currencyChip, homeCard, initials, input, logIcon, memberDotColor, noAccountChip, payerChip, personDisplay, primary, rowCard, tabPill, tabPillActive, tabTrack, useSheetDrag } from '../ui';
+import { AsyncButton, CAT_GLYPH_VARS, CategoryPickerSheet, Chev, CloseButton, ConfirmSheet, EXP_CAT_COLORS, PayerPickerSheet, PickerSheet, S, Sheet, Sk, avatar, balCard, balHairline, balRow, btn, card, catIcon, currencyChip, emptyBox, homeCard, iconBtn, initials, input, logIcon, memberDotColor, noAccountChip, payerChip, personDisplay, primary, rowCard, tabPill, tabPillActive, tabTrack, useSheetDrag } from '../ui';
 
 // GroupSkeleton is ALL skeleton, no real buttons: the ← Groups button
 // used to be a real, tappable button (so a user could cancel a pending
@@ -206,6 +208,8 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
     for (const k of Object.keys(d)) if (!best || d[k] > d[best]) best = k;
     return best && tot>0 ? { name: best, pct: Math.round(d[best]/tot*100) } : null;
   })();
+  const fx = useFx();
+  const spentHome = totalInHome(fx, spentByCur.map((x:any)=>({ minor: x.total, cur: x.c })));
   // Day groups for the expense list (expenses arrive sorted by date desc).
   const dayGroups: { date: string; items: any[]; totals: Record<string, number> }[] = [];
   const expSearchQ = expSearch.trim().toLowerCase();
@@ -227,18 +231,18 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
     without promising a working toggle. Icon buttons are 40px circles
     (same shape as the Home avatar button) so both stay tappable. */}
     <div style={{display:'flex',gap:8,alignItems:'center',justifyContent:'space-between'}}>
-      <button type="button" aria-label="Back to groups" onClick={back} style={{width:44,height:44,borderRadius:'50%',border:'none',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg></button>
-      <button type="button" aria-label="Group menu" onClick={()=>setShowMenu(true)} style={{width:44,height:44,borderRadius:'50%',border:'none',background:'var(--field)',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center',padding:0,cursor:'pointer',flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg></button>
+      <button type="button" aria-label="Back to groups" onClick={back} style={iconBtn}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg></button>
+      <button type="button" aria-label="Group menu" onClick={()=>setShowMenu(true)} style={iconBtn}><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg></button>
     </div>
     {justJoined && <OnboardingPrompts />}
     <h1 style={{marginBottom:2,marginTop:16}}>{group.name}</h1>
-    {group.isArchived && <p style={{background:'var(--danger-bg)',padding:8,borderRadius:8}}>This group is archived. Restore it from the ⋯ menu or You → Archived groups to edit it again.</p>}
+    {group.isArchived && <p style={{background:'var(--danger-bg)',padding:8,borderRadius:8}}>This group is archived. Restore it from the ⋯ menu or Settings → Archived groups to edit it again.</p>}
     {/* Sub-header as a metadata row, not a sentence (2026-11-05):
     left = default currency, right = member count, both muted 13px.
     No avatar stack (Wai's choice) and no currency pill — pills were
     just removed from Balances for the same repetition reason. */}
     <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,color:'var(--muted)',fontSize:13,lineHeight:1.4,marginTop:0,marginBottom:16}}>
-      <span>{group.members.length} {group.members.length===1?'member':'members'} · {group.defaultCurrency}</span>
+      <span style={{display:'flex',flexWrap:'wrap',alignItems:'center',columnGap:8}}><span>{group.members.length} {group.members.length===1?'member':'members'} · {group.defaultCurrency}</span><RateLine currencies={[group.defaultCurrency, ...currencies.filter((c:string)=>c!==group.defaultCurrency)]} /></span>
     </div>
     {error && <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:12}}><span style={{color:'var(--danger-text)'}}>{error}</span><button style={btn} onClick={()=>reload()}>Retry</button></div>}
     {group.expenses.length>0 && (<div style={{...homeCard,padding:18,marginBottom:16}}>
@@ -248,7 +252,10 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
       </div>) : (<>
         {myOpen.map((b:any)=>(<div key={b.currency} style={{display:'flex',alignItems:'baseline',justifyContent:'space-between',gap:12,marginBottom:6}}>
           <span style={{color:'var(--muted)'}}>{b.balance>0 ? "You're owed" : 'You owe'}</span>
-          <strong style={{fontFamily:'var(--display)',fontSize:30,fontWeight:800,fontVariantNumeric:'tabular-nums',whiteSpace:'nowrap',color:b.balance>0?'var(--tint-text)':'var(--danger-text)'}}>{fmt(Math.abs(b.balance), b.currency)}</strong>
+          <span style={{display:'flex',flexDirection:'column',alignItems:'flex-end'}}>
+            <strong style={{fontFamily:'var(--display)',fontSize:30,fontWeight:800,fontVariantNumeric:'tabular-nums',whiteSpace:'nowrap',color:b.balance>0?'var(--tint-text)':'var(--danger-text)'}}>{fmt(Math.abs(b.balance), b.currency)}</strong>
+            <Estimate minor={b.balance} cur={b.currency} suffix="at today’s rate" />
+          </span>
         </div>))}
         {mySuggestions.length>0 && <div style={{display:'flex',flexDirection:'column',gap:8,marginTop:10}}>{mySuggestions.map((sg:any,i:number)=>{
           const iOwe = sg.fromMemberId===group.myMemberId;
@@ -269,8 +276,8 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
       <button style={btn} onClick={()=>changeTab('expenses')}>Done</button>
     </div>)}
     {tab==='expenses' && <>
-      {spentByCur.length>0 && <button type="button" aria-expanded={showInsights} onClick={()=>setShowInsights(v=>!v)} style={{...homeCard,width:'100%',border:'none',display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,textAlign:'left',cursor:'pointer',padding:'14px 16px'}}>
-        <span style={{minWidth:0}}><strong style={{fontVariantNumeric:'tabular-nums'}}>{spentByCur.map((x:any)=>fmt(x.total,x.c)).join(' + ')}</strong> <span style={{color:'var(--muted)'}}>spent{topCat ? ` · ${topCat.name} ${topCat.pct}%` : ''}</span></span>
+      {spentByCur.length>0 && <button type="button" aria-expanded={showInsights} onClick={()=>setShowInsights(v=>!v)} style={{...homeCard,width:'100%',display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,textAlign:'left',cursor:'pointer',padding:'14px 16px'}}>
+        <span style={{minWidth:0}}><strong style={{fontVariantNumeric:'tabular-nums'}}>{spentByCur.map((x:any)=>fmt(x.total,x.c)).join(' + ')}</strong> <span style={{color:'var(--muted)'}}>spent{spentHome !== null ? ` · about ${fmtEstimate(fx.home as string, spentHome)} in total` : ''}{topCat ? ` · ${topCat.name} ${topCat.pct}%` : ''}</span></span>
         <span style={{display:'flex',alignItems:'center',gap:4,color:'var(--muted)',fontSize:13,flexShrink:0}}>Insights <Chev open={showInsights} /></span>
       </button>}
       {showInsights && <div style={card}><h3 style={{marginTop:0}}>{catView==='members' ? 'Paid by member' : 'Spend by category'}</h3>
@@ -342,9 +349,9 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
         {catView==='mine' && <p style={{fontSize:12,color:'var(--muted)'}}>Mine = your shares only.</p>}
         {catView==='members' && <p style={{fontSize:12,color:'var(--muted)'}}>Members = total paid by each member (gross, not net balance).</p>}
       </div>}
-      {group.expenses.length===0 && <div style={{...homeCard,textAlign:'center',padding:'24px 16px'}}><div style={{fontWeight:600}}>No expenses yet</div>{!group.isArchived && <div style={{fontSize:14,color:'var(--muted)',marginTop:6}}>Tap Add expense to log the first one.</div>}</div>}
+      {group.expenses.length===0 && <div style={emptyBox}><div style={{fontWeight:600}}>No expenses yet</div>{!group.isArchived && <div style={{fontSize:14,color:'var(--muted)',marginTop:6}}>Tap Add expense to log the first one.</div>}</div>}
       {group.expenses.length>0 && (<div style={{marginBottom:12}}>
-        <div style={{display:'flex',alignItems:'center',gap:8,background:'var(--field)',borderRadius:'var(--radius-control)',padding:'10px 12px'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,background:'var(--card)',border:'var(--border-w) solid var(--muted)',borderRadius:'var(--radius-card)',minHeight:44,boxSizing:'border-box',padding:'0 12px'}}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" style={{flexShrink:0}}><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
           <input style={{flex:1,minWidth:0,background:'transparent',border:'none',outline:'none',color:'var(--text)',fontSize:16,padding:0}} placeholder="Search expenses" value={expSearch} onChange={e=>setExpSearch(e.target.value)} aria-label="Search expenses" />
           {expSearch && <button type="button" aria-label="Clear search" onClick={()=>setExpSearch('')} style={{background:'transparent',border:'none',color:'var(--muted)',cursor:'pointer',fontSize:18,lineHeight:1,padding:0}}>×</button>}
@@ -669,13 +676,13 @@ export function ExpenseDetailSheet({ group, expense: e, onClose, setConfirm, rel
   const [sheetError, setSheetError] = useState('');
   const drag = useSheetDrag(onClose);
   return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
-    <div style={{background:'var(--card)',borderRadius:'var(--radius-card) var(--radius-card) 0 0',padding:16,paddingBottom:'calc(16px + env(safe-area-inset-bottom, 0px))',width:'100%',maxWidth:640,maxHeight:'80vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
+    <div style={{background:'var(--bg)',borderTop:'var(--outline-w) solid var(--border)',borderRadius:'22px 22px 0 0',padding:16,paddingBottom:'calc(16px + env(safe-area-inset-bottom, 0px))',width:'100%',maxWidth:640,maxHeight:'80vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
       <div style={{width:36,height:4,borderRadius:'var(--radius-pill)',background:'var(--border)',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><div style={{flex:1,minWidth:0}}><h2 style={{margin:0,marginBottom:4}}>{e.description}</h2><div style={{marginBottom:6}}><strong style={{fontSize:20}}>{e.display}</strong></div><div><span style={{fontSize:12,background:EXP_CAT_COLORS[e.category] || 'var(--muted)',color:CAT_GLYPH_VARS[e.category] || 'var(--text)',padding:'2px 6px',borderRadius:'var(--radius-pill)'}}>{e.category}</span></div><div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:12,fontSize:13,color:'var(--muted)',marginTop:6}}><span style={{minWidth:0}}>Split between {e.splits.length} people</span><span style={{whiteSpace:'nowrap',flexShrink:0}}>{fmtDate(e.date)}</span></div></div><CloseButton onClick={onClose} /></div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><div style={{flex:1,minWidth:0}}><h2 style={{margin:0,marginBottom:4}}>{e.description}</h2><div style={{marginBottom:6,display:'flex',alignItems:'baseline',gap:8,flexWrap:'wrap'}}><strong style={{fontSize:20}}>{e.display}</strong><Estimate minor={e.amount_minor} cur={e.currency} style={{fontSize:14}} /></div><div><span style={{fontSize:12,background:EXP_CAT_COLORS[e.category] || 'var(--muted)',color:CAT_GLYPH_VARS[e.category] || 'var(--text)',padding:'2px 6px',borderRadius:'var(--radius-pill)'}}>{e.category}</span></div><div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:12,fontSize:13,color:'var(--muted)',marginTop:6}}><span style={{minWidth:0}}>Split between {e.splits.length} people</span><span style={{whiteSpace:'nowrap',flexShrink:0}}>{fmtDate(e.date)}</span></div></div><CloseButton onClick={onClose} /></div>
       <div style={{marginTop:12}}>{e.splits.map((s:any)=>{const member = group.members.find((x:any)=>x.id===s.member_id); const pd = personDisplay(group, s.member_id, member?.name); const isMine = group.myMemberId && s.member_id===group.myMemberId; return (<div key={s.member_id} style={{...rowCard,display:'flex',alignItems:'center',gap:12,background:isMine?'var(--tint-bg)':'var(--card)'}}>
         <div style={{...avatar,background:memberDotColor(group, pd.memberId)}}>{initials(pd.name)}</div>
         <div style={{flex:1,minWidth:0,fontWeight:600,lineHeight:1.4}}>{pd.label}{s.member_id===e.paid_by_member_id ? <span style={payerChip}>Payer</span> : null}{member && !member.hasAccount ? <span style={noAccountChip}>No account yet</span> : null}</div>
-        <strong style={{color:isMine?'var(--tint-text)':'var(--text)',whiteSpace:'nowrap',flexShrink:0}}>{fmt(s.amount_minor,e.currency)}</strong>
+        <span style={{display:'flex',flexDirection:'column',alignItems:'flex-end',flexShrink:0}}><strong style={{color:isMine?'var(--tint-text)':'var(--text)',whiteSpace:'nowrap'}}>{fmt(s.amount_minor,e.currency)}</strong>{isMine && <Estimate minor={s.amount_minor} cur={e.currency} style={{fontSize:12}} />}</span>
       </div>);})}</div>
       {sheetError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:12,marginBottom:0}}>{sheetError}</p>}
       {!group.isArchived && <button style={{...btn,width:'100%',padding:'14px',fontSize:16,marginTop:12}} onClick={onEdit}>Edit expense</button>}

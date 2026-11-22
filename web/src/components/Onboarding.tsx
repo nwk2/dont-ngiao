@@ -16,7 +16,7 @@ import { AsyncButton, btn, homeCard, primary } from '../ui';
 // for the rest of this browser session and comes back on the next visit.
 // When permission is 'denied' the Stage 2 banner hides — the app cannot
 // fix a browser-level denial, and the You toggle explains it instead.
-// (YouView keeps its own inline toggle logic, already verified — this
+// (SettingsView keeps its own inline toggle logic, already verified — this
 // component uses the shared subscribePush/getPushSubscription helpers in
 // api.ts rather than refactoring it.)
 export const A2HS_DISMISS_KEY = 'dont-ngiao-a2hs-dismissed';

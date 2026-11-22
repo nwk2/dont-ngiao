@@ -115,6 +115,31 @@ async function feedbackThread(env: Env, f: Row): Promise<any[]> {
 }
 const feedbackLabel = (status: string, hasAdmin: boolean) => (hasAdmin ? 'Replied' : status === 'done' ? 'Done' : 'Sent');
 
+// Exchange rates for home-currency estimates (display only: nothing in a
+// group is ever converted). Mid-market rates from Frankfurter, free and
+// keyless; cached in D1 and refreshed at most every FX_MAX_AGE_MS. If a
+// refresh fails, the last cached rates are served (the app shows their date).
+const FX_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+async function fxRates(env: Env, base: string): Promise<Row | null> {
+  const cached = await env.DB.prepare('SELECT base, rate_date, rates, fetched_at FROM fx_rates WHERE base=?').bind(base).first<Row>();
+  if (cached && Date.now() - Number(cached.fetched_at) < FX_MAX_AGE_MS) return cached;
+  try {
+    const quotes = (CURRENCIES as readonly string[]).filter(c => c !== base).join(',');
+    const res = await fetch(`https://api.frankfurter.dev/v2/rates?base=${base}&quotes=${quotes}`, { headers: { accept: 'application/json' } });
+    if (!res.ok) throw new Error(`frankfurter ${res.status}`);
+    const data: any = await res.json();
+    // v2 returns [{ date, base, quote, rate }]; accept the v1 { date, rates } shape too.
+    const rates: Record<string, number> = {};
+    let date: string | null = null;
+    if (Array.isArray(data)) { for (const r of data) if (r && typeof r.quote === 'string' && Number(r.rate) > 0) { rates[r.quote] = Number(r.rate); date = date || r.date || null; } }
+    else if (data && data.rates) { for (const [k, v] of Object.entries(data.rates)) if (Number(v) > 0) rates[k] = Number(v); date = data.date || null; }
+    if (Object.keys(rates).length === 0) throw new Error('frankfurter: no rates');
+    const row = { base, rate_date: date, rates: JSON.stringify(rates), fetched_at: Date.now() };
+    await env.DB.prepare('INSERT OR REPLACE INTO fx_rates (base, rate_date, rates, fetched_at) VALUES (?,?,?,?)').bind(row.base, row.rate_date, row.rates, row.fetched_at).run();
+    return row;
+  } catch { return cached || null; }
+}
+
 async function authUser(req: Request, env: Env): Promise<Row | null> {
   const tok = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   if (!tok) return null;
@@ -127,7 +152,7 @@ async function authUser(req: Request, env: Env): Promise<Row | null> {
   // Aliases matter: users.created_at and sessions.created_at are
   // different dates; expiry uses the SESSION's dates only.
   let s: Row | null = null;
-  try { s = await env.DB.prepare('SELECT u.id, u.name, u.email, u.created_at, u.is_admin, (u.google_sub IS NOT NULL) AS has_google, (u.password_hash <> \'\') AS has_password, u.theme, u.mode, s.created_at AS session_created_at, s.last_seen_at AS session_last_seen_at FROM users u JOIN sessions s ON s.user_id = u.id WHERE s.token=?').bind(tok).first<Row>(); }
+  try { s = await env.DB.prepare('SELECT u.id, u.name, u.email, u.created_at, u.is_admin, (u.google_sub IS NOT NULL) AS has_google, (u.password_hash <> \'\') AS has_password, u.theme, u.mode, u.home_currency, s.created_at AS session_created_at, s.last_seen_at AS session_last_seen_at FROM users u JOIN sessions s ON s.user_id = u.id WHERE s.token=?').bind(tok).first<Row>(); }
   catch { s = await env.DB.prepare('SELECT u.id, u.name, u.email, u.created_at, s.created_at AS session_created_at FROM users u JOIN sessions s ON s.user_id = u.id WHERE s.token=?').bind(tok).first<Row>(); }
   if (!s) return null;
   const lastActivity = s.session_last_seen_at || s.session_created_at;
@@ -334,13 +359,13 @@ async function verifyTurnstile(env: Env, token: string | undefined, ip: string, 
         await env.DB.prepare('UPDATE users SET name=?, password_salt=?, password_hash=? WHERE id=?').bind(name, salt, hash, id).run();
       } else {
         id = uid();
-        try { await env.DB.prepare('INSERT INTO users (id,name,email,password_salt,password_hash,created_at) VALUES (?,?,?,?,?,?)').bind(id, name, email.toLowerCase(), salt, hash, createdAt).run(); }
+        try { await env.DB.prepare('INSERT INTO users (id,name,email,password_salt,password_hash,created_at,theme,mode) VALUES (?,?,?,?,?,?,?,?)').bind(id, name, email.toLowerCase(), salt, hash, createdAt, 'market', 'system').run(); }
         catch { return err('Email already registered', 409, origin); }
       }
       // Include created_at: YouView's "User since" line needs it, and a
       // fresh register session never calls /api/me to fill it in (same
       // omission as login, fixed below).
-      const user = { id, name, email: email.toLowerCase(), created_at: createdAt, is_admin: 0, has_google: false, has_password: true, theme: 'kopitiam', mode: 'system' };
+      const user = { id, name, email: email.toLowerCase(), created_at: createdAt, is_admin: 0, has_google: false, has_password: true, theme: 'market', mode: 'system', home_currency: null };
       const token = uid();
       await env.DB.prepare('INSERT INTO sessions (token,user_id,created_at) VALUES (?,?,?)').bind(token, id, nowIso()).run();
       return json({ user, token }, 200, origin);
@@ -364,7 +389,7 @@ async function verifyTurnstile(env: Env, token: string | undefined, ip: string, 
       // Include created_at (u.created_at): same "User since" reason as
       // register — a fresh login session never calls /api/me, so without
       // this the line silently disappears until the next page reload.
-      const user = { id: u.id, name: u.name, email: u.email, created_at: u.created_at, is_admin: Number(u.is_admin || 0), has_google: !!u.google_sub, has_password: !!u.password_hash, theme: u.theme || 'kopitiam', mode: u.mode || 'system' };
+      const user = { id: u.id, name: u.name, email: u.email, created_at: u.created_at, is_admin: Number(u.is_admin || 0), has_google: !!u.google_sub, has_password: !!u.password_hash, theme: u.theme || 'market', mode: u.mode || 'system', home_currency: u.home_currency ?? null };
       const token = uid();
       await env.DB.prepare('INSERT INTO sessions (token,user_id,created_at) VALUES (?,?,?)').bind(token, u.id, nowIso()).run();
       return json({ user, token }, 200, origin);
@@ -411,11 +436,11 @@ async function verifyTurnstile(env: Env, token: string | undefined, ip: string, 
         } else {
           // (3) New user.
           id = uid(); name = g.name || email.split('@')[0]; isAdmin = 0; createdAt = nowIso();
-          try { await env.DB.prepare('INSERT INTO users (id,name,email,password_salt,password_hash,google_sub,created_at) VALUES (?,?,?,?,?,?,?)').bind(id, name, email, '', '', g.sub, createdAt).run(); }
+          try { await env.DB.prepare('INSERT INTO users (id,name,email,password_salt,password_hash,google_sub,created_at,theme,mode) VALUES (?,?,?,?,?,?,?,?,?)').bind(id, name, email, '', '', g.sub, createdAt, 'market', 'system').run(); }
           catch { return err('Google sign-in failed, try again', 400, origin); }
         }
       }
-      const user = { id, name, email, created_at: createdAt, is_admin: isAdmin, has_google: true, has_password: !!u?.password_hash, theme: u?.theme || 'kopitiam', mode: u?.mode || 'system' };
+      const user = { id, name, email, created_at: createdAt, is_admin: isAdmin, has_google: true, has_password: !!u?.password_hash, theme: u?.theme || 'market', mode: u?.mode || 'system', home_currency: u ? (u.home_currency ?? null) : null };
       const token = uid();
       await env.DB.prepare('INSERT INTO sessions (token,user_id,created_at) VALUES (?,?,?)').bind(token, id, nowIso()).run();
       return json({ user, token }, 200, origin);
@@ -428,21 +453,35 @@ async function verifyTurnstile(env: Env, token: string | undefined, ip: string, 
     if (path === '/api/me' && req.method === 'GET') {
       const user = await authUser(req, env); if (!user) return err('Unauthorized', 401, origin); return json({ user, ...(await meExtras(env, user.id)) }, 200, origin);
     }
+    // GET /api/fx?base=SGD: today's rates for home-currency estimates.
+    // { base, date, fetchedAt, rates: { MYR: 3.296, ... } } where rates[X] is
+    // units of X per 1 base. Signed-in only (no open proxy).
+    if (path === '/api/fx' && req.method === 'GET') {
+      const user = await authUser(req, env); if (!user) return err('Unauthorized', 401, origin);
+      const base = String(url.searchParams.get('base') || '');
+      if (!(CURRENCIES as readonly string[]).includes(base)) return err('Unknown currency', 400, origin);
+      const row = await fxRates(env, base);
+      if (!row) return err('Rates unavailable right now', 503, origin);
+      return json({ base, date: row.rate_date, fetchedAt: Number(row.fetched_at), rates: JSON.parse(row.rates) }, 200, origin);
+    }
+
     // PATCH /api/me { name?, theme?, mode? }: edit name, or save appearance
     // (Haven-style: theme + System/Light/Dark, applied on all devices).
     if (path === '/api/me' && req.method === 'PATCH') {
       const user = await authUser(req, env); if (!user) return err('Unauthorized', 401, origin);
-      const THEMES = ['kopitiam', 'market', 'tomato', 'night'], MODES = ['system', 'light', 'dark'];
+      const THEMES = ['market', 'tomato', 'night'], MODES = ['system', 'light', 'dark'];
       if (body.theme !== undefined && !THEMES.includes(body.theme)) return err('Unknown theme', 400, origin);
       if (body.mode !== undefined && !MODES.includes(body.mode)) return err('Unknown mode', 400, origin);
+      if (body.homeCurrency !== undefined && body.homeCurrency !== 'none' && !(CURRENCIES as readonly string[]).includes(body.homeCurrency)) return err('Unknown currency', 400, origin);
       if (body.name !== undefined && !String(body.name).trim()) return err('Name is required', 400, origin);
-      if (body.name === undefined && body.theme === undefined && body.mode === undefined) return err('Name is required', 400, origin);
-      await env.DB.prepare('UPDATE users SET name = COALESCE(?, name), theme = COALESCE(?, theme), mode = COALESCE(?, mode) WHERE id=?')
-        .bind(body.name ?? null, body.theme ?? null, body.mode ?? null, user.id).run();
+      if (body.name === undefined && body.theme === undefined && body.mode === undefined && body.homeCurrency === undefined) return err('Name is required', 400, origin);
+      await env.DB.prepare('UPDATE users SET name = COALESCE(?, name), theme = COALESCE(?, theme), mode = COALESCE(?, mode), home_currency = COALESCE(?, home_currency) WHERE id=?')
+        .bind(body.name ?? null, body.theme ?? null, body.mode ?? null, body.homeCurrency ?? null, user.id).run();
       const next: Row = { ...user };
       if (body.name !== undefined) next.name = body.name;
       if (body.theme !== undefined) next.theme = body.theme;
       if (body.mode !== undefined) next.mode = body.mode;
+      if (body.homeCurrency !== undefined) next.home_currency = body.homeCurrency;
       return json({ user: next }, 200, origin);
     }
 
@@ -1113,7 +1152,7 @@ async function verifyTurnstile(env: Env, token: string | undefined, ip: string, 
             const phId = uid();
             const phEmail = email || ('placeholder-' + phId + '@placeholder.invalid');
             await env.DB.batch([
-              env.DB.prepare('INSERT INTO users (id,name,email,password_salt,password_hash,created_at) VALUES (?,?,?,?,?,?)').bind(phId, name, phEmail, '', '', nowIso()),
+              env.DB.prepare('INSERT INTO users (id,name,email,password_salt,password_hash,created_at,theme,mode) VALUES (?,?,?,?,?,?,?,?)').bind(phId, name, phEmail, '', '', nowIso(), 'market', 'system'),
               env.DB.prepare('INSERT INTO group_members (id,group_id,user_id,created_at) VALUES (?,?,?,?)').bind(uid(), groupId, phId, nowIso()),
             ]);
           }
