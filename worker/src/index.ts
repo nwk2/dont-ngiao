@@ -168,7 +168,15 @@ async function authUser(req: Request, env: Env): Promise<Row | null> {
   if (Number.isFinite(lastMs) && Date.now() - lastMs > SESSION_TOUCH_INTERVAL_MS) {
     try { await env.DB.prepare('UPDATE sessions SET last_seen_at=? WHERE token=?').bind(nowIso(), tok).run(); } catch {}
   }
-  return { id: s.id, name: s.name, email: s.email, created_at: s.created_at, is_admin: Number(s.is_admin || 0), has_google: !!s.has_google, has_password: !!s.has_password };
+  // FIX, 22 Nov 2026: the SELECT above fetches theme/mode/home_currency
+  // but the return used to drop them, so GET /api/me (session restore on
+  // every app reload) returned a user without home_currency. The app then
+  // saw user.home_currency === undefined — not null, so the
+  // HomeCurrencyPrompt never fired — and setHomeCurrency(undefined) turned
+  // all home-currency estimates off. They only came back when the user
+  // re-picked a currency in Settings (login/register/PATCH all include the
+  // fields). Return the fields the SELECT already fetches.
+  return { id: s.id, name: s.name, email: s.email, created_at: s.created_at, is_admin: Number(s.is_admin || 0), has_google: !!s.has_google, has_password: !!s.has_password, theme: s.theme, mode: s.mode, home_currency: s.home_currency };
 }
 // ADMIN, Nov 2026: separate admin user, separate login page. Admin
 // endpoints must check this server-side on every call — hiding the
