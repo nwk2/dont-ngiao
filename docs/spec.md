@@ -100,8 +100,9 @@ API <https://dont-ngiao.wk-io.workers.dev> · D1 database `dont-ngiao`.
   currencies get a muted "≈ S$36" (whole units from 100 up) on the Home hero (plus "About
   S$26 owed to you overall" when 2+ currencies are open), Home group cards, the group
   position card, the Insights total ("about S$1,356 in total"), the add-expense amount
-  (live) and the expense detail (total + your share). Never on expense rows, per-member
-  balances, settle, the Log or pushes. The group header shows "1 MYR ≈ S$0.30 ⓘ" when the
+  (live), the expense detail (total + your share) and each expense row (the expense
+  total, under your net figure). Never on per-member balances, settle, the Log or
+  pushes. The group header shows "1 MYR ≈ S$0.30 ⓘ" when the
   group uses another currency; that and every estimate open a Today's rates sheet (both
   directions, updated time, source Frankfurter, a disclaimer, a small converter). Rates:
   GET /api/fx?base=… (signed-in), Worker fetches api.frankfurter.dev (free, keyless,

@@ -386,7 +386,7 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
             return (<div key={e.id} style={{...balRow,cursor:'pointer',borderBottom:ei===arr.length-1?'none':balHairline}} onClick={()=>setDetailExpense(e)}>
               <span style={{width:40,height:40,borderRadius:12,background:EXP_CAT_COLORS[e.category] || 'var(--field)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{catIcon(e.category)}</span>
               <div style={{flex:1,minWidth:0,lineHeight:1.4}}><div style={{fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.description}</div><div style={{fontSize:13,color:'var(--muted)'}}>{iPaid ? 'You' : e.payerName} paid {e.display}</div></div>
-              <div style={{textAlign:'right',flexShrink:0,lineHeight:1.4}}><div style={{fontSize:12,color:net.color}}>{net.label}</div><strong style={{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums',color:net.color}}>{net.amt}</strong></div>
+              <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',flexShrink:0,lineHeight:1.4}}><div style={{fontSize:12,color:net.color}}>{net.label}</div><strong style={{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums',color:net.color}}>{net.amt}</strong><Estimate minor={e.amount_minor} cur={e.currency} style={{fontSize:12}} /></div>
             </div>);
           })}</div>
         </div>));
