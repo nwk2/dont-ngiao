@@ -29,7 +29,7 @@ export function AnnouncementCard({ a, onDismiss, preview }: { a: Omit<Announceme
     style={{display:'grid',gridTemplateColumns:'26px minmax(0, 1fr) auto',gap:10,alignItems:'start',padding:'12px 8px 12px 14px',borderRadius:14,background:`var(--ann-${a.kind}-bg)`,borderLeft:`4px solid ${ink}`,color:'var(--text)'}}>
     <span style={{color:ink,paddingTop:1,display:'flex'}}>{KIND_ICON[a.kind]}</span>
     <div style={{display:'flex',flexDirection:'column',gap:2,minWidth:0}}>
-      <span style={{fontSize:11,fontWeight:800,letterSpacing:'0.06em',textTransform:'uppercase',color:ink}}>From the Don’t Ngiao team · {KIND_NAME[a.kind]}</span>
+      <span style={{fontSize:11,fontWeight:800,letterSpacing:'0.06em',textTransform:'uppercase',color:ink}}>{KIND_NAME[a.kind]}</span>
       {a.title && <span style={{fontSize:15,fontWeight:700}}>{a.title}</span>}
       <span style={{fontSize:14,lineHeight:1.45,overflowWrap:'anywhere',whiteSpace:'pre-wrap'}}>{a.text || <span style={{opacity:0.5}}>Your message</span>}</span>
       {!a.dismissible && <span style={{fontSize:12,color:'var(--muted)',marginTop:4}}>Shown until {until}</span>}

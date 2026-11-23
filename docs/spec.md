@@ -120,7 +120,7 @@ API <https://dont-ngiao.wk-io.workers.dev> · D1 database `dont-ngiao`.
 - **Announcements (Home), same as nwk2/haven.** /api/me returns every announcement live now
   or starting within a day, minus ones this person dismissed. Home stacks them, Heads-up
   first, then Info, then Fixed, newest first within a type; two at a time with "+N more".
-  Each card reads "From the Don't Ngiao team · <type>", optional title, message; dismissible
+  Each card reads "<type>", optional title, message; dismissible
   ones have ✕ (dismissed for this person on every device, 5-second Undo); non-dismissible
   ones say "Shown until …". Cards appear at their start and leave at their end on a timer.
   Open apps re-check when brought to the foreground (at most once a minute); unlike Haven
