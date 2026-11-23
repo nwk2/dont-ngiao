@@ -195,7 +195,7 @@ export function AdminView() {
     {error && <p style={{color:'var(--danger-text)',marginTop:0}}>{error}</p>}
     <label>Email</label><input style={input} value={email} onChange={e=>setEmail(e.target.value)} />
     <label>Password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={showPassword ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={password} onChange={e=>setPassword(e.target.value)} /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onClick={()=>setShowPassword(v=>!v)}>{showPassword ? '🙈' : '👁️'}</button></div>
-    <button style={{...primary, width:'100%', padding:'14px', fontSize:16, opacity: loading ? 0.6 : 1, cursor: loading ? 'not-allowed' : 'pointer'}} disabled={loading} onClick={doAdminLogin}>{loading ? 'Logging in…' : 'Log in as admin'}</button>
+    <button style={{...primary, width:'100%', padding:'14px', fontSize:16, opacity: (loading || !email.trim() || !password) ? 0.6 : 1, cursor: (loading || !email.trim() || !password) ? 'not-allowed' : 'pointer'}} disabled={loading || !email.trim() || !password} onClick={doAdminLogin}>{loading ? 'Logging in…' : 'Log in as admin'}</button>
     </div>
     <p><button style={btn} onClick={()=>{ window.location.href = '/'; }}>← Back to Don't Ngiao</button></p>
   </div>);

@@ -206,6 +206,13 @@ export function Auth({ onAuth, error, loading, notice, inviteToken, onInvalidInv
   // tap or an iOS focus quirk. Focusing another field clears it via lastField.
   const oneEyePeek = showPassword && (pwFocused || lastField === 'password');
   const pet = mode==='login' ? <AuthCorgi focus={focus} value={focusValue} eyesClosed={eyesClosed} oneEyePeek={oneEyePeek} /> : <AuthBear focus={focus} value={focusValue} eyesClosed={eyesClosed} oneEyePeek={oneEyePeek} />;
+  // SUBMIT DISABLED UNTIL FILLED, Nov 2026: the Log in button used to be
+  // live with empty fields — tapping it fired a login round trip that
+  // came back "Invalid email or password", which reads as wrong
+  // credentials rather than empty fields. The server still rejects empty
+  // credentials (401 login / 400 register), this just stops the tap.
+  // Same rule on the reset and admin-login buttons below.
+  const submitDisabled = loading || (mode==='login' ? (!email.trim() || !password) : (!name.trim() || !email.trim() || !password || !turnstileToken));
   return (<div style={S}><h1>Don't Ngiao</h1><p style={{color:'var(--muted)',marginTop:0}}>Mai ngiao, mai drama.</p>
     {notice && <div style={{...homeCard,background:'var(--tint-bg)',marginBottom:16}}><div style={{fontSize:14,lineHeight:1.45}}>{notice}</div></div>}
     {inviteToken && inviteState==='loading' && <p style={{color:'var(--muted)',fontSize:13}}>Checking your invite…</p>}
@@ -241,7 +248,7 @@ export function Auth({ onAuth, error, loading, notice, inviteToken, onInvalidInv
     <label>Email</label><input style={input} value={email} onChange={e=>setEmail(e.target.value)} onFocus={()=>{setFocus('email'); setLastField('email');}} onBlur={()=>setFocus(null)} />
     <label>Password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input ref={passwordRef} type={showPassword ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={password} onChange={e=>setPassword(e.target.value)} onFocus={()=>{setFocus('password'); setLastField('password');}} onBlur={()=>setFocus(null)} /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onMouseDown={e=>e.preventDefault()} onClick={()=>{setShowPassword(v=>!v); passwordRef.current?.focus();}}>{showPassword ? '🙈' : '👁️'}</button></div>
     {mode==='register' && <><div ref={turnstileBoxRef} style={{margin:'4px 0 10px'}} />{turnstileFailed ? <p style={{color:'var(--danger-text)',fontSize:13,margin:'0 0 10px'}}>Verification couldn't load — check your connection and try again.</p> : (!turnstileToken ? <p style={{color:'var(--muted)',fontSize:13,margin:'0 0 10px'}}>Complete the check above to create your account.</p> : null)}</>}
-    <button style={{...primary, width:'100%', padding:'14px', fontSize:16, opacity: (loading || (mode==='register' && !turnstileToken)) ? 0.6 : 1, cursor: (loading || (mode==='register' && !turnstileToken)) ? 'not-allowed' : 'pointer'}} disabled={loading || (mode==='register' && !turnstileToken)} onClick={()=>onAuth(mode,name,email,password,turnstileToken)}>{loading && <span className="btn-spinner" aria-hidden="true" />}{loading ? (mode==='login' ? 'Logging in…' : 'Creating account…') : (mode==='login' ? 'Log in' : 'Create account')}</button>
+    <button style={{...primary, width:'100%', padding:'14px', fontSize:16, opacity: submitDisabled ? 0.6 : 1, cursor: submitDisabled ? 'not-allowed' : 'pointer'}} disabled={submitDisabled} onClick={()=>onAuth(mode,name,email,password,turnstileToken)}>{loading && <span className="btn-spinner" aria-hidden="true" />}{loading ? (mode==='login' ? 'Logging in…' : 'Creating account…') : (mode==='login' ? 'Log in' : 'Create account')}</button>
     </div>
     <p style={{color:'var(--muted)',fontSize:13}}>Forgot your password? Ask the admin for a reset link.</p>
   </div>);
@@ -264,7 +271,7 @@ export function ResetPasswordView({ token }: { token: string }) {
     {error && <p style={{color:'var(--danger-text)',marginTop:0}}>{error}</p>}
     <label>New password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={showPassword ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={newPassword} onChange={e=>setNewPassword(e.target.value)} /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onClick={()=>setShowPassword(v=>!v)}>{showPassword ? '🙈' : '👁️'}</button></div>
     <label>Confirm new password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={showPassword ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={confirm} onChange={e=>setConfirm(e.target.value)} /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onClick={()=>setShowPassword(v=>!v)}>{showPassword ? '🙈' : '👁️'}</button></div>
-    <button style={{...primary, width:'100%', padding:'14px', fontSize:16, opacity: loading ? 0.6 : 1, cursor: loading ? 'not-allowed' : 'pointer'}} disabled={loading} onClick={doReset}>{loading ? 'Resetting…' : 'Reset password'}</button>
+    <button style={{...primary, width:'100%', padding:'14px', fontSize:16, opacity: (loading || !newPassword || !confirm) ? 0.6 : 1, cursor: (loading || !newPassword || !confirm) ? 'not-allowed' : 'pointer'}} disabled={loading || !newPassword || !confirm} onClick={doReset}>{loading ? 'Resetting…' : 'Reset password'}</button>
     </div>
   </div>);
 }
