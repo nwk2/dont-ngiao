@@ -100,13 +100,40 @@ async function googleUserFromCode(env: Env, code: string): Promise<{ sub: string
 }
 // Announcement + unread feedback replies for /api/me (Haven-style). Wrapped
 // so a Worker deployed before migration 0013 still answers /api/me.
-async function meExtras(env: Env, userId: string): Promise<{ announcement: Row | null; unreadReplies: number }> {
+async function meExtras(env: Env, userId: string): Promise<{ announcements: any[]; announcement: Row | null; unreadReplies: number }> {
+  let announcements: any[] = [];
+  let unreadReplies = 0;
   try {
+    // Announcements live now or starting within a day (Home shows each at its
+    // start and hides it at its end without asking again), minus the ones
+    // this person dismissed. Same as nwk2/haven.
     const now = Date.now();
-    const announcement = await env.DB.prepare('SELECT id, text FROM announcements WHERE starts_at <= ?1 AND ends_at > ?1 ORDER BY starts_at DESC LIMIT 1').bind(now).first<Row>();
+    const rows = await env.DB.prepare(`SELECT a.id, a.kind, a.title, a.text, a.dismissible, a.starts_at, a.ends_at FROM announcements a
+      WHERE a.ends_at > ?1 AND a.starts_at <= ?2
+        AND NOT EXISTS (SELECT 1 FROM announcement_dismissals d WHERE d.announcement_id = a.id AND d.user_id = ?3)
+      ORDER BY a.starts_at DESC LIMIT 20`).bind(now, now + 86_400_000, userId).all<Row>();
+    announcements = (rows.results || []).map(annOut);
+  } catch { /* before migration 0015 */ }
+  try {
     const unread = await env.DB.prepare('SELECT COUNT(*) AS n FROM feedback WHERE user_id=? AND user_unread=1').bind(userId).first<Row>();
-    return { announcement: announcement || null, unreadReplies: Number(unread?.n || 0) };
-  } catch { return { announcement: null, unreadReplies: 0 }; }
+    unreadReplies = Number(unread?.n || 0);
+  } catch { /* before migration 0013 */ }
+  // announcement: the newest live one, for app builds from before the stack.
+  const live = announcements.filter(a => a.startsAt <= Date.now());
+  return { announcements, announcement: live[0] ? { id: live[0].id, text: live[0].text } : null, unreadReplies };
+}
+const annOut = (r: Row) => ({ id: r.id, kind: r.kind || 'info', title: r.title || null, text: r.text, dismissible: !!Number(r.dismissible ?? 1), startsAt: Number(r.starts_at), endsAt: Number(r.ends_at), ...(r.dismissed !== undefined ? { dismissed: Number(r.dismissed) } : {}) });
+// Admin input for an announcement (Haven's rules): kind, optional title (60),
+// message (280), dismissible, startsAt < endsAt (epoch ms).
+function annInput(body: any): { ok: true; v: any[] } | { ok: false; error: string } {
+  const kind = String(body.kind || 'info');
+  if (!['info', 'warn', 'ok'].includes(kind)) return { ok: false, error: 'Unknown type' };
+  const text = String(body.text || '').trim();
+  if (!text) return { ok: false, error: 'A message is required' };
+  const startsAt = Number(body.startsAt), endsAt = Number(body.endsAt);
+  if (!Number.isFinite(startsAt) || !Number.isFinite(endsAt) || !(endsAt > startsAt)) return { ok: false, error: '"Until" must be after "Show from"' };
+  const title = String(body.title || '').trim().slice(0, 60) || null;
+  return { ok: true, v: [kind, title, text.slice(0, 280), body.dismissible === false ? 0 : 1, startsAt, endsAt] };
 }
 // A feedback thread: the original message first, then replies in order.
 async function feedbackThread(env: Env, f: Row): Promise<any[]> {
@@ -461,6 +488,23 @@ async function verifyTurnstile(env: Env, token: string | undefined, ip: string, 
     if (path === '/api/me' && req.method === 'GET') {
       const user = await authUser(req, env); if (!user) return err('Unauthorized', 401, origin); return json({ user, ...(await meExtras(env, user.id)) }, 200, origin);
     }
+    // POST /api/announcements/:id/dismiss hides it for this person on every
+    // device; DELETE undoes (the app's 5-second Undo). Haven's model.
+    const ad = path.match(/^\/api\/announcements\/([^/]+)\/dismiss$/);
+    if (ad && (req.method === 'POST' || req.method === 'DELETE')) {
+      const user = await authUser(req, env); if (!user) return err('Unauthorized', 401, origin);
+      const id = decodeURIComponent(ad[1]);
+      if (req.method === 'DELETE') {
+        await env.DB.prepare('DELETE FROM announcement_dismissals WHERE user_id=? AND announcement_id=?').bind(user.id, id).run();
+        return json({ ok: true }, 200, origin);
+      }
+      const a = await env.DB.prepare('SELECT dismissible FROM announcements WHERE id=?').bind(id).first<Row>();
+      if (!a) return err('Announcement not found', 404, origin);
+      if (!Number(a.dismissible)) return err('This announcement can’t be dismissed', 400, origin);
+      await env.DB.prepare('INSERT OR IGNORE INTO announcement_dismissals (user_id, announcement_id, at) VALUES (?,?,?)').bind(user.id, id, Date.now()).run();
+      return json({ ok: true }, 200, origin);
+    }
+
     // GET /api/fx?base=SGD: today's rates for home-currency estimates.
     // { base, date, fetchedAt, rates: { MYR: 3.296, ... } } where rates[X] is
     // units of X per 1 base. Signed-in only (no open proxy).
@@ -932,25 +976,34 @@ async function verifyTurnstile(env: Env, token: string | undefined, ip: string, 
     // ms, text up to 280 chars) schedules one; DELETE removes it early.
     if (path === '/api/admin/announcements' && req.method === 'GET') {
       const admin = await authAdmin(req, env); if (!admin) return err('Admin access required', 403, origin);
-      const rows = await env.DB.prepare('SELECT id, text, starts_at, ends_at FROM announcements WHERE ends_at > ? ORDER BY starts_at').bind(Date.now()).all<Row>();
-      return json({ announcements: (rows.results || []).map((r: Row) => ({ id: r.id, text: r.text, startsAt: Number(r.starts_at), endsAt: Number(r.ends_at) })) }, 200, origin);
+      const rows = await env.DB.prepare('SELECT a.id, a.kind, a.title, a.text, a.dismissible, a.starts_at, a.ends_at, (SELECT COUNT(*) FROM announcement_dismissals d WHERE d.announcement_id = a.id) AS dismissed FROM announcements a ORDER BY a.starts_at DESC LIMIT 50').all<Row>();
+      return json({ announcements: (rows.results || []).map(annOut) }, 200, origin);
     }
     if (path === '/api/admin/announcements' && req.method === 'POST') {
       const admin = await authAdmin(req, env); if (!admin) return err('Admin access required', 403, origin);
-      const text = String(body.text || '').trim();
-      const startsAt = Number(body.startsAt), endsAt = Number(body.endsAt);
-      if (!text) return err('A message is required', 400, origin);
-      if (text.length > 280) return err('Keep it to 280 characters', 400, origin);
-      if (!Number.isFinite(startsAt) || !Number.isFinite(endsAt) || !(endsAt > startsAt)) return err('"Until" must be after "Show from"', 400, origin);
-      if (endsAt <= Date.now()) return err('"Until" is already in the past', 400, origin);
+      const r = annInput(body); if (!r.ok) return err(r.error, 400, origin);
       const id = uid();
-      await env.DB.prepare('INSERT INTO announcements (id, text, starts_at, ends_at) VALUES (?,?,?,?)').bind(id, text, startsAt, endsAt).run();
+      await env.DB.prepare('INSERT INTO announcements (kind, title, text, dismissible, starts_at, ends_at, id) VALUES (?,?,?,?,?,?,?)').bind(...r.v, id).run();
       return json({ id }, 200, origin);
     }
     const aa = path.match(/^\/api\/admin\/announcements\/([^/]+)$/);
+    if (aa && req.method === 'PUT') {
+      const admin = await authAdmin(req, env); if (!admin) return err('Admin access required', 403, origin);
+      const id = decodeURIComponent(aa[1]);
+      const r = annInput(body); if (!r.ok) return err(r.error, 400, origin);
+      await env.DB.batch([
+        env.DB.prepare('UPDATE announcements SET kind=?, title=?, text=?, dismissible=?, starts_at=?, ends_at=? WHERE id=?').bind(...r.v, id),
+        ...(body.showAgain ? [env.DB.prepare('DELETE FROM announcement_dismissals WHERE announcement_id=?').bind(id)] : []),
+      ]);
+      return json({ ok: true }, 200, origin);
+    }
     if (aa && req.method === 'DELETE') {
       const admin = await authAdmin(req, env); if (!admin) return err('Admin access required', 403, origin);
-      await env.DB.prepare('DELETE FROM announcements WHERE id=?').bind(decodeURIComponent(aa[1])).run();
+      const id = decodeURIComponent(aa[1]);
+      await env.DB.batch([
+        env.DB.prepare('DELETE FROM announcement_dismissals WHERE announcement_id=?').bind(id),
+        env.DB.prepare('DELETE FROM announcements WHERE id=?').bind(id),
+      ]);
       return json({ ok: true }, 200, origin);
     }
 

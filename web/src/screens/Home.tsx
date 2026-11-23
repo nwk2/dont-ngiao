@@ -5,8 +5,9 @@ import { AsyncButton, CURRENCY_INFO, S, Sheet, Sk, balHairline, btn, card, catCo
 import { googleAuthUrl } from '../google';
 import { THEMES, resolvedMode } from '../themes';
 import { MessagesSheet } from '../components/MessagesSheet';
+import { Announcements } from '../components/Announcements';
 import { Estimate, HomeCurrencySheet } from '../components/Fx';
-import { totalInHome, fmtEstimate, useFx } from '../fx';
+import { openRateSheet, totalInHome, fmtEstimate, useFx } from '../fx';
 
 export function HomeSkeleton({ user }: { user: any }) {
   return (<div style={S} aria-label="Loading">
@@ -17,7 +18,7 @@ export function HomeSkeleton({ user }: { user: any }) {
   </div>);
 }
 
-export function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, loadGroup, error, setError, appearance, setAppearance, onFeedback, announcement, unreadReplies, refreshMeta, openMessages, onMessagesOpened }: any) {
+export function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroups, loadGroup, error, setError, appearance, setAppearance, onFeedback, announcements, unreadReplies, refreshMeta, openMessages, onMessagesOpened }: any) {
   const fx = useFx();
   const [showCreate, setShowCreate] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -50,7 +51,7 @@ export function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroup
       </div>
     </div>
     {error && <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:12}}><span style={{color:'var(--danger-text)'}}>{error}</span><button style={btn} onClick={()=>loadGroups()}>Retry</button></div>}
-    {announcement && <p role="status" style={{background:'var(--info-bg)',color:'var(--text)',borderRadius:'var(--radius-card)',padding:'12px 14px',fontSize:14,margin:'0 0 12px',whiteSpace:'pre-wrap'}}>{announcement.text}</p>}
+    <Announcements list={announcements || []} />
     {unreadReplies>0 && <button type="button" role="status" onClick={()=>{ setShowSettings(true); setShowMessages(true); }} style={{display:'block',width:'100%',textAlign:'left',background:'var(--info-bg)',color:'var(--text)',border:'none',borderRadius:'var(--radius-card)',padding:'12px 14px',fontSize:14,margin:'0 0 12px',cursor:'pointer'}}><strong>The Don’t Ngiao team replied</strong> to your feedback. Tap to read.</button>}
     <OnboardingPrompts />
     {openTotals.length === 0 ? (<div style={{...homeCard,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:20}}>
@@ -178,6 +179,21 @@ export function SettingsView({ user, setUser, onLogout, setAuthNotice, groups, l
   }
   const archived: any[] = groups?.archived || [];
   const totalGroups = (groups?.active?.length || 0) + archived.length;
+  // TODAY'S RATES, Nov 2026: a door to the rate sheet even when no estimate
+  // renders anywhere — estimates only appear when rates are already loaded,
+  // so a failed fetch leaves no way to open the sheet or see the state.
+  // Currencies come from the user's active groups; all non-home ones when
+  // there are none yet. Opening the sheet forces a refresh (openRateSheet
+  // calls refreshRates), so this is also the manual retry for a failed load.
+  const foreignCurrencies: string[] = (()=>{
+    const seen = new Set<string>();
+    for (const g of (groups?.active || [])) {
+      for (const s of (g.spent || [])) if (typeof s.currency === 'string') seen.add(s.currency);
+      if (typeof g.currency === 'string') seen.add(g.currency);
+    }
+    const fromGroups = [...seen].filter(c => (CURRENCIES as string[]).includes(c) && c !== fx.home);
+    return fromGroups.length ? fromGroups : (CURRENCIES as string[]).filter(c => c !== fx.home);
+  })();
   const since = user.created_at ? (()=>{ const d = new Date(user.created_at); return `${d.toLocaleString('en-GB',{month:'short'})}, ${d.getFullYear()}`; })() : null;
   if (showArchived) return (<div style={S}>
     <button style={{...btn,borderRadius:'var(--radius-pill)',padding:'10px 18px',marginBottom:16}} onClick={()=>setShowArchived(false)}>← You</button>
@@ -199,6 +215,7 @@ export function SettingsView({ user, setUser, onLogout, setAuthNotice, groups, l
     <h2 style={sectionTitle}>Money</h2>
     <div className="flat-list" style={{...homeCard,padding:0,overflow:'hidden',marginBottom:6}}>
       <button type="button" className="flat-row" onClick={()=>setShowHomeCur(true)}><span>Home currency</span><span style={{color:'var(--muted)'}}>{!user.home_currency || user.home_currency==='none' ? 'Off' : `${user.home_currency} · ${CURRENCY_INFO[user.home_currency]?.name || ''}`} ›</span></button>
+      {fx.home && <button type="button" className="flat-row" onClick={()=>openRateSheet(foreignCurrencies)}><span>Today’s rates</span><span style={{color:'var(--muted)'}}>{fx.fetchedAt ? `Updated ${new Date(fx.fetchedAt).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}` : 'No rates yet'} ›</span></button>}
     </div>
     <p style={{fontSize:13,color:'var(--muted)',margin:'0 4px 4px',lineHeight:1.45}}>{fx.home ? `Other currencies get a rough ≈ ${fx.home} estimate. Balances and settling stay in the original currency.${fx.fetchedAt ? ` Rates updated ${new Date(fx.fetchedAt).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}.` : ''}` : 'Estimates are off. Turn them on to see rough amounts in your currency.'}</p>
     {showHomeCur && <HomeCurrencySheet value={user.home_currency || null} onClose={()=>setShowHomeCur(false)} onPick={async (code)=>{ const prev = user; setUser({ ...user, home_currency: code }); try { const d = await api('/api/me', 'PATCH', { homeCurrency: code }); setUser(d.user); } catch (e: any) { setUser(prev); setError?.(e.message); } }} />}

@@ -71,6 +71,12 @@
   --overlay-pressed: rgba(255,255,255,0.18);
   --scrim: rgba(0,0,0,0.55);
   --accent-2: #E0915D;
+  --ann-info: #7FB2F0;
+  --ann-info-bg: #17222F;
+  --ann-warn: #E0B45E;
+  --ann-warn-bg: #2E2618;
+  --ann-ok: #6FCB8E;
+  --ann-ok-bg: #1E2B1F;
   color-scheme: dark;
 }
 
@@ -148,6 +154,12 @@
   --overlay-pressed: rgba(0,0,0,0.16);
   --scrim: rgba(28,36,32,0.45);
   --accent-2: #B4602A;
+  --ann-info: #2C64A0;
+  --ann-info-bg: #D9E6F3;
+  --ann-warn: #8A5A00;
+  --ann-warn-bg: #F4E6C8;
+  --ann-ok: #2D7A47;
+  --ann-ok-bg: #DDEBD8;
   color-scheme: light;
 }
 @media (prefers-color-scheme: light) {
@@ -212,6 +224,12 @@
     --overlay-pressed: rgba(0,0,0,0.16);
     --scrim: rgba(28,36,32,0.45);
     --accent-2: #B4602A;
+    --ann-info: #2C64A0;
+    --ann-info-bg: #D9E6F3;
+    --ann-warn: #8A5A00;
+    --ann-warn-bg: #F4E6C8;
+    --ann-ok: #2D7A47;
+    --ann-ok-bg: #DDEBD8;
     color-scheme: light;
   }
 }
@@ -276,6 +294,12 @@
   --overlay-pressed: rgba(255,255,255,0.18);
   --scrim: rgba(0,0,0,0.55);
   --accent-2: #E0915D;
+  --ann-info: #7FB2F0;
+  --ann-info-bg: #17222F;
+  --ann-warn: #E0B45E;
+  --ann-warn-bg: #2E2618;
+  --ann-ok: #6FCB8E;
+  --ann-ok-bg: #1E2B1F;
   color-scheme: dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -340,6 +364,12 @@
     --overlay-pressed: rgba(255,255,255,0.18);
     --scrim: rgba(0,0,0,0.55);
     --accent-2: #E0915D;
+    --ann-info: #7FB2F0;
+    --ann-info-bg: #17222F;
+    --ann-warn: #E0B45E;
+    --ann-warn-bg: #2E2618;
+    --ann-ok: #6FCB8E;
+    --ann-ok-bg: #1E2B1F;
     color-scheme: dark;
   }
 }
@@ -418,6 +448,12 @@
   --overlay-pressed: rgba(0,0,0,0.16);
   --scrim: rgba(28,36,32,0.45);
   --accent-2: #F2C14E;
+  --ann-info: #2C64A0;
+  --ann-info-bg: #FFF0C2;
+  --ann-warn: #8A5A00;
+  --ann-warn-bg: #FFE3D6;
+  --ann-ok: #2D7A47;
+  --ann-ok-bg: #DDEFE0;
   color-scheme: light;
 }
 @media (prefers-color-scheme: light) {
@@ -482,6 +518,12 @@
     --overlay-pressed: rgba(0,0,0,0.16);
     --scrim: rgba(28,36,32,0.45);
     --accent-2: #F2C14E;
+    --ann-info: #2C64A0;
+    --ann-info-bg: #FFF0C2;
+    --ann-warn: #8A5A00;
+    --ann-warn-bg: #FFE3D6;
+    --ann-ok: #2D7A47;
+    --ann-ok-bg: #DDEFE0;
     color-scheme: light;
   }
 }
@@ -546,6 +588,12 @@
   --overlay-pressed: rgba(255,255,255,0.18);
   --scrim: rgba(0,0,0,0.55);
   --accent-2: #F2C14E;
+  --ann-info: #7FB2F0;
+  --ann-info-bg: #3A3016;
+  --ann-warn: #E0B45E;
+  --ann-warn-bg: #3A1E16;
+  --ann-ok: #6FCB8E;
+  --ann-ok-bg: #17301E;
   color-scheme: dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -610,6 +658,12 @@
     --overlay-pressed: rgba(255,255,255,0.18);
     --scrim: rgba(0,0,0,0.55);
     --accent-2: #F2C14E;
+    --ann-info: #7FB2F0;
+    --ann-info-bg: #3A3016;
+    --ann-warn: #E0B45E;
+    --ann-warn-bg: #3A1E16;
+    --ann-ok: #6FCB8E;
+    --ann-ok-bg: #17301E;
     color-scheme: dark;
   }
 }
@@ -688,6 +742,12 @@
   --overlay-pressed: rgba(0,0,0,0.16);
   --scrim: rgba(28,36,32,0.45);
   --accent-2: #2F6FBF;
+  --ann-info: #2C64A0;
+  --ann-info-bg: #DCE8F6;
+  --ann-warn: #8A5A00;
+  --ann-warn-bg: #F3EAC8;
+  --ann-ok: #2D7A47;
+  --ann-ok-bg: #DCEFD9;
   color-scheme: light;
 }
 @media (prefers-color-scheme: light) {
@@ -752,6 +812,12 @@
     --overlay-pressed: rgba(0,0,0,0.16);
     --scrim: rgba(28,36,32,0.45);
     --accent-2: #2F6FBF;
+    --ann-info: #2C64A0;
+    --ann-info-bg: #DCE8F6;
+    --ann-warn: #8A5A00;
+    --ann-warn-bg: #F3EAC8;
+    --ann-ok: #2D7A47;
+    --ann-ok-bg: #DCEFD9;
     color-scheme: light;
   }
 }
@@ -816,6 +882,12 @@
   --overlay-pressed: rgba(255,255,255,0.18);
   --scrim: rgba(0,0,0,0.55);
   --accent-2: #7FB2F0;
+  --ann-info: #7FB2F0;
+  --ann-info-bg: #162434;
+  --ann-warn: #E0B45E;
+  --ann-warn-bg: #2B2716;
+  --ann-ok: #6FCB8E;
+  --ann-ok-bg: #1C2B18;
   color-scheme: dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -880,6 +952,12 @@
     --overlay-pressed: rgba(255,255,255,0.18);
     --scrim: rgba(0,0,0,0.55);
     --accent-2: #7FB2F0;
+    --ann-info: #7FB2F0;
+    --ann-info-bg: #162434;
+    --ann-warn: #E0B45E;
+    --ann-warn-bg: #2B2716;
+    --ann-ok: #6FCB8E;
+    --ann-ok-bg: #1C2B18;
     color-scheme: dark;
   }
 }

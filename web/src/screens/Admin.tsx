@@ -1,3 +1,4 @@
+import { AnnouncementsAdmin } from '../components/AnnouncementsAdmin';
 import React, { useEffect, useState } from 'react';
 import { fmt } from '../api';
 import { AsyncButton, ConfirmSheet, PickerSheet, S, Sk, avatar, balCard, balHairline, balRow, btn, catControl, catControlActive, homeCard, iconBtn, initials, input, noAccountChip, primary, tabPill, tabPillActive, tabTrack } from '../ui';
@@ -86,28 +87,6 @@ export function AdminView() {
   const [reply, setReply] = useState('');
   // Four module tabs with counts: keep each label on one line on a phone.
   const modTab: React.CSSProperties = { whiteSpace:'nowrap', fontSize:13, padding:'10px 2px' };
-  // ANNOUNCEMENTS (Haven-style banner): current + upcoming, and a form to
-  // schedule one. The active one shows at the top of Home for everyone.
-  const [announcements, setAnnouncements] = useState<any[] | null>(null);
-  const [annText, setAnnText] = useState('');
-  const [annFrom, setAnnFrom] = useState('');
-  const [annUntil, setAnnUntil] = useState('');
-  async function loadAnnouncements() {
-    try { const d = await adminApi('/api/admin/announcements', 'GET'); setAnnouncements(d.announcements || []); }
-    catch (e: any) { setError(e.message); setAnnouncements([]); }
-  }
-  async function scheduleAnnouncement() {
-    setError('');
-    try {
-      await adminApi('/api/admin/announcements', 'POST', { text: annText, startsAt: new Date(annFrom).getTime(), endsAt: new Date(annUntil).getTime() });
-      setAnnText(''); setAnnFrom(''); setAnnUntil(''); await loadAnnouncements();
-    } catch (e: any) { setError(e.message); }
-  }
-  async function removeAnnouncement(id: string) {
-    setError('');
-    try { await adminApi(`/api/admin/announcements/${id}`, 'DELETE'); await loadAnnouncements(); }
-    catch (e: any) { setError(e.message); }
-  }
   async function openFeedback(f: any) {
     setSelectedFeedback(f); setReply('');
     try { const d = await adminApi(`/api/admin/feedback/${f.id}`, 'GET'); setSelectedFeedback(d); }
@@ -256,7 +235,7 @@ export function AdminView() {
         above, not in the tab row — they used to share a row with the
         tabTrack, which mixed a tab with standalone buttons (different
         heights/fonts, stray track margin). */}
-    <div style={tabTrack}><button style={adminModule==='users'?{...tabPillActive,...modTab}:{...tabPill,...modTab}} onClick={()=>{setError(''); setAdminModule('users'); setSelectedGroup(null); setSelectedFeedback(null);}}>Users · {users.length}</button><button style={adminModule==='groups'?{...tabPillActive,...modTab}:{...tabPill,...modTab}} onClick={()=>{setError(''); setAdminModule('groups'); setSelectedGroup(null); setSelectedFeedback(null); if (groups.length===0) loadGroups();}}>Groups{groups.length ? ` · ${groups.length}` : ''}</button><button style={adminModule==='feedback'?{...tabPillActive,...modTab}:{...tabPill,...modTab}} onClick={()=>{setError(''); setAdminModule('feedback'); setSelectedGroup(null); setSelectedFeedback(null); if (feedback.length===0) loadFeedback();}}>Feedback{feedback.length ? ` · ${fbOpenCount}` : ''}</button><button style={adminModule==='banner'?{...tabPillActive,...modTab}:{...tabPill,...modTab}} onClick={()=>{setError(''); setAdminModule('banner'); setSelectedGroup(null); setSelectedFeedback(null); if (announcements===null) loadAnnouncements();}}>Banner</button></div>
+    <div style={tabTrack}><button style={adminModule==='users'?{...tabPillActive,...modTab}:{...tabPill,...modTab}} onClick={()=>{setError(''); setAdminModule('users'); setSelectedGroup(null); setSelectedFeedback(null);}}>Users · {users.length}</button><button style={adminModule==='groups'?{...tabPillActive,...modTab}:{...tabPill,...modTab}} onClick={()=>{setError(''); setAdminModule('groups'); setSelectedGroup(null); setSelectedFeedback(null); if (groups.length===0) loadGroups();}}>Groups{groups.length ? ` · ${groups.length}` : ''}</button><button style={adminModule==='feedback'?{...tabPillActive,...modTab}:{...tabPill,...modTab}} onClick={()=>{setError(''); setAdminModule('feedback'); setSelectedGroup(null); setSelectedFeedback(null); if (feedback.length===0) loadFeedback();}}>Feedback{feedback.length ? ` · ${fbOpenCount}` : ''}</button><button style={adminModule==='banner'?{...tabPillActive,...modTab}:{...tabPill,...modTab}} onClick={()=>{setError(''); setAdminModule('banner'); setSelectedGroup(null); setSelectedFeedback(null); }}>News</button></div>
     {error && <p style={{color:'var(--danger-text)'}}>{error}</p>}
     {adminModule==='users' && (<>
     {resetResult && <div style={homeCard}><strong>Reset link for {resetResult.user.name} ({resetResult.user.email})</strong><p style={{fontSize:13,color:'var(--muted)'}}>Single-use, expires {fmtDay(resetResult.expiresAt)}, {new Date(resetResult.expiresAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}. Send this link to the user yourself — the app does not email it.</p><input readOnly style={input} value={resetResult.link} onFocus={e=>e.target.select()} /><button style={btn} onClick={async()=>{ try { await navigator.clipboard.writeText(resetResult.link); setCopyStatus('Copied to clipboard.'); } catch { setCopyStatus('Could not copy automatically.'); } }}>Copy link again</button>{copyStatus && <p style={{fontSize:13,color:'var(--muted)'}}>{copyStatus}</p>}</div>}
@@ -295,27 +274,7 @@ export function AdminView() {
     {!selectedGroup.isClean && <p style={{fontSize:13,color:'var(--muted)'}}>Delete is only available for groups with no expenses or payments — this group has money history, so archive it instead.</p>}
     </div>
     </>)}
-    {adminModule==='banner' && (<>
-    <p style={{color:'var(--muted)',fontSize:14,marginTop:0}}>A short message at the top of Home for everyone, between the times you set. Only one shows at a time: the latest to start.</p>
-    {announcements===null && <AdminSkeleton />}
-    {announcements!==null && announcements.length>0 && <div style={balCard}>{announcements.map((a:any,ai:number,arr:any[])=>{
-      const live = a.startsAt <= Date.now();
-      return (<div key={a.id} style={{...balRow,borderBottom:ai===arr.length-1?'none':balHairline,alignItems:'flex-start'}}>
-        <div style={{flex:1,minWidth:0}}><div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}><span style={adminChip}>{live ? 'Showing now' : 'Scheduled'}</span></div><div style={{fontSize:15,whiteSpace:'pre-wrap'}}>{a.text}</div><div style={{fontSize:13,color:'var(--muted)',marginTop:4}}>{fmtDay(new Date(a.startsAt).toISOString())}, {new Date(a.startsAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})} – {fmtDay(new Date(a.endsAt).toISOString())}, {new Date(a.endsAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</div></div>
-        <AsyncButton style={{...btn,flexShrink:0}} onClick={()=>removeAnnouncement(a.id)}>Remove</AsyncButton>
-      </div>);
-    })}</div>}
-    <div style={homeCard}>
-      <label style={{display:'block'}}><span style={{display:'block',fontSize:13,color:'var(--muted)',marginBottom:6}}>Message (up to 280 characters)</span>
-        <textarea value={annText} onChange={e=>setAnnText(e.target.value)} rows={3} maxLength={280} style={{...input,resize:'vertical',fontFamily:'inherit'}} /></label>
-      <div style={{fontSize:12,color:'var(--muted)',textAlign:'right',marginTop:-6,marginBottom:8}}>{annText.length}/280</div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:10}}>
-        <label><span style={{display:'block',fontSize:13,color:'var(--muted)',marginBottom:6}}>Show from</span><input type="datetime-local" value={annFrom} onChange={e=>setAnnFrom(e.target.value)} style={{...input,margin:0}} /></label>
-        <label><span style={{display:'block',fontSize:13,color:'var(--muted)',marginBottom:6}}>Until</span><input type="datetime-local" value={annUntil} onChange={e=>setAnnUntil(e.target.value)} style={{...input,margin:0}} /></label>
-      </div>
-      <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16,marginTop:14}} disabled={!annText.trim() || !annFrom || !annUntil} onClick={scheduleAnnouncement}>Schedule</AsyncButton>
-    </div>
-    </>)}
+    {adminModule==='banner' && <AnnouncementsAdmin adminApi={adminApi} onError={setError} />}
     {adminModule==='feedback' && !selectedFeedback && (<>
     {/* REBUILD 2026-11-14: no build fired for c8b07d0b — re-trigger. */}
     {/* FEEDBACK FILTER, Nov 2026: Open / Done / All, default Open (Wai

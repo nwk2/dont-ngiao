@@ -32,8 +32,9 @@ import { S, btn, primary } from './ui';
 export default function App() {
   const [user, setUser] = useState<any>(null);
   // From /api/me alongside the user (Haven-style): the active admin
-  // announcement and how many feedback replies you haven't read.
-  const [announcement, setAnnouncement] = useState<any>(null);
+  // announcements (live now or starting within a day, minus the ones you
+  // dismissed) and how many feedback replies you haven't read.
+  const [announcements, setAnnouncements] = useState<any[]>([]);
   const [unreadReplies, setUnreadReplies] = useState(0);
   const [authState, setAuthState] = useState<'checking'|'guest'|'authed'>(()=> getToken() ? 'checking' : 'guest');
   const [groups, setGroups] = useState<any>(null);
@@ -163,7 +164,7 @@ export default function App() {
   async function checkAuth() {
     if (!getToken()) return;
     setAuthError('');
-    try { const d = await api('/api/me'); setUser(d.user); setAnnouncement(d.announcement || null); setUnreadReplies(Number(d.unreadReplies || 0)); setAuthState('authed'); await loadGroups(); await restoreSaved(); }
+    try { const d = await api('/api/me'); setUser(d.user); setAnnouncements(Array.isArray(d.announcements) ? d.announcements : []); setUnreadReplies(Number(d.unreadReplies || 0)); setAuthState('authed'); await loadGroups(); await restoreSaved(); }
     catch (e: any) {
       if (e?.status === 401) { setToken(null); setUser(null); setAuthState('guest'); }
       else { setAuthError(e.message || 'Could not reach the server'); }
@@ -240,13 +241,15 @@ export default function App() {
   // app comes back to the foreground, and after reading a thread.
   async function refreshMeta() {
     if (!getToken()) return;
-    try { const d = await api('/api/me'); setAnnouncement(d.announcement || null); setUnreadReplies(Number(d.unreadReplies || 0)); } catch { /* keep what we have */ }
+    try { const d = await api('/api/me'); setAnnouncements(Array.isArray(d.announcements) ? d.announcements : []); setUnreadReplies(Number(d.unreadReplies || 0)); } catch { /* keep what we have */ }
   }
   const metaUser = useRef<string | null>(null);
   useEffect(()=>{
     if (authState !== 'authed' || !user?.id) { metaUser.current = null; return; }
-    if (metaUser.current !== user.id) { const first = metaUser.current === null && (announcement !== null || unreadReplies > 0); metaUser.current = user.id; if (!first) refreshMeta(); }
-    const onVisible = () => { if (document.visibilityState === 'visible') refreshMeta(); };
+    if (metaUser.current !== user.id) { const first = metaUser.current === null && (announcements.length > 0 || unreadReplies > 0); metaUser.current = user.id; if (!first) refreshMeta(); }
+    // Coming back to the app re-checks announcements and replies, at most once a minute (Haven).
+    let last = Date.now();
+    const onVisible = () => { if (document.visibilityState === 'visible' && Date.now() - last > 60_000) { last = Date.now(); refreshMeta(); } };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -258,7 +261,7 @@ export default function App() {
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
   },[]);
-  function doLogout() { try { localStorage.removeItem(LAST_GROUP_KEY); } catch { /* ignore */ } forgetAppearance(); setAnnouncement(null); setUnreadReplies(0); setToken(null); setUser(null); setGroup(null); setGroups(null); setAuthState('guest'); }
+  function doLogout() { try { localStorage.removeItem(LAST_GROUP_KEY); } catch { /* ignore */ } forgetAppearance(); setAnnouncements([]); setUnreadReplies(0); setToken(null); setUser(null); setGroup(null); setGroups(null); setAuthState('guest'); }
   // INVITE LINK (?invite=<token>), Nov 2026: the token survives the
   // login/register flow because it stays in the URL — a guest sees the
   // normal Auth screen, and once authed the invite check below shows
@@ -354,5 +357,5 @@ export default function App() {
   // (archive/restore/leave from Settings, Home restore via loadGroups).
   if (group) return (<><GroupView group={group} setGroup={setGroup} tab={tab} setTab={setTab} justJoined={justJoinedId === group.id} back={()=>{setJustJoinedId(null); setGroup(null); loadGroups();}} reload={(detail?: any)=> detail && detail.id ? (setGroup(detail), setError(''), Promise.resolve(true)) : loadGroup(group.id, { keepTab: true })} error={error} setError={setError}  onFeedback={()=>openFeedback(group.id)} />{showFeedback && <FeedbackSheet initialGroupId={feedbackGroupId} groups={groups?.active || []} onClose={()=>setShowFeedback(false)} />}<RateSheet /></>);
   if (!groups) return <HomeSkeleton user={user} />;
-  return (<><Home user={user} setUser={setUser} onLogout={doLogout} setAuthNotice={setAuthNotice} groups={groups} loadGroups={loadGroups} loadGroup={(id: string)=>loadGroup(id, { skeleton: true })} error={error} setError={setError}  appearance={appearance} setAppearance={setAppearance} announcement={announcement} unreadReplies={unreadReplies} refreshMeta={refreshMeta} openMessages={urlParams.get('messages')==='1'} onMessagesOpened={()=>{ const q = new URLSearchParams(window.location.search); if (q.has('messages')) { q.delete('messages'); const s = q.toString(); window.history.replaceState(null, '', window.location.pathname + (s ? `?${s}` : '')); setUrlParams(q); } }} onFeedback={openFeedback} />{showFeedback && <FeedbackSheet initialGroupId={feedbackGroupId} groups={groups?.active || []} onClose={()=>setShowFeedback(false)} />}<RateSheet /></>);
+  return (<><Home user={user} setUser={setUser} onLogout={doLogout} setAuthNotice={setAuthNotice} groups={groups} loadGroups={loadGroups} loadGroup={(id: string)=>loadGroup(id, { skeleton: true })} error={error} setError={setError}  appearance={appearance} setAppearance={setAppearance} announcements={announcements} unreadReplies={unreadReplies} refreshMeta={refreshMeta} openMessages={urlParams.get('messages')==='1'} onMessagesOpened={()=>{ const q = new URLSearchParams(window.location.search); if (q.has('messages')) { q.delete('messages'); const s = q.toString(); window.history.replaceState(null, '', window.location.pathname + (s ? `?${s}` : '')); setUrlParams(q); } }} onFeedback={openFeedback} />{showFeedback && <FeedbackSheet initialGroupId={feedbackGroupId} groups={groups?.active || []} onClose={()=>setShowFeedback(false)} />}<RateSheet /></>);
 }

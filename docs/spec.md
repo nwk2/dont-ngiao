@@ -78,7 +78,10 @@ API <https://dont-ngiao.wk-io.workers.dev> · D1 database `dont-ngiao`.
   Archive/Restore, Delete for clean groups only; admin member-remove keeps the money
   guards but overrides the creator-only role check), and Feedback module (every
   submission, Open / Done / All filter (default Open), newest first; detail with sender, group, build and
-  sent date and the reply thread; Send reply (lands in the sender's Your messages, marks it unread for them and sends a push; status is left alone) and Mark done / Reopen), and Banner module (Haven-style announcement: message up to 280 chars with Show from / Until; current and upcoming listed with Remove; the active one, latest start wins, is returned by /api/me and shown as an info banner at the top of Home for everyone, no per-user dismiss). Admin header is a back circle +
+  sent date and the reply thread; Send reply (lands in the sender's Your messages, marks it unread for them and sends a push; status is left alone) and Mark done / Reopen), and News module (announcements, ported from nwk2/haven: list with Live / Scheduled / Ended
+  and dismissal counts, tap to edit; form with type Info / Heads-up / Fixed, optional title (60),
+  message (280), Show from / Until prefilled now → a week, "People can dismiss it", "Show it again"
+  when editing one people dismissed, live preview, Remove)). Admin header is a back circle +
   ⋯ menu (Back to app, Log out of admin); module tabs show counts; lists have search
   fields and filter chips; badges are neutral; dates read "4 Nov 2026". Tapping a
   user opens a detail sheet (email, joined, role) with the password-reset button —
@@ -114,6 +117,15 @@ API <https://dont-ngiao.wk-io.workers.dev> · D1 database `dont-ngiao`.
   border/outline width, shadow, fonts, overlays). Home's top-right is a gear that opens
   Settings (dot = unread reply); Send feedback and Your messages live under Settings →
   Help and feedback (the group ⋯ menu keeps Send feedback).
+- **Announcements (Home), same as nwk2/haven.** /api/me returns every announcement live now
+  or starting within a day, minus ones this person dismissed. Home stacks them, Heads-up
+  first, then Info, then Fixed, newest first within a type; two at a time with "+N more".
+  Each card reads "From the Don't Ngiao team · <type>", optional title, message; dismissible
+  ones have ✕ (dismissed for this person on every device, 5-second Undo); non-dismissible
+  ones say "Shown until …". Cards appear at their start and leave at their end on a timer.
+  Open apps re-check when brought to the foreground (at most once a minute); unlike Haven
+  there is no live push of admin changes. Tables: announcements (+kind, title, dismissible)
+  and announcement_dismissals (migration 0015).
 - **PWA + push notifications.** Installable (Add to Home Screen; iOS 16.4+), manifest +
   service worker with runtime caching only (no precache; `/api/` and `/version.json`
   are never cached). Web Push on new/edited/deleted expense and settle/payment, only
