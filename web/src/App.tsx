@@ -95,7 +95,7 @@ export default function App() {
   const [groupLoading, setGroupLoading] = useState(false);
   const loadSeq = useRef(0);
   const restoredRef = useRef(false);
-  const [tab, setTab] = useState<'expenses'|'balances'|'members'|'log'>('expenses');
+  const [tab, setTab] = useState<'expenses'|'balances'>('expenses');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   // APPEARANCE (same model as nwk2/haven): theme + System/Light/Dark,
@@ -133,7 +133,10 @@ export default function App() {
     const saved = readSavedGroup();
     if (!saved) return;
     const ok = await loadGroup(saved.groupId, { skeleton: true });
-    if (ok) setTab(saved.tab);
+    // Members/Log were tabs until Nov 2026 and may be the saved value
+    // from an older build — they are sheets now and don't persist, so
+    // restore those to Expenses.
+    if (ok) setTab(saved.tab === 'balances' ? 'balances' : 'expenses');
     else { try { localStorage.removeItem(LAST_GROUP_KEY); } catch { /* ignore */ } setError(''); }
   }
   // Persist navigation: whenever an authed user is inside a group, save

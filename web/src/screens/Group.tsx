@@ -31,6 +31,13 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
   const [showExpense, setShowExpense] = useState(false);
   const [editExpense, setEditExpense] = useState<any>(null);
   const [showSettings, setShowSettings] = useState(false);
+  // MEMBERS/LOG ARE SHEETS NOW, Nov 2026: they used to be tabs with a
+  // Done button — the only way back, and the only menu items that
+  // navigated away instead of opening over the group like Group
+  // settings and Send feedback. Now they open as sheets (X, backdrop
+  // tap, swipe) and the tabs are expenses/balances only.
+  const [showMembers, setShowMembers] = useState(false);
+  const [showLog, setShowLog] = useState(false);
   const [detailExpense, setDetailExpense] = useState<any>(null);
   const [settle, setSettle] = useState<any>(null);
   const [confirm, setConfirm] = useState<any>(null);
@@ -140,7 +147,7 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
   const [memberErrors, setMemberErrors] = useState<Record<string,string>>({});
   const [paymentErrors, setPaymentErrors] = useState<Record<string,string>>({});
   useEffect(()=>{ setMemberErrors({}); setPaymentErrors({}); }, [group]);
-  function changeTab(t: 'expenses'|'balances'|'members'|'log') { setTab(t); setError(''); setMemberErrors({}); setPaymentErrors({}); }
+  function changeTab(t: 'expenses'|'balances') { setTab(t); setError(''); setMemberErrors({}); setPaymentErrors({}); }
   const [catCur, setCatCur] = useState<string>('');
   const currencies = Object.keys(group.categoryGroup || {});
   // CHUNK 1, Nov 2026: catCur persists across groups (GroupView state
@@ -269,12 +276,9 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
         {!group.isArchived && <button style={{...primary,width:'100%',padding:'12px',marginTop:14}} onClick={()=>changeTab('balances')}>Settle up</button>}
       </>)}
     </div>)}
-    {(tab==='expenses' || tab==='balances') ? (<div style={tabTrack}>
+    <div style={tabTrack}>
       {(['expenses','balances'] as const).map(t=>(<button key={t} onClick={()=>changeTab(t)} style={tab===t?tabPillActive:tabPill}>{t==='expenses'?'Expenses':'Balances'}</button>))}
-    </div>) : (<div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:16}}>
-      <h2 style={{margin:0}}>{tab==='members' ? 'Members' : 'Log'}</h2>
-      <button style={btn} onClick={()=>changeTab('expenses')}>Done</button>
-    </div>)}
+    </div>
     {tab==='expenses' && <>
       {spentByCur.length>0 && <button type="button" aria-expanded={showInsights} onClick={()=>setShowInsights(v=>!v)} style={{...homeCard,width:'100%',display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,textAlign:'left',cursor:'pointer',padding:'14px 16px'}}>
         <span style={{minWidth:0}}><strong style={{fontVariantNumeric:'tabular-nums'}}>{spentByCur.map((x:any)=>fmt(x.total,x.c)).join(' + ')}</strong> <span style={{color:'var(--muted)'}}>spent{spentHome !== null ? ` · about ${fmtEstimate(fx.home as string, spentHome)} in total` : ''}{topCat ? ` · ${topCat.name} ${topCat.pct}%` : ''}</span></span>
@@ -493,7 +497,7 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
       <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,margin:'16px 0 0'}}>This only records the payment.</p>
       </>)}
     </>}
-    {tab==='members' && <>
+    {showMembers && (<Sheet title="Members" onClose={()=>setShowMembers(false)} maxHeight="88vh"><div style={{marginTop:16}}>
       {group.members.length>0 && <div style={balCard}>{group.members.map((m:any,mi:number,arr:any[])=>{
         const tappable = canRemoveMember(m);
         return (<div key={m.id} style={{...balRow,borderBottom:mi===arr.length-1?'none':balHairline,cursor:tappable?'pointer':'default'}} onClick={tappable?()=>{setDetailMember(m); setEmailDraft(m.email || ''); setMemberSheetError('');}:undefined}>
@@ -506,7 +510,7 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
         {tappable && <span style={{color:'var(--muted)',flexShrink:0}}>›</span>}
       </div>);})}</div>}
       {!group.isArchived && <div style={{display:'flex',flexDirection:'column',gap:12,marginTop:12}}><InviteMember groupId={group.id} setConfirm={setConfirm} /><AddMember groupId={group.id} reload={reload} /></div>}
-    </>}
+    </div></Sheet>)}
     {detailMember && (<Sheet title="Member" onClose={()=>setDetailMember(null)} maxHeight="88vh">
         <div style={{display:'flex',alignItems:'center',gap:12,marginTop:16}}>
           <div style={{...avatar,background:memberDotColor(group, detailMember.id)}}>{initials(detailMember.name)}</div>
@@ -532,7 +536,7 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
           <AsyncButton style={{...btn,width:'100%',padding:'14px',fontSize:16,background:'var(--danger-bg)',borderColor:'var(--danger-bg)',color:'var(--danger-text)'}} onClick={()=>{setDetailMember(null); setConfirm({title:'Remove member?',message:`Remove ${detailMember.name} from this group? This cannot be undone.`,confirmLabel:'Remove',onError:(msg:string)=>setMemberErrors(prev=>({...prev,[detailMember.id]:msg})),action:async()=>{const d = await api(`/api/groups/${group.id}/members/${detailMember.id}`,'DELETE'); reload(d);}});}}>Remove member</AsyncButton>
         </div>}
     </Sheet>)}
-    {tab==='log' && <>
+    {showLog && (<Sheet title="Log" onClose={()=>setShowLog(false)} maxHeight="88vh"><div style={{marginTop:16}}>
       {displayedActivity.length===0 && <p>No log entries yet.</p>}
       {/* LOG ROWS, 2026-11-06 (all four enhancements): Expenses-style rows —
       icon chip (live = dark teal, deleted = destructive red) + actor avatar
@@ -546,11 +550,11 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
       {activityMore && <AsyncButton style={{...btn,width:'100%',padding:'14px',fontSize:16,marginTop:4}} onClick={loadOlderActivity}>{activityLoading ? 'Loading…' : 'Load older entries'}</AsyncButton>}
       {!activityMore && displayedActivity.length>0 && <p style={{fontSize:13,color:'var(--muted)'}}>That's all the log for this group.</p>}
       {activityError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{activityError}</p>}
-    </>}
+    </div></Sheet>)}
     {showMenu && <PickerSheet title={group.name} onClose={()=>setShowMenu(false)}>
       <div className="flat-list" style={{marginTop:12,background:'var(--field)',borderRadius:'var(--radius-card)',overflow:'hidden'}}>
-        <button className="flat-row" onClick={()=>{setShowMenu(false); changeTab('members');}}><span>Members</span><span style={{color:'var(--muted)'}}>{group.members.length} ›</span></button>
-        <button className="flat-row" onClick={()=>{setShowMenu(false); changeTab('log');}}><span>Log</span><span style={{color:'var(--muted)'}}>›</span></button>
+        <button className="flat-row" onClick={()=>{setShowMenu(false); setShowMembers(true);}}><span>Members</span><span style={{color:'var(--muted)'}}>{group.members.length} ›</span></button>
+        <button className="flat-row" onClick={()=>{setShowMenu(false); setShowLog(true);}}><span>Log</span><span style={{color:'var(--muted)'}}>›</span></button>
         <button className="flat-row" onClick={()=>{setShowMenu(false); setShowSettings(true);}}><span>Group settings</span><span style={{color:'var(--muted)'}}>›</span></button>
         <button className="flat-row" onClick={()=>{setShowMenu(false); onFeedback();}}><span>Send feedback</span><span style={{color:'var(--muted)'}}>›</span></button>
       </div>
