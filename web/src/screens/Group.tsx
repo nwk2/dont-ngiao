@@ -186,7 +186,12 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
       return { memberId: m.id, name: m.name, total: t.total, count: t.count };
     });
     rows.sort((a, b) => b.total - a.total);
-    return rows;
+    // Hide the $0 members (24 Nov 2026): a member who paid nothing in
+    // this currency renders as 'S$0.00 (0.0%)' with an empty bar — noise,
+    // and in a big group it fills the list with dead rows. The all-zero
+    // case is still covered: memberGrandTotal is 0, so the render falls
+    // back to 'No spend in {cur} yet.'
+    return rows.filter(r => r.total > 0);
   })();
   const memberGrandTotal = memberTotals.reduce((a, r) => a + r.total, 0);
   const expFiltersActive = expSearch.trim() !== '' || expCat !== null || expPayer !== null;

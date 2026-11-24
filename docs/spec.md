@@ -56,8 +56,9 @@ API <https://dont-ngiao.wk-io.workers.dev> · D1 database `dont-ngiao`.
   faceted counts; frontend-only — the chart is not filtered). The per-currency chart
   (Group | Mine | Members views) sits behind an "Insights" line, collapsed by default.
   Group = whole-group totals; Mine = the requester's own split shares only, computed
-  on the server; Members = every member ranked by total paid (gross) in the selected
-  currency. Chart currency defaults to the group default when it has data, else the
+  on the server; Members = members who paid something in the selected currency,
+  ranked by total paid (gross); members who paid nothing are hidden (24 Nov 2026 —
+  a S$0.00 / 0.0% row with an empty bar is noise). Chart currency defaults to the group default when it has data, else the
   first currency with data; an explicit pick always wins.
 - **Log tab (money events only):** expense added/edited/deleted, payment
   recorded/deleted. `activity_log` stores member ids; names are resolved live at read.
