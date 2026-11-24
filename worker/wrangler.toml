@@ -1,4 +1,4 @@
-name = "deusy-api"
+name = "dont-ngiao"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
@@ -16,7 +16,7 @@ migrations_dir = "migrations"
 # Logs enabled (dashboard setting alone would be overwritten by a deploy
 # from this wrangler.toml). Logs are the diagnostic for the Nov 2026
 # all-writes-fail bug: with invocation logs persisted, a failing write
-# shows its server-side exception in Workers > deusy-api > Logs instead
+# shows its server-side exception in Workers > dont-ngiao > Logs instead
 # of being masked as Safari "Load failed" on the frontend.
 [observability.logs]
 enabled = true

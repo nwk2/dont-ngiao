@@ -1,5 +1,5 @@
 // Deploy trigger: 2026-11-04 — no logic change, only to trigger a Workers Builds deployment
-// Deusy — Cloudflare Worker API (TypeScript, D1 SQLite, no external deps)
+// Don't Ngiao — Cloudflare Worker API (TypeScript, D1 SQLite, no external deps)
 // All money is integer minor units; zero-decimal currencies in whole units.
 // Balances/suggestions are per currency, never converted. Activity log is append-only.
 import { CURRENCIES, CATEGORIES, equalSplit, percentSplit, balanceOf, simplify, formatAmount } from './logic';
@@ -11,11 +11,11 @@ const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Ma
 const nowIso = () => new Date().toISOString();
 // CORS: the ONE place to edit when the frontend origin changes. This list
 // holds exactly one origin: the current frontend,
-// https://deusy.wk-io.workers.dev (workers.dev subdomain wk-io).
+// https://dont-ngiao-web.wk-io.workers.dev (workers.dev subdomain wk-io).
 // No localhost or other origins are allowed. Requests with no Origin
 // header (curl, non-browser) get no Allow-Origin header — that is correct,
 // they are not browser-CORS-gated, and auth still applies to them.
-const ALLOWED_ORIGINS = ['https://deusy.wk-io.workers.dev'];
+const ALLOWED_ORIGINS = ['https://dont-ngiao-web.wk-io.workers.dev'];
 function corsHeaders(origin: string | null): Record<string, string> {
   if (!origin || !ALLOWED_ORIGINS.includes(origin)) return {};
   return { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS', 'Vary': 'Origin' };
@@ -72,7 +72,7 @@ function newSalt(): string {
 // in the frontend auth URL); only the secret is sensitive. Returns
 // the verified { sub, email, email_verified, name } or throws.
 const GOOGLE_CLIENT_ID = '710021216622-44ldbet58qcftfakusmu9i24qto6nr40.apps.googleusercontent.com';
-const GOOGLE_REDIRECT_URI = 'https://deusy.wk-io.workers.dev/';
+const GOOGLE_REDIRECT_URI = 'https://dont-ngiao-web.wk-io.workers.dev/';
 async function googleUserFromCode(env: Env, code: string): Promise<{ sub: string; email: string; email_verified: boolean; name: string }> {
   if (!env.GOOGLE_CLIENT_SECRET) throw new Error('Google sign-in is not configured, try again later');
   let tokRes: Response;
@@ -573,7 +573,7 @@ async function verifyTurnstile(env: Env, token: string | undefined, ip: string, 
     // POST /api/me/google/link { code }
     // A signed-in user links their Google account to their existing
     // account, so they can sign in with Google next time. This is the
-    // safe path when the Google email differs from the Deusy
+    // safe path when the Google email differs from the Don't Ngiao
     // email (the automatic email-match in /api/auth/google would
     // otherwise create a second account). Exchanges the code, reads
     // the Google ID, and sets google_sub on the CURRENT user (from
@@ -952,7 +952,7 @@ async function verifyTurnstile(env: Env, token: string | undefined, ip: string, 
           env.DB.prepare("INSERT INTO feedback_messages (id, feedback_id, author, text, created_at) VALUES (?, ?, 'admin', ?, ?)").bind(uid(), id, text, at),
           env.DB.prepare('UPDATE feedback SET user_unread=1, updated_at=? WHERE id=?').bind(at, id),
         ]);
-        ctx.waitUntil(notifyUsers(env, [row.user_id], { title: "Deusy team replied", body: text.length > 120 ? text.slice(0, 117) + '…' : text, url: '/?messages=1', tag: `feedback-${id}` }));
+        ctx.waitUntil(notifyUsers(env, [row.user_id], { title: "Don't Ngiao team replied", body: text.length > 120 ? text.slice(0, 117) + '…' : text, url: '/?messages=1', tag: `feedback-${id}` }));
       }
       const fresh = await feedbackRow(env, id) as Row;
       const messages = await feedbackThread(env, fresh);
