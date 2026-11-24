@@ -16,7 +16,7 @@ export type PushPayload = { title: string; body: string; url?: string; tag?: str
 
 // VAPID subject: identifies this application server to the push service.
 // A URL (not a personal email) so no one's address is exposed.
-export const VAPID_SUBJECT = 'https://dont-ngiao-web.wk-io.workers.dev';
+export const VAPID_SUBJECT = 'https://deusy.wk-io.workers.dev';
 // VAPID public key (base64url, 65-byte uncompressed P-256 point).
 // PUBLIC by design — the browser uses it to subscribe. The matching
 // private key is the VAPID_PRIVATE_KEY Worker secret.

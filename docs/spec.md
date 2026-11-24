@@ -1,6 +1,6 @@
-# Don't Ngiao — Spec
+# Deusy — Spec
 
-Full product and API spec for Don't Ngiao. The short overview is
+Full product and API spec for Deusy. The short overview is
 [README.md](../README.md).
 
 A Splitwise-like expense-splitting app: Vite + React + TypeScript frontend served as
@@ -8,8 +8,8 @@ static assets by a Cloudflare Worker, a Cloudflare Worker API in TypeScript, and
 Cloudflare D1 (SQLite) as the database. Free tier, no cold start by architecture
 (V8 isolates, not containers). No Render, no polling/keep-alive hack.
 
-Live: frontend <https://dont-ngiao-web.wk-io.workers.dev> ·
-API <https://dont-ngiao.wk-io.workers.dev> · D1 database `dont-ngiao`.
+Live: frontend <https://deusy.wk-io.workers.dev> ·
+API <https://deusy-api.wk-io.workers.dev> · D1 database `dont-ngiao`.
 
 ## What it does
 
@@ -96,7 +96,7 @@ API <https://dont-ngiao.wk-io.workers.dev> · D1 database `dont-ngiao`.
   only). On success the Send button becomes a check-circle + "Sent" and the sheet
   closes after about a second — there is no separate success screen (the Settings row
   is a plain one-liner "Send feedback", no subline, no "New" pill). Sender name and build are recorded with the submission and shown in the
-  admin detail, never to the sender. Replies happen in the app (Haven-style): Settings → Help and feedback → Your messages lists what you sent, newest activity first, labelled Sent / Replied / Done, with a dot for unread replies; a thread shows your message and the team's replies, and you can reply back (the item reopens; shares the feedback rate limit). An unread reply shows a dot on the Home gear, a "The Don't Ngiao team replied" banner on Home, and a "N new" pill on the Your messages row; a reply push opens /?messages=1. Original message stays in feedback.message; replies are in feedback_messages. No screenshots, no push alert to the admin on new feedback, no anonymous submissions. Rate limit: 10 submissions/hour per user (replies count too).
+  admin detail, never to the sender. Replies happen in the app (Haven-style): Settings → Help and feedback → Your messages lists what you sent, newest activity first, labelled Sent / Replied / Done, with a dot for unread replies; a thread shows your message and the team's replies, and you can reply back (the item reopens; shares the feedback rate limit). An unread reply shows a dot on the Home gear, a "The Deusy team replied" banner on Home, and a "N new" pill on the Your messages row; a reply push opens /?messages=1. Original message stays in feedback.message; replies are in feedback_messages. No screenshots, no push alert to the admin on new feedback, no anonymous submissions. Rate limit: 10 submissions/hour per user (replies count too).
 - **Home currency (estimates only, no FX in the money).** Each account has a home
   currency (users.home_currency; NULL = not chosen yet, 'none' = off). Existing accounts
   were set to SGD by migration 0014; new accounts pick one on a one-time screen after first
@@ -276,23 +276,23 @@ truth is the Cloudflare deployments API — there is no version string in the UI
    `dont-ngiao`. Apply `worker/migrations/0001–0010.sql` to it, in order, before any code
    that uses the new columns (see the sequencing rule below). Note the database id and
    put it in `worker/wrangler.toml` (`database_id`).
-2. **Worker (API) `dont-ngiao`:** Workers & Pages → Create application → Worker →
+2. **Worker (API) `deusy-api`:** Workers & Pages → Create application → Worker →
    Connect to Git, same repo. Root directory: `worker/`. Build command: none (Worker
    builds from source). Bindings → D1 Database → variable name `DB` → database
    `dont-ngiao`. Runtime secrets (Worker → Settings → Variables → Add secret — **not**
    "Secrets used during build", which are invisible at runtime):
    `TURNSTILE_SECRET`, `VAPID_PRIVATE_KEY`, `GOOGLE_CLIENT_SECRET`. Values are never
    in the repo or in chat. Deploy. Note the Worker URL:
-   `https://dont-ngiao.wk-io.workers.dev`.
-3. **Worker (frontend) `dont-ngiao-web`:** same flow. Root directory: `web/`. Build
+   `https://deusy-api.wk-io.workers.dev`.
+3. **Worker (frontend) `deusy`:** same flow. Root directory: `web/`. Build
    command: `npm install && npm run build` (the `prebuild` step generates the PWA icons
    and `version.json`). Output directory: `dist`, served as static assets. There is no
    `wrangler.toml` in `web/` — the build config lives in the dashboard. Build
-   environment variable: `VITE_API_URL=https://dont-ngiao.wk-io.workers.dev`
+   environment variable: `VITE_API_URL=https://deusy-api.wk-io.workers.dev`
    (no trailing slash; Vite bakes this in at build time). Deploy. Note the URL:
-   `https://dont-ngiao-web.wk-io.workers.dev`.
+   `https://deusy.wk-io.workers.dev`.
 4. **CORS:** the Worker allows only the frontend origin
-   (`https://dont-ngiao-web.wk-io.workers.dev`) — see `ALLOWED_ORIGINS` in
+   (`https://deusy.wk-io.workers.dev`) — see `ALLOWED_ORIGINS` in
    `worker/src/index.ts`.
 5. **Google OAuth (console):** redirect URI is the frontend origin root; scopes are
    `openid email profile` (non-sensitive, no verification review); the consent screen
