@@ -264,15 +264,6 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
             <Estimate minor={b.balance} cur={b.currency} suffix="at today’s rate" />
           </span>
         </div>))}
-        {mySuggestions.length>0 && <div style={{display:'flex',flexDirection:'column',gap:8,marginTop:10}}>{mySuggestions.map((sg:any,i:number)=>{
-          const iOwe = sg.fromMemberId===group.myMemberId;
-          const other = personDisplay(group, iOwe ? sg.toMemberId : sg.fromMemberId, iOwe ? sg.toName : sg.fromName);
-          return (<div key={i} style={{display:'flex',alignItems:'center',gap:10,fontSize:14}}>
-            <span style={{...avatar,width:28,height:28,fontSize:12,background:memberDotColor(group, other.memberId)}}>{initials(other.name)}</span>
-            <span style={{flex:1,minWidth:0}}>{iOwe ? <>You owe {other.label}</> : <>{other.label} <span style={{color:'var(--muted)'}}>owes you</span></>}</span>
-            <span style={{fontWeight:600,fontVariantNumeric:'tabular-nums',whiteSpace:'nowrap'}}>{sg.display}</span>
-          </div>);
-        })}</div>}
       </>)}
     </div>)}
     <div style={tabTrack}>
