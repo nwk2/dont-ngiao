@@ -499,8 +499,8 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
         <div style={{...avatar,background:memberDotColor(group, m.id)}}>{initials(m.name)}</div>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontWeight:600,lineHeight:1.4}}>{m.id === group.myMemberId ? `You (${m.name})` : m.name}{!m.hasAccount ? <span style={noAccountChip}>No account yet</span> : null}</div>
-          {m.email ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.email}</div>) : (!m.hasAccount ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4}}>No email set — add one so they can register with it</div>) : null)}
-          {!m.hasAccount && m.email ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4}}>They can register with this email to join</div>) : null}
+          {m.email ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.email}</div>) : (!m.hasAccount ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4}}>No email set — add one so they can sign in with Google using it</div>) : null)}
+          {!m.hasAccount && m.email ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4}}>They can sign in with Google using this email to join</div>) : null}
         </div>
         {tappable && <span style={{color:'var(--muted)',flexShrink:0}}>›</span>}
       </div>);})}</div>}
@@ -511,8 +511,8 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
           <div style={{...avatar,background:memberDotColor(group, detailMember.id)}}>{initials(detailMember.name)}</div>
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontWeight:600,lineHeight:1.4}}>{detailMember.id === group.myMemberId ? `You (${detailMember.name})` : detailMember.name}{!detailMember.hasAccount ? <span style={noAccountChip}>No account yet</span> : null}</div>
-            {detailMember.email ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{detailMember.email}</div>) : (!detailMember.hasAccount ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4}}>No email set — add one so they can register with it</div>) : null)}
-            {!detailMember.hasAccount && detailMember.email ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4}}>They can register with this email to join</div>) : null}
+            {detailMember.email ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{detailMember.email}</div>) : (!detailMember.hasAccount ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4}}>No email set — add one so they can sign in with Google using it</div>) : null)}
+            {!detailMember.hasAccount && detailMember.email ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4}}>They can sign in with Google using this email to join</div>) : null}
           </div>
         </div>
         {/* Edit email: placeholders only, as before — an account member's
@@ -520,7 +520,7 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
         {!detailMember.hasAccount && <>
           <label style={{display:'block',marginTop:16}}>Email</label>
           <input style={input} placeholder="Email" value={emailDraft} onChange={e=>setEmailDraft(e.target.value)} aria-label="Member email" />
-          <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,marginTop:0}}>Attach an email so they can register with it — signing up with this email sets up this same person, keeping their expenses.</p>
+          <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,marginTop:0}}>Attach an email so they can sign in with Google using it — signing in with this email sets up this same person, keeping their expenses.</p>
           {memberSheetError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{memberSheetError}</p>}
           <AsyncButton disabled={saveEmailDisabled} style={{...primary,width:'100%',padding:'14px',fontSize:16,opacity:saveEmailDisabled?0.5:1}} onClick={async()=>{setMemberSheetError(''); try{const d = await api(`/api/groups/${group.id}/members/${detailMember.id}`,'PATCH',{email:emailDraft.trim()}); setDetailMember(null); reload(d);}catch(er:any){setMemberSheetError(er.message);}}}>Save email</AsyncButton>
         </>}
@@ -576,7 +576,7 @@ export function AddMember({ groupId, reload }: any) {
         <input style={input} placeholder="Name" value={name} onChange={e=>setName(e.target.value)} />
         <label>Email (optional)</label>
         <input style={input} placeholder="Email (optional)" value={email} onChange={e=>setEmail(e.target.value)} />
-        <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,marginTop:0}}>For someone without an account — like an elderly relative. They'll use their own name when they register and join; email is optional, and can be added later.</p>
+        <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,marginTop:0}}>For someone without an account — like an elderly relative. They'll sign in with Google and join; email is optional, and can be added later.</p>
         {addError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{addError}</p>}
         <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={async()=>{setAddError(''); try{const d = await api(`/api/groups/${groupId}/members`,'POST',{name,email:email||null}); reload(d); setShow(false);}catch(e:any){setAddError(e.message);}}}>Add placeholder</AsyncButton>
     </Sheet>)}

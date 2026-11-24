@@ -40,8 +40,6 @@ const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const SESSION_TOUCH_INTERVAL_MS = 60 * 60 * 1000;
 // Rate limits (see rate-limit helpers below; all D1-backed, no dashboard
 // rules, Durable Objects, or KV). Tunable constants — change here only.
-const REGISTER_LIMIT_PER_HOUR = 5;
-const REGISTER_LIMIT_PER_DAY = 20;
 const LOGIN_FAILED_LIMIT = 5;
 const LOGIN_FAILED_WINDOW_MS = 15 * 60 * 1000;
 const RATE_LIMIT_DAY_MS = 24 * 60 * 60 * 1000;
@@ -337,74 +335,6 @@ async function handleRequest(req: Request, env: Env, ctx: ExecutionContext): Pro
     if (req.method !== 'GET') { try { body = await req.json(); } catch { body = {}; } }
 
     // ---- Auth ----
-// TURNSTILE, Nov 2026: verify the Register widget token before an
-// account is created. Fail closed: if the secret is unset, the token is
-// missing, or siteverify says no, the registration is rejected and NO
-// account is created. The secret lives in the TURNSTILE_SECRET Worker
-// secret (never in the repo or the frontend); only the site key is
-// public. Returns an error Response, or null when verification passed.
-async function verifyTurnstile(env: Env, token: string | undefined, ip: string, origin: string | null): Promise<Response | null> {
-  if (!env.TURNSTILE_SECRET) return err('Verification is not configured, try again later', 503, origin);
-  if (!token) return err('Please complete the verification', 400, origin);
-  let res: Response;
-  try {
-    res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ secret: env.TURNSTILE_SECRET, response: token, remoteip: ip }),
-    });
-  } catch {
-    return err('Verification failed, try again', 502, origin);
-  }
-  let data: any = {};
-  try { data = await res.json(); } catch { /* fall through to the success check */ }
-  if (!data || data.success !== true) return err('Verification failed, try again', 400, origin);
-  return null;
-}
-    if (path === '/api/auth/register' && req.method === 'POST') {
-      const { name, email, password } = body;
-      if (!name || !email || !password || String(password).length < 6) return err('Name, email and a password of at least 6 characters are required', 400, origin);
-      // TURNSTILE: verify the widget token BEFORE anything is created
-      // (and before the rate-limit record, so a bot failing the check
-      // does not consume the register quota).
-      const turnstileErr = await verifyTurnstile(env, (body as any).turnstileToken, clientIp(req), origin);
-      if (turnstileErr) return turnstileErr;
-      // Rate limit: 5 accounts/hour, 20/day per IP. Fails open if the
-      // rate_limits table does not exist yet (migration 0002 not applied).
-      {
-        const ip = clientIp(req); const now = Date.now();
-        await ratePrune(env, now);
-        if (await rateCount(env, 'register', ip, 60 * 60 * 1000, now) >= REGISTER_LIMIT_PER_HOUR) return err('Too many accounts created from this network, try again later', 429, origin);
-        if (await rateCount(env, 'register', ip, RATE_LIMIT_DAY_MS, now) >= REGISTER_LIMIT_PER_DAY) return err('Too many accounts created from this network, try again later', 429, origin);
-        await rateRecord(env, 'register', ip, now);
-      }
-      const salt = newSalt(); const hash = await hashPassword(password, salt);
-      const createdAt = nowIso();
-      // ONE-ENTITY USER, Nov 2026: if this email already belongs to a
-      // placeholder user (added by a group member, no password yet),
-      // ACTIVATE that row — set the password and the name they entered
-      // — instead of creating a new user. The placeholder IS the user,
-      // so they are already a member of every group it was in, with its
-      // history intact, and the name syncs to the account name. A real
-      // account with this email is still a 409.
-      const existing = await env.DB.prepare('SELECT id, password_hash FROM users WHERE email=?').bind(String(email).toLowerCase()).first<Row>();
-      let id: string;
-      if (existing && !existing.password_hash) {
-        id = String(existing.id);
-        await env.DB.prepare('UPDATE users SET name=?, password_salt=?, password_hash=? WHERE id=?').bind(name, salt, hash, id).run();
-      } else {
-        id = uid();
-        try { await env.DB.prepare('INSERT INTO users (id,name,email,password_salt,password_hash,created_at,theme,mode) VALUES (?,?,?,?,?,?,?,?)').bind(id, name, email.toLowerCase(), salt, hash, createdAt, 'market', 'system').run(); }
-        catch { return err('Email already registered', 409, origin); }
-      }
-      // Include created_at: YouView's "User since" line needs it, and a
-      // fresh register session never calls /api/me to fill it in (same
-      // omission as login, fixed below).
-      const user = { id, name, email: email.toLowerCase(), created_at: createdAt, is_admin: 0, has_google: false, has_password: true, theme: 'market', mode: 'system', home_currency: null };
-      const token = uid();
-      await env.DB.prepare('INSERT INTO sessions (token,user_id,created_at) VALUES (?,?,?)').bind(token, id, nowIso()).run();
-      return json({ user, token }, 200, origin);
-    }
     if (path === '/api/auth/login' && req.method === 'POST') {
       const { email, password } = body;
       // Rate limit: 5 failed attempts per 15 min per IP+email. Checked

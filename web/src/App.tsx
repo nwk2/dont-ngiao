@@ -183,9 +183,9 @@ export default function App() {
     if (code && state) { handleGoogleCallback(code, state); return; }
     checkAuth();
   }, []);
-  async function doAuth(mode: 'login'|'register', name: string, email: string, password: string, turnstileToken?: string | null) {
+  async function doAuth(email: string, password: string) {
     setError(''); setLoading(true);
-    try { const d = await api(`/api/auth/${mode}`, 'POST', mode==='register' ? {name,email,password,turnstileToken} : {email,password}); setToken(d.token); setUser(d.user); setAuthState('authed'); setAuthNotice(''); await loadGroups(); await restoreSaved(); }
+    try { const d = await api('/api/auth/login', 'POST', {email,password}); setToken(d.token); setUser(d.user); setAuthState('authed'); setAuthNotice(''); await loadGroups(); await restoreSaved(); }
     catch(e:any){ setError(e.message); } finally { setLoading(false); }
   }
   // GOOGLE CALLBACK, Nov 2026: Google redirected back to the app root
@@ -266,7 +266,7 @@ export default function App() {
   },[]);
   function doLogout() { try { localStorage.removeItem(LAST_GROUP_KEY); } catch { /* ignore */ } forgetAppearance(); setAnnouncements([]); setUnreadReplies(0); setToken(null); setUser(null); setGroup(null); setGroups(null); setAuthState('guest'); }
   // INVITE LINK (?invite=<token>), Nov 2026: the token survives the
-  // login/register flow because it stays in the URL — a guest sees the
+  // login flow because it stays in the URL — a guest sees the
   // normal Auth screen, and once authed the invite check below shows
   // the join screen. After joining (or cancelling), the param is
   // cleared from the URL *and* from state, so a refresh does not
