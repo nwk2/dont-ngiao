@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api';
 
-// ANNOUNCEMENTS, ported from nwk2/haven (Nov 2026): from the Don't Ngiao
+// ANNOUNCEMENTS, ported from nwk2/haven (Nov 2026): from the Duesy
 // team; typed (Info / Heads-up / Fixed), optional title, optionally
 // dismissible. Every live one is stacked on Home, most urgent first then
 // newest; two at a time with "+N more". ✕ dismisses for this person on
 // every device (Undo for 5 seconds). Each appears at its start time and goes
 // at its end time without asking the server again. (Haven also pushes admin
-// changes to open apps over a live connection; Don't Ngiao has none, so
+// changes to open apps over a live connection; Duesy has none, so
 // open apps pick changes up when they come back to the foreground.)
 export type AnnouncementKind = 'info' | 'warn' | 'ok';
 export type AnnouncementData = { id: string; kind: AnnouncementKind; title?: string | null; text: string; dismissible: boolean; startsAt: number; endsAt: number };
@@ -25,7 +25,7 @@ export const kindName = (k: AnnouncementKind) => KIND_NAME[k];
 export function AnnouncementCard({ a, onDismiss, preview }: { a: Omit<AnnouncementData, 'startsAt'>; onDismiss?: () => void; preview?: boolean }) {
   const ink = `var(--ann-${a.kind})`;
   const until = new Intl.DateTimeFormat(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(a.endsAt);
-  return (<section role="region" aria-label={`Announcement from the Don’t Ngiao team${a.title ? `: ${a.title}` : ''}`}
+  return (<section role="region" aria-label={`Announcement from the Duesy team${a.title ? `: ${a.title}` : ''}`}
     style={{display:'grid',gridTemplateColumns:'26px minmax(0, 1fr) auto',gap:10,alignItems:'start',padding:'12px 8px 12px 14px',borderRadius:14,background:`var(--ann-${a.kind}-bg)`,borderLeft:`4px solid ${ink}`,color:'var(--text)'}}>
     <span style={{color:ink,paddingTop:1,display:'flex'}}>{KIND_ICON[a.kind]}</span>
     <div style={{display:'flex',flexDirection:'column',gap:2,minWidth:0}}>

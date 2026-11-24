@@ -190,14 +190,14 @@ export function AdminView() {
     finally { setGroupBusy(null); }
   }
   if (adminChecking) return (<div style={S}><p style={{color:'var(--muted)'}}>Loading…</p></div>);
-  if (!adminUser) return (<div style={S}><h1>Admin</h1><p style={{color:'var(--muted)'}}>Separate admin login — this is not the regular Don't Ngiao login. Only an admin account can sign in here.</p>
+  if (!adminUser) return (<div style={S}><h1>Admin</h1><p style={{color:'var(--muted)'}}>Separate admin login — this is not the regular Duesy login. Only an admin account can sign in here.</p>
     <div style={homeCard}>
     {error && <p style={{color:'var(--danger-text)',marginTop:0}}>{error}</p>}
     <label>Email</label><input style={input} value={email} onChange={e=>setEmail(e.target.value)} />
     <label>Password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={showPassword ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={password} onChange={e=>setPassword(e.target.value)} /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',fontSize:18,lineHeight:1}} onClick={()=>setShowPassword(v=>!v)}>{showPassword ? '🙈' : '👁️'}</button></div>
     <button style={{...primary, width:'100%', padding:'14px', fontSize:16, opacity: (loading || !email.trim() || !password) ? 0.6 : 1, cursor: (loading || !email.trim() || !password) ? 'not-allowed' : 'pointer'}} disabled={loading || !email.trim() || !password} onClick={doAdminLogin}>{loading ? 'Logging in…' : 'Log in as admin'}</button>
     </div>
-    <p><button style={btn} onClick={()=>{ window.location.href = '/'; }}>← Back to Don't Ngiao</button></p>
+    <p><button style={btn} onClick={()=>{ window.location.href = '/'; }}>← Back to Duesy</button></p>
   </div>);
   const filtered = users.filter((u:any) => fuzzyMatch(search, u.name || '') || fuzzyMatch(search, u.email || ''));
   const filteredGroups = groups.filter((gr:any) => {
@@ -301,7 +301,7 @@ export function AdminView() {
     </div>
     <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:12}}>
       {(selectedFeedback.messages || [{ id:'orig', author:'user', text: selectedFeedback.message, createdAt: selectedFeedback.createdAt }]).map((m:any)=>(<div key={m.id} style={{...homeCard,marginBottom:0,background:m.author==='admin'?'var(--info-bg)':'var(--card)',marginLeft:m.author==='admin'?32:0,marginRight:m.author==='admin'?0:32}}>
-        <div style={{fontSize:12,fontWeight:600,color:'var(--muted)',marginBottom:4}}>{m.author==='admin' ? 'You (Don\u2019t Ngiao team)' : selectedFeedback.senderName} · {fmtDay(m.createdAt)}, {new Date(m.createdAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</div>
+        <div style={{fontSize:12,fontWeight:600,color:'var(--muted)',marginBottom:4}}>{m.author==='admin' ? 'You (Duesy team)' : selectedFeedback.senderName} · {fmtDay(m.createdAt)}, {new Date(m.createdAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</div>
         <div style={{fontSize:15,lineHeight:1.55,whiteSpace:'pre-wrap'}}>{m.text}</div>
       </div>))}
     </div>

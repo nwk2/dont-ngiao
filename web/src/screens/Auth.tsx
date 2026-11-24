@@ -213,7 +213,7 @@ export function Auth({ onAuth, error, loading, notice, inviteToken, onInvalidInv
   // credentials (401 login / 400 register), this just stops the tap.
   // Same rule on the reset and admin-login buttons below.
   const submitDisabled = loading || (mode==='login' ? (!email.trim() || !password) : (!name.trim() || !email.trim() || !password || !turnstileToken));
-  return (<div style={S}><h1>Don't Ngiao</h1><p style={{color:'var(--muted)',marginTop:0}}>Mai ngiao, mai drama.</p>
+  return (<div style={S}><h1>Duesy</h1><p style={{color:'var(--muted)'}}>Pay your dues, easily.</p>
     {notice && <div style={{...homeCard,background:'var(--tint-bg)',marginBottom:16}}><div style={{fontSize:14,lineHeight:1.45}}>{notice}</div></div>}
     {inviteToken && inviteState==='loading' && <p style={{color:'var(--muted)',fontSize:13}}>Checking your invite…</p>}
     {inviteToken && inviteState==='ready' && invite && <div style={{...homeCard,background:'var(--tint-bg)',marginBottom:16}}>
@@ -300,7 +300,7 @@ export function InviteView({ token, onJoined, onCancel }: any) {
     try { const d = await api(`/api/invites/${encodeURIComponent(token)}/join`, 'POST'); onJoined(d.group.id); }
     catch(e:any){ setError(e.message); } finally { setJoining(false); }
   }
-  if (state === 'loading') return (<div style={S}><h1>Don't Ngiao</h1><p style={{color:'var(--muted)'}}>Checking your invite…</p></div>);
+  if (state === 'loading') return (<div style={S}><h1>Duesy</h1><p style={{color:'var(--muted)'}}>Checking your invite…</p></div>);
   if (state === 'error') return (<div style={S}><h1>Invite link</h1><div style={homeCard}><p style={{marginTop:0}}>{error}</p><p style={{fontSize:13,color:'var(--muted)'}}>The link may have been revoked, or the group may have been deleted or archived.</p><button style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={onCancel}>Go to Home</button></div></div>);
   return (<div style={S}><h1>You're invited</h1><div style={homeCard}>
     <div style={{fontSize:20,fontWeight:700}}>{invite.groupName}</div>

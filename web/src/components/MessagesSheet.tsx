@@ -33,16 +33,16 @@ export function MessagesSheet({ onClose, onChanged }: { onClose: () => void; onC
 
   if (thread) return (<Sheet title={TYPE[thread.type] || 'Your message'} onClose={onClose} maxHeight="88vh">
     <button type="button" onClick={back} style={{background:'transparent',border:'none',color:'var(--muted)',padding:'8px 0',fontSize:14,cursor:'pointer'}}>‹ All messages</button>
-    <div style={{fontSize:12,color:'var(--muted)',textAlign:'center',margin:'4px 0 12px'}}>{thread.label} · Only you and the Don’t Ngiao team can see this</div>
+    <div style={{fontSize:12,color:'var(--muted)',textAlign:'center',margin:'4px 0 12px'}}>{thread.label} · Only you and the Duesy team can see this</div>
     <div style={{display:'flex',flexDirection:'column',gap:8}}>
       {thread.messages.map((m: any) => (<div key={m.id} style={{alignSelf:m.author==='user'?'flex-end':'flex-start',maxWidth:'85%',background:m.author==='user'?'var(--field)':'var(--info-bg)',borderRadius:'var(--radius-card)',padding:'10px 12px'}}>
-        <div style={{fontSize:12,fontWeight:600,color:'var(--muted)',marginBottom:2}}>{m.author==='user' ? 'You' : 'Don’t Ngiao team'} · {when(m.createdAt)}</div>
+        <div style={{fontSize:12,fontWeight:600,color:'var(--muted)',marginBottom:2}}>{m.author==='user' ? 'You' : 'Duesy team'} · {when(m.createdAt)}</div>
         <div style={{fontSize:15,lineHeight:1.5,whiteSpace:'pre-wrap'}}>{m.text}</div>
       </div>))}
     </div>
     {error && <p style={{color:'var(--danger-text)',fontSize:14}}>{error}</p>}
     <div style={{display:'flex',gap:8,marginTop:14,alignItems:'flex-end'}}>
-      <textarea aria-label="Reply to the Don’t Ngiao team" placeholder="Reply to the team" value={text} onChange={e=>setText(e.target.value)} rows={2} maxLength={2000} style={{...input,margin:0,flex:1,resize:'vertical',fontFamily:'inherit'}} />
+      <textarea aria-label="Reply to the Duesy team" placeholder="Reply to the team" value={text} onChange={e=>setText(e.target.value)} rows={2} maxLength={2000} style={{...input,margin:0,flex:1,resize:'vertical',fontFamily:'inherit'}} />
       <AsyncButton style={{...primary,padding:'12px 16px',flexShrink:0}} disabled={!text.trim()} onClick={send}>Send</AsyncButton>
     </div>
   </Sheet>);

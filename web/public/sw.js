@@ -1,4 +1,4 @@
-// Don't Ngiao service worker (PWA, Nov 2026). Caches the app shell so
+// Duesy service worker (PWA, Nov 2026). Caches the app shell so
 // the app launches fast and loads offline; the API is never cached.
 // Navigation (the HTML shell) is network-first with a cache fallback,
 // so a new deploy reaches users when they are online and the last good
@@ -54,7 +54,7 @@ self.addEventListener('fetch', (e) => {
 self.addEventListener('push', (e) => {
   let data = {};
   try { data = e.data ? e.data.json() : {}; } catch { data = {}; }
-  const title = data.title || "Don't Ngiao";
+  const title = data.title || "Duesy";
   const body = data.body || '';
   const url = data.url || '/';
   const tag = data.tag || undefined;

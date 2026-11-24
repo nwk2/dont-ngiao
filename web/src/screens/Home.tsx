@@ -45,14 +45,14 @@ export function Home({ user, setUser, onLogout, setAuthNotice, groups, loadGroup
         <span aria-hidden="true" style={{width:48,height:48,borderRadius:'50%',background:'var(--avatar-green)',color:'var(--on-avatar)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:18,flexShrink:0}}>{initials(user.name)}</span>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:20,fontWeight:700}}>{user.name}</div>
-          <div style={{fontSize:13,color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',lineHeight:1.4}}>Mai ngiao, mai drama.</div>
+          <div style={{fontSize:13,color:'var(--muted)'}}>Pay your dues, easily.</div>
         </div>
         <button type="button" aria-label={unreadReplies ? 'Settings, new reply' : 'Settings'} title="Settings" onClick={()=>setShowSettings(true)} style={iconBtn}>{gearIcon}{unreadReplies>0 && <span aria-hidden="true" style={{position:'absolute',top:8,right:8,width:9,height:9,borderRadius:5,background:'var(--accent)',border:'2px solid var(--bg)'}} />}</button>
       </div>
     </div>
     {error && <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:12}}><span style={{color:'var(--danger-text)'}}>{error}</span><button style={btn} onClick={()=>loadGroups()}>Retry</button></div>}
     <Announcements list={announcements || []} />
-    {unreadReplies>0 && <button type="button" role="status" onClick={()=>{ setShowSettings(true); setShowMessages(true); }} style={{display:'block',width:'100%',textAlign:'left',background:'var(--info-bg)',color:'var(--text)',border:'none',borderRadius:'var(--radius-card)',padding:'12px 14px',fontSize:14,margin:'0 0 12px',cursor:'pointer'}}><strong>The Don’t Ngiao team replied</strong> to your feedback. Tap to read.</button>}
+    {unreadReplies>0 && <button type="button" role="status" onClick={()=>{ setShowSettings(true); setShowMessages(true); }} style={{display:'block',width:'100%',textAlign:'left',background:'var(--info-bg)',color:'var(--text)',border:'none',borderRadius:'var(--radius-card)',padding:'12px 14px',fontSize:14,margin:'0 0 12px',cursor:'pointer'}}><strong>The Duesy team replied</strong> to your feedback. Tap to read.</button>}
     <OnboardingPrompts />
     {openTotals.length === 0 ? (<div style={{...homeCard,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:20}}>
       <span>All settled across {activeCount} {activeCount===1 ? 'group' : 'groups'}</span>

@@ -1,14 +1,14 @@
-# Don't Ngiao
+# Duesy
 
-Don't be ngiao.
+Pay your dues, easily.
 
 A Splitwise-like expense-splitting app for friends and family: Vite + React +
 TypeScript frontend served as static assets by a Cloudflare Worker, a Cloudflare
 Worker API in TypeScript, and Cloudflare D1 (SQLite) as the database. Free tier,
 no cold start by architecture (V8 isolates, not containers).
 
-Live: frontend <https://dont-ngiao-web.wk-io.workers.dev> ·
-API <https://dont-ngiao.wk-io.workers.dev> · D1 database `dont-ngiao`.
+Live: frontend <https://duesy.wk-io.workers.dev> ·
+API <https://duesy-api.wk-io.workers.dev> · D1 database `dont-ngiao`.
 
 The full product and API spec — every feature, route, migration, and rule in
 detail — lives in [docs/spec.md](docs/spec.md).
@@ -101,19 +101,19 @@ string in the UI.
 1. **D1 database:** create a database named `dont-ngiao` in the dashboard, apply
    `worker/migrations/0001–0010.sql` in order, and put its id in
    `worker/wrangler.toml` (`database_id`).
-2. **Worker (API) `dont-ngiao`:** Connect to Git, root directory `worker/`, no
+2. **Worker (API) `duesy-api`:** Connect to Git, root directory `worker/`, no
    build command. Bind D1 as variable `DB`. Runtime secrets (Worker → Settings →
    Variables → Add secret — **not** "Secrets used during build", which are
    invisible at runtime): `TURNSTILE_SECRET`, `VAPID_PRIVATE_KEY`,
    `GOOGLE_CLIENT_SECRET`. Values are never in the repo or in chat.
-3. **Worker (frontend) `dont-ngiao-web`:** same flow. Root directory `web/`.
+3. **Worker (frontend) `duesy`:** same flow. Root directory `web/`.
    Build command: `npm install && npm run build` (the `prebuild` step generates
    the PWA icons and `version.json`). Output directory: `dist`. There is no
    `wrangler.toml` in `web/` — the build config lives in the dashboard. Build
-   environment variable: `VITE_API_URL=https://dont-ngiao.wk-io.workers.dev`
+   environment variable: `VITE_API_URL=https://duesy-api.wk-io.workers.dev`
    (no trailing slash; Vite bakes this in at build time).
 4. **CORS:** the Worker allows only the frontend origin
-   (`https://dont-ngiao-web.wk-io.workers.dev`) — see `ALLOWED_ORIGINS` in
+   (`https://duesy.wk-io.workers.dev`) — see `ALLOWED_ORIGINS` in
    `worker/src/index.ts`.
 5. **Google OAuth (console):** redirect URI is the frontend origin root; scopes
    are `openid email profile` (non-sensitive, no verification review); the consent

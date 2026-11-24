@@ -292,7 +292,7 @@ export default function App() {
   // Destination-aware checking skeleton: during auth checking we do not
   // yet know the user, but we DO know the saved destination synchronously
   // from localStorage. If a group was saved, show a GroupSkeleton from the
-  // very first paint — NOT HomeSkeleton, whose real "Don't Ngiao" title
+  // very first paint — NOT HomeSkeleton, whose real "Duesy" title
   // would flash momentarily on a refresh from inside a group, before
   // restore switches to the group skeleton. If no group was saved, the
   // destination is Home, so HomeSkeleton (with its real title, which is
@@ -340,7 +340,7 @@ export default function App() {
   },[authState, signedIn, user?.id, appearance.theme, appearance.mode]);
   if (resetToken) return <Suspense fallback={<div style={S} />}><ResetPasswordView token={resetToken} /></Suspense>;
   if (isAdminPage) return <Suspense fallback={<div style={S} />}><AdminView /></Suspense>;
-  if (authError) return (<div style={S}><h1>Don't Ngiao</h1><p style={{color:'var(--muted)'}}>Couldn't check your session — your login is kept, this may just be a network hiccup.</p><p style={{color:'var(--danger-text)'}}>{authError}</p><button style={{...primary, width:'100%'}} onClick={()=>checkAuth()}>Retry</button><p><button style={btn} onClick={()=>{ setToken(null); setUser(null); setAuthError(''); setAuthState('guest'); }}>Use a different account</button></p></div>);
+  if (authError) return (<div style={S}><h1>Duesy</h1><p style={{color:'var(--muted)'}}>Couldn't check your session — your login is kept, this may just be a network hiccup.</p><p style={{color:'var(--danger-text)'}}>{authError}</p><button style={{...primary, width:'100%'}} onClick={()=>checkAuth()}>Retry</button><p><button style={btn} onClick={()=>{ setToken(null); setUser(null); setAuthError(''); setAuthState('guest'); }}>Use a different account</button></p></div>);
   if (authState === 'checking') {
     if (readSavedGroup()) return <GroupSkeleton />;
     return <HomeSkeleton user={null} />;

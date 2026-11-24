@@ -7,7 +7,7 @@
 // localStorage (not sessionStorage) so it survives the round-trip
 // even if iOS relaunches the PWA on the way back from Google.
 export const GOOGLE_CLIENT_ID = '710021216622-44ldbet58qcftfakusmu9i24qto6nr40.apps.googleusercontent.com';
-export const GOOGLE_REDIRECT_URI = 'https://dont-ngiao-web.wk-io.workers.dev/';
+export const GOOGLE_REDIRECT_URI = 'https://duesy.wk-io.workers.dev/';
 export const GOOGLE_STATE_KEY = 'dont-ngiao-google-state';
 export function googleAuthUrl(): string {
   const state = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
