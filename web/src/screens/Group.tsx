@@ -38,7 +38,6 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
   // tap, swipe) and the tabs are expenses/balances only.
   const [showMembers, setShowMembers] = useState(false);
   const [showLog, setShowLog] = useState(false);
-  const [showSettleHint, setShowSettleHint] = useState(false);
   const [detailExpense, setDetailExpense] = useState<any>(null);
   const [settle, setSettle] = useState<any>(null);
   const [confirm, setConfirm] = useState<any>(null);
@@ -274,15 +273,6 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
             <span style={{fontWeight:600,fontVariantNumeric:'tabular-nums',whiteSpace:'nowrap'}}>{sg.display}</span>
           </div>);
         })}</div>}
-        {/* SETTLE HINT, Nov 2026: the hero's big "Settle up" button only
-        switched to the Balances tab — it promised settling and delivered
-        navigation, so it is gone. An info icon in its place says where
-        settling happens. Expenses tab only: on Balances the hint would
-        point at the tab you're already on. */}
-        {mySuggestions.length>0 && !group.isArchived && tab==='expenses' && (<div style={{display:'flex',alignItems:'flex-start',gap:8,marginTop:10}}>
-          <button type="button" aria-label="Where do I settle?" aria-expanded={showSettleHint} onClick={()=>setShowSettleHint(v=>!v)} style={{background:'transparent',border:'none',padding:2,cursor:'pointer',color:'var(--muted)',flexShrink:0,lineHeight:1}}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10" /><line x1="12" y1="11" x2="12" y2="16" /><line x1="12" y1="8" x2="12.01" y2="8" /></svg></button>
-          {showSettleHint && <span style={{fontSize:13,color:'var(--muted)',lineHeight:1.45}}>Settle these in the Balances tab.</span>}
-        </div>)}
       </>)}
     </div>)}
     <div style={tabTrack}>
