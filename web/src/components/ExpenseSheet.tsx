@@ -38,6 +38,26 @@ export function ExpenseModal({ group, expense, onClose, reload }: any) {
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false); const [showCategoryPicker, setShowCategoryPicker] = useState(false); const [showPayerPicker, setShowPayerPicker] = useState(false); const [showSplit, setShowSplit] = useState(false); const [showDate, setShowDate] = useState(false);
   const toggle = (id:string)=> setSelected(s=> s.includes(id) ? s.filter(x=>x!==id) : [...s, id]);
   const splitLabel = splitType==='equal' ? 'Equally' : splitType==='exact' ? 'Exact amounts' : 'Percentages';
+  // EDIT: Save stays disabled until something actually changed — an
+  // unedited expense must not look clickable. The baseline is the stored
+  // expense: the edit form always starts in 'exact' mode with the stored
+  // per-person amounts (the original split mode isn't stored), so a switch
+  // away from 'exact' is itself a change. Amounts compare by minor value,
+  // so "6100" and "6100.00" count as the same. (Add mode is always dirty:
+  // a new expense has nothing to compare against.)
+  const dirty = expense ? (
+    description !== expense.description
+    || toMinor(amount, currency) !== expense.amount_minor
+    || currency !== expense.currency || date !== expense.date
+    || payer !== expense.paid_by_member_id || category !== expense.category
+    || splitType !== 'exact'
+    || selected.length !== expense.splits.length
+    || !selected.every(id => expense.splits.some((s: any) => s.member_id === id))
+    || (splitType === 'exact' && selected.some(id => {
+      const orig = expense.splits.find((s: any) => s.member_id === id);
+      return !orig || toMinor(exact[id] || '', currency) !== orig.amount_minor;
+    }))
+  ) : true;
   // RESCALE, Nov 2026: in 'exact' mode the per-person amounts are frozen
   // at the values they had when the split was set, so changing the total
   // used to break the sum (116.50 + 116.50 != 1.00) and the server
@@ -101,7 +121,7 @@ export function ExpenseModal({ group, expense, onClose, reload }: any) {
         </div>
         {expense && group.payments && group.payments.length > 0 && <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,marginTop:12,marginBottom:0}}>People have already settled in this group — editing this expense will change balances.</p>}
         {modalError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:12,marginBottom:0}}>{modalError}</p>}
-        <AsyncButton style={{...primary, width:'100%', padding:'14px', fontSize:16, marginTop:8}} onClick={async()=>{
+        <AsyncButton disabled={!!expense && !dirty} style={{...primary, width:'100%', padding:'14px', fontSize:16, marginTop:8, ...(expense && !dirty ? {background:'var(--accent-disabled)', borderColor:'var(--accent-disabled)', color:'var(--accent-text-disabled)', cursor:'not-allowed'} : {})}} onClick={async()=>{
           setModalError('');
           const amountMinor = toMinor(amount, currency); if (amountMinor===null) { setModalError('Enter a valid positive amount'); return; }
           const body: any = { description, amountMinor, currency, date, paidByMemberId: payer, category, splitType, participants: selected };
