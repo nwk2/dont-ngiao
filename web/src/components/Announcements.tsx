@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api';
+import { card, CloseButton } from '../ui';
 
 // ANNOUNCEMENTS, ported from nwk2/haven (Nov 2026): from the Duesy
 // team; typed (Info / Heads-up / Fixed), optional title, optionally
@@ -21,22 +22,38 @@ export const KIND_ICON: Record<AnnouncementKind, JSX.Element> = {
 };
 export const kindName = (k: AnnouncementKind) => KIND_NAME[k];
 
+// B (quiet card, in the theme language): the shared `card` (white, 1px
+// --border, radius-card, no shadow). The kind is a pill chip — the same
+// pattern as the no-account / currency chips (11px/600, radius-pill, tinted
+// bg + tinted text) — and dismiss is the app's CloseButton. No icon column,
+// no left border, no uppercase eyebrow. Every colour and radius is a theme
+// variable, so market / tomato / night (light / dark) each get their own
+// chip colours, corner radii (card 12/16/8, pill 22/16/6) and heading
+// type (Plus Jakarta 700 / Bricolage 800 / Inter 600).
+const CHIP: Record<AnnouncementKind, { bg: string; fg: string }> = {
+  info: { bg: 'var(--ann-info-bg)', fg: 'var(--ann-info)' },
+  warn: { bg: 'var(--warn-bg)', fg: 'var(--warn-text)' },
+  ok: { bg: 'var(--tint-bg)', fg: 'var(--tint-text)' },
+};
+
 /** One announcement card (also used as the live preview in Admin). */
 export function AnnouncementCard({ a, onDismiss, preview }: { a: Omit<AnnouncementData, 'startsAt'>; onDismiss?: () => void; preview?: boolean }) {
-  const ink = `var(--ann-${a.kind})`;
   const until = new Intl.DateTimeFormat(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(a.endsAt);
+  const chip = CHIP[a.kind];
   return (<section role="region" aria-label={`Announcement from the Duesy team${a.title ? `: ${a.title}` : ''}`}
-    style={{display:'grid',gridTemplateColumns:'26px minmax(0, 1fr) auto',gap:10,alignItems:'start',padding:'12px 8px 12px 14px',borderRadius:14,background:`var(--ann-${a.kind}-bg)`,borderLeft:`4px solid ${ink}`,color:'var(--text)'}}>
-    <span style={{color:ink,paddingTop:1,display:'flex'}}>{KIND_ICON[a.kind]}</span>
-    <div style={{display:'flex',flexDirection:'column',gap:2,minWidth:0}}>
-      <span style={{fontSize:11,fontWeight:800,letterSpacing:'0.06em',textTransform:'uppercase',color:ink}}>{KIND_NAME[a.kind]}</span>
-      {a.title && <span style={{fontSize:15,fontWeight:700}}>{a.title}</span>}
-      <span style={{fontSize:14,lineHeight:1.45,overflowWrap:'anywhere',whiteSpace:'pre-wrap'}}>{a.text || <span style={{opacity:0.5}}>Your message</span>}</span>
-      {!a.dismissible && <span style={{fontSize:12,color:'var(--muted)',marginTop:4}}>Shown until {until}</span>}
+    style={{...card, marginBottom:0, display:'flex', gap:10, alignItems:'flex-start'}}>
+    <div style={{flex:1, minWidth:0, display:'flex', flexDirection:'column', gap:6, alignItems:'flex-start'}}>
+      <span style={{fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:'var(--radius-pill)', background:chip.bg, color:chip.fg, whiteSpace:'nowrap'}}>{KIND_NAME[a.kind]}</span>
+      {a.title && <span style={{fontSize:15, fontFamily:'var(--display)', fontWeight:'var(--heading-weight)', letterSpacing:'var(--heading-tracking)'}}>{a.title}</span>}
+      <span style={{fontSize:14, lineHeight:1.45, overflowWrap:'anywhere', whiteSpace:'pre-wrap'}}>{a.text || <span style={{opacity:0.5}}>Your message</span>}</span>
+      {!a.dismissible && <span style={{fontSize:12, color:'var(--muted)', marginTop:4}}>Shown until {until}</span>}
     </div>
-    {a.dismissible ? <button type="button" aria-label="Dismiss this announcement" tabIndex={preview ? -1 : undefined} onClick={preview ? undefined : onDismiss}
-      style={{width:40,height:40,margin:'-8px -2px 0 0',border:0,borderRadius:20,background:'none',color:'var(--muted)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button> : <span />}
+    {a.dismissible ? (preview
+      // Preview stub: the same 40px bordered circle as CloseButton, but a
+      // <span> so it can't take focus or be clicked in the admin preview.
+      ? <span aria-hidden="true" style={{width:40, height:40, borderRadius:'50%', border:'var(--border-w) solid var(--border)', background:'var(--field)', color:'var(--text)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></span>
+      : <CloseButton onClick={() => onDismiss?.()} />)
+      : <span />}
   </section>);
 }
 
@@ -73,7 +90,7 @@ export function Announcements({ list }: { list: AnnouncementData[] }) {
   return (<div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:12}}>
     {shown.map(a => <AnnouncementCard key={a.id} a={a} onDismiss={() => dismiss(a.id)} />)}
     {live.length > 2 && <button type="button" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}
-      style={{alignSelf:'flex-start',minHeight:40,padding:'0 14px',borderRadius:20,border:'1px solid var(--border)',background:'var(--card)',color:'var(--text)',font:'inherit',fontSize:13,fontWeight:600,cursor:'pointer'}}>
+      style={{alignSelf:'flex-start',minHeight:40,padding:'0 14px',borderRadius:'var(--radius-pill)',border:'1px solid var(--border)',background:'var(--card)',color:'var(--text)',font:'inherit',fontSize:13,fontWeight:600,cursor:'pointer'}}>
       {expanded ? 'Show fewer' : `+${live.length - 2} more announcement${live.length - 2 === 1 ? '' : 's'}`}</button>}
     {undo && <div role="status" style={{position:'fixed',left:12,right:12,bottom:'calc(24px + env(safe-area-inset-bottom, 0px))',zIndex:60,maxWidth:480,margin:'0 auto',padding:'6px 8px 6px 16px',borderRadius:16,background:'var(--text)',color:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>
       <span>Announcement dismissed</span>
