@@ -1,5 +1,6 @@
 import React from 'react';
 import { fmt, CATEGORIES } from './api';
+import { Estimate } from './components/Fx';
 // Category charts (no chart library dependency). Pie = overall breakdown
 // by category. DailyBar = spend per day, stacked by category.
 // Colour is fixed per category (index in CATEGORIES), NOT by sorted rank,
@@ -19,6 +20,21 @@ export const CAT_COLORS: Record<string, string> = {
   'Other': 'var(--cat-other)',
 };
 function catColor(cat: string) { return CAT_COLORS[cat] || 'var(--muted)'; }
+// Short label for the top of a bar: "¥980", "¥39.4k", "S$1.2k", "₩1.5M".
+// Rough on purpose; the exact figure is in the tap tooltip.
+function compact(minor: number, cur: string) {
+  const zero = ['JPY','KRW','VND'].includes(cur);
+  const major = zero ? minor : minor / 100;
+  const sym = fmt(0, cur).replace(/[\d.,]+$/, '');
+  const short = (v: number, unit: string) => `${sym}${(v >= 100 ? Math.round(v) : Math.round(v * 10) / 10).toLocaleString()}${unit}`;
+  if (major >= 1e6) return short(major / 1e6, 'M');
+  if (major >= 1e3) return short(major / 1e3, 'k');
+  return `${sym}${Math.round(major).toLocaleString()}`;
+}
+const longDay = (day: string) => {
+  const d = new Date(`${day}T00:00:00`);
+  return isNaN(d.getTime()) ? day : d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+};
 function Legend({ entries, total, currency }: { entries: [string, number][]; total: number; currency: string }) {
   return (<div style={{width:'100%',maxWidth:360}}>
     {entries.map(([cat, v]) => (<div key={cat} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'6px 0'}}>
@@ -69,6 +85,25 @@ export function DailyBar({ expenses, myMemberId, view, currency }: { expenses: a
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+  // Tap a bar -> tooltip with that day's exact total and, when the chart
+  // currency isn't the user's home currency, a "≈ S$" estimate (Estimate
+  // renders nothing otherwise). Phones have no hover, so the old SVG
+  // <title> tooltip never showed there. Tap the same bar or anywhere
+  // outside to close; switching Group/Mine or currency closes it too.
+  const [sel, setSel] = React.useState<string | null>(null);
+  const tipRef = React.useRef<HTMLDivElement | null>(null);
+  const [tipPos, setTipPos] = React.useState<{ left: number; top: number } | null>(null);
+  React.useEffect(() => { setSel(null); }, [view, currency]);
+  React.useEffect(() => {
+    if (!sel) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Element | null;
+      if (t && (t.closest('[data-daybar]') || tipRef.current?.contains(t))) return;
+      setSel(null);
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [sel]);
   // Frontend aggregation from the already-loaded expenses (no API change):
   // Group = total expense amount per day per category; Mine = requester's
   // split share per day per category. Per currency only, never converted.
@@ -90,8 +125,9 @@ export function DailyBar({ expenses, myMemberId, view, currency }: { expenses: a
   const days = Array.from(byDay.keys()).sort();
   const dayTotals = days.map(d => Object.values(byDay.get(d)!).reduce((a,b)=>a+b,0));
   const grandTotal = dayTotals.reduce((a,b)=>a+b,0);
-  if (grandTotal === 0) return <p style={{color:'var(--muted)'}}>No spend in {currency} yet.</p>;
-  const maxTotal = Math.max(...dayTotals);
+  // No early return here: the tooltip's layout effect below is a hook, so
+  // the empty state is returned after it (rules of hooks).
+  const maxTotal = Math.max(1, ...dayTotals);
   const catTotals: Record<string, number> = {};
   for (const d of days) for (const [cat, v] of Object.entries(byDay.get(d)!)) catTotals[cat] = (catTotals[cat] || 0) + v;
   const legendEntries = Object.entries(catTotals).sort((a,b)=>b[1]-a[1]);
@@ -106,17 +142,43 @@ export function DailyBar({ expenses, myMemberId, view, currency }: { expenses: a
   // inside a thin bar become sub-pixel and unreadable individually — the
   // total height (the trend) and the dominant categories stay readable,
   // which is the point of this chart; per-day exact amounts are already
-  // in the expense list below, and each bar still has a <title> tooltip
-  // with its day + total.
-  const left = 56, right = 8, top = 10, plotH = 180;
+  // in the expense list below, and tapping a bar shows its day + exact
+  // total (and home-currency estimate) in a tooltip.
+  // top leaves room for the day-total label above the tallest bar.
+  const left = 56, right = 8, top = 24, plotH = 180;
   const svgW = Math.max(200, wrapW);
   const slot = (svgW - left - right) / days.length;
   const barW = Math.max(2, Math.min(28, slot * 0.61));
   const svgH = top + plotH + 28;
   const ticks = [0, maxTotal / 3, (2 * maxTotal) / 3, maxTotal];
   const labelStep = Math.max(1, Math.ceil(days.length / 12));
+  // Day totals sit on top of each bar while there's room (~40px per day);
+  // on long trips they're hidden and the tap tooltip carries the total.
+  const showTotals = slot >= 40;
+  const selIdx = sel ? days.indexOf(sel) : -1;
+  // Tooltip placement, measured after render: centred above the bar,
+  // clamped inside the chart; if there's no room above (tallest bar), it
+  // goes at the top of the plot beside the bar instead. Runs after every
+  // render (no deps) because the tooltip's size can change on its own,
+  // e.g. the "≈ S$" estimate appearing once rates load, or the day's
+  // total changing; setTipPos only fires when the position actually moves.
+  React.useLayoutEffect(() => {
+    const tip = tipRef.current;
+    if (selIdx < 0 || !tip) { if (tipPos) setTipPos(null); return; }
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    const cx = left + selIdx * slot + slot / 2;
+    const barTop = top + plotH - (dayTotals[selIdx] / maxTotal) * plotH;
+    let l = Math.max(0, Math.min(svgW - tw, cx - tw / 2));
+    let t = barTop - (showTotals ? 18 : 6) - th;
+    if (t < 0) {
+      t = 4;
+      l = cx - barW / 2 - 8 - tw >= 0 ? cx - barW / 2 - 8 - tw : Math.min(svgW - tw, cx + barW / 2 + 8);
+    }
+    if (!tipPos || Math.abs(tipPos.left - l) > 0.5 || Math.abs(tipPos.top - t) > 0.5) setTipPos({ left: l, top: t });
+  });
+  if (grandTotal === 0) return <p style={{color:'var(--muted)'}}>No spend in {currency} yet.</p>;
   return (<div style={{display:'flex',flexDirection:'column',alignItems:'center'}}>
-    <div ref={wrapRef} style={{width:'100%'}}>
+    <div ref={wrapRef} style={{width:'100%',position:'relative'}}>
       <svg width={svgW} height={svgH} role="img" aria-label="Daily spend by category bar chart" style={{display:'block',margin:'0 auto'}}>
         {ticks.map((t, i) => { const y = top + plotH * (1 - (maxTotal ? t / maxTotal : 0)); return (<g key={i}>
           <line x1={left} x2={svgW - right} y1={y} y2={y} stroke="var(--hairline)" strokeWidth={1} />
@@ -134,13 +196,30 @@ export function DailyBar({ expenses, myMemberId, view, currency }: { expenses: a
             cum += h;
             return { cat, v, x, y, h };
           });
-          return (<g key={day}>
-            <title>{day}: {fmt(dayTotals[i], currency)}</title>
-            {segs.map(s => (<rect key={s.cat} x={s.x} y={s.y} width={barW} height={Math.max(s.h, 0)} fill={catColor(s.cat)} />))}
+          const dim = sel !== null && sel !== day;
+          return (<g key={day} data-daybar="" role="button" tabIndex={0} aria-label={`${longDay(day)}: ${fmt(dayTotals[i], currency)}`} aria-pressed={sel === day}
+            onClick={() => setSel(sel === day ? null : day)}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSel(sel === day ? null : day); } }}
+            style={{cursor:'pointer'}}>
+            <g style={{opacity: dim ? 0.3 : 1, transition: 'opacity 0.15s'}}>
+              {segs.map(s => (<rect key={s.cat} x={s.x} y={s.y} width={barW} height={Math.max(s.h, 0)} fill={catColor(s.cat)} />))}
+              {showTotals && <text x={x + barW / 2} y={top + plotH - cum - 6} textAnchor="middle" fontSize={10} fill={sel === day ? 'var(--text)' : 'var(--muted)'} style={{fontVariantNumeric:'tabular-nums'}}>{compact(dayTotals[i], currency)}</text>}
+            </g>
             {i % labelStep === 0 && <text x={x + barW / 2} y={top + plotH + 18} textAnchor="middle" fontSize={10} fill="var(--muted)">{day.slice(5)}</text>}
+            {/* Full-slot hit area so thin bars are still easy to tap. */}
+            <rect x={left + i * slot} y={top} width={slot} height={plotH + 28} fill="transparent" />
           </g>);
         })}
       </svg>
+      {/* Hardcoded soft shadow on purpose: most themes set --shadow to
+      none, and the tooltip needs to lift off the chart card it overlaps. */}
+      {selIdx >= 0 && (<div ref={tipRef} role="status" style={{position:'absolute',left:tipPos?.left ?? 0,top:tipPos?.top ?? 0,visibility:tipPos ? 'visible' : 'hidden',background:'var(--card)',border:'var(--border-w) solid var(--border)',borderRadius:'var(--radius-control)',padding:'8px 12px',fontSize:13,lineHeight:1.4,whiteSpace:'nowrap',boxShadow:'0 4px 14px rgba(0,0,0,0.25)',zIndex:1}}>
+        <div style={{color:'var(--muted)'}}>{longDay(days[selIdx])}</div>
+        <div style={{display:'flex',alignItems:'baseline',gap:6}}>
+          <strong style={{fontSize:15,fontVariantNumeric:'tabular-nums'}}>{fmt(dayTotals[selIdx], currency)}</strong>
+          <Estimate minor={dayTotals[selIdx]} cur={currency} />
+        </div>
+      </div>)}
     </div>
     <Legend entries={legendEntries} total={grandTotal} currency={currency} />
   </div>);
