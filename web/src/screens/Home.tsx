@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { CURRENCIES, VAPID_PUBLIC_KEY, api, fmt } from '../api';
 import { OnboardingPrompts } from '../components/Onboarding';
-import { AsyncButton, CURRENCY_INFO, Chev, EyeIcon, CurrencyPickerSheet, S, Sheet, Sk, balHairline, btn, card, emptyBox, gearIcon, groupBalancesByVerb, groupMark, homeCard, iconBtn, initials, input, pressable, primary, sectionTitle, switchKnob, switchStyle, tabPill, tabPillActive, tabTrack } from '../ui';
+import { AsyncButton, useAction, CURRENCY_INFO, Chev, EyeIcon, CurrencyPickerSheet, S, Sheet, Sk, balHairline, btn, card, emptyBox, gearIcon, groupBalancesByVerb, groupMark, homeCard, iconBtn, initials, input, pressable, primary, sectionTitle, switchKnob, switchStyle, tabPill, tabPillActive, tabTrack, wide, dangerBtn, FieldError } from '../ui';
 import { googleAuthUrl } from '../google';
 import { THEMES, resolvedMode } from '../themes';
 import { MessagesSheet } from '../components/MessagesSheet';
@@ -292,12 +292,12 @@ export function SettingsView({ user, setUser, onLogout, setAuthNotice, groups, l
     <div className="flat-list" style={{...homeCard,padding:0,overflow:'hidden'}}>
       <button className="flat-row" onClick={()=>setShowArchived(true)}><span>Archived groups</span><span style={{display:'flex',alignItems:'center',gap:6,color:'var(--muted)',minWidth:0,textAlign:'right'}}>{archived.length===0 ? 'No archived groups' : `${archived.length} archived · ${archived[0].name}`}<Chev /></span></button>
     </div>
-    <div style={{marginTop:20}}><AsyncButton style={{...btn,width:'100%',padding:'14px',fontSize:16,background:'var(--danger-bg)',borderColor:'var(--danger-bg)',color:'var(--danger-text)'}} onClick={async()=>{await api('/api/auth/logout','POST'); onLogout();}}>Log out</AsyncButton></div>
+    <div style={{marginTop:20}}><AsyncButton style={{...dangerBtn,...wide}} onClick={async()=>{await api('/api/auth/logout','POST'); onLogout();}}>Log out</AsyncButton></div>
     {editingName && (<Sheet title="Edit name" onClose={()=>setEditingName(false)} draggable={false} closeOnBackdrop={false}>
         <p style={{fontSize:13,color:'var(--muted)'}}>This is the name shown to your groups.</p>
         <input style={input} value={nameDraft} onChange={e=>setNameDraft(e.target.value)} aria-label="Name" />
-        {editError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{editError}</p>}
-        <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={async()=>{if (!nameDraft.trim()) { setEditError('Name cannot be empty'); return; } try{const d = await api('/api/me','PATCH',{name:nameDraft}); setUser(d.user); setEditingName(false);}catch(e:any){setEditError(e.message);}}}>Save</AsyncButton>
+        <FieldError msg={editError} top={8} />
+        <AsyncButton style={{...primary,...wide}} onClick={async()=>{if (!nameDraft.trim()) { setEditError('Name cannot be empty'); return; } try{const d = await api('/api/me','PATCH',{name:nameDraft}); setUser(d.user); setEditingName(false);}catch(e:any){setEditError(e.message);}}}>Save</AsyncButton>
     </Sheet>)}
     {showChangePassword && (<Sheet title={user.has_password ? 'Change password' : 'Set password'} onClose={()=>setShowChangePassword(false)} draggable={false} closeOnBackdrop={false} maxHeight="88vh">
         {/* LOGOUT-ON-SUCCESS, Nov 2026: the sheet used to show a success
@@ -312,8 +312,8 @@ export function SettingsView({ user, setUser, onLogout, setAuthNotice, groups, l
         {user.has_password && (<><label>Current password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={cpShow ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={cpCurrent} onChange={e=>setCpCurrent(e.target.value)} aria-label="Current password" /><button type="button" aria-label={cpShow ? 'Hide password' : 'Show password'} aria-pressed={cpShow} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',display:'flex',lineHeight:1}} onClick={()=>setCpShow(v=>!v)}><EyeIcon off={cpShow} /></button></div></>)}
         <label>New password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={cpShow ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={cpNew} onChange={e=>setCpNew(e.target.value)} aria-label="New password" /><button type="button" aria-label={cpShow ? 'Hide password' : 'Show password'} aria-pressed={cpShow} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',display:'flex',lineHeight:1}} onClick={()=>setCpShow(v=>!v)}><EyeIcon off={cpShow} /></button></div>
         <label>Confirm new password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={cpShow ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={cpConfirm} onChange={e=>setCpConfirm(e.target.value)} aria-label="Confirm new password" /><button type="button" aria-label={cpShow ? 'Hide password' : 'Show password'} aria-pressed={cpShow} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',display:'flex',lineHeight:1}} onClick={()=>setCpShow(v=>!v)}><EyeIcon off={cpShow} /></button></div>
-        {cpError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{cpError}</p>}
-        <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={async()=>{setCpError(''); if (user.has_password) { if (!cpCurrent || !cpNew || !cpConfirm) { setCpError('Please fill in all three fields'); return; } if (cpNew.length < 6) { setCpError('New password must be at least 6 characters'); return; } if (cpNew !== cpConfirm) { setCpError('New passwords do not match'); return; } if (cpNew === cpCurrent) { setCpError('New password must be different from the current password'); return; } try { await api('/api/me/password','POST',{currentPassword:cpCurrent,newPassword:cpNew}); setShowChangePassword(false); if (setAuthNotice) setAuthNotice('Your password was changed — please log in again with your new password.'); onLogout(); } catch (e:any) { setCpError(e.message); } } else { if (!cpNew || !cpConfirm) { setCpError('Please fill in both fields'); return; } if (cpNew.length < 6) { setCpError('New password must be at least 6 characters'); return; } if (cpNew !== cpConfirm) { setCpError('New passwords do not match'); return; } try { await api('/api/me/password','POST',{newPassword:cpNew}); setShowChangePassword(false); if (setAuthNotice) setAuthNotice('Your password was set — please log in again with your new password.'); onLogout(); } catch (e:any) { setCpError(e.message); } }}}>Save</AsyncButton>
+        <FieldError msg={cpError} top={8} />
+        <AsyncButton style={{...primary,...wide}} onClick={async()=>{setCpError(''); if (user.has_password) { if (!cpCurrent || !cpNew || !cpConfirm) { setCpError('Please fill in all three fields'); return; } if (cpNew.length < 6) { setCpError('New password must be at least 6 characters'); return; } if (cpNew !== cpConfirm) { setCpError('New passwords do not match'); return; } if (cpNew === cpCurrent) { setCpError('New password must be different from the current password'); return; } try { await api('/api/me/password','POST',{currentPassword:cpCurrent,newPassword:cpNew}); setShowChangePassword(false); if (setAuthNotice) setAuthNotice('Your password was changed — please log in again with your new password.'); onLogout(); } catch (e:any) { setCpError(e.message); } } else { if (!cpNew || !cpConfirm) { setCpError('Please fill in both fields'); return; } if (cpNew.length < 6) { setCpError('New password must be at least 6 characters'); return; } if (cpNew !== cpConfirm) { setCpError('New passwords do not match'); return; } try { await api('/api/me/password','POST',{newPassword:cpNew}); setShowChangePassword(false); if (setAuthNotice) setAuthNotice('Your password was set — please log in again with your new password.'); onLogout(); } catch (e:any) { setCpError(e.message); } }}}>Save</AsyncButton>
     </Sheet>)}
   </div>);
 }
@@ -324,12 +324,12 @@ export function CreateGroupModal({ onClose, onDone }: any) {
   // Local error, same fix as Settings: this sheet overlays the home
   // view, so the parent's error rendered behind it and a failed Create
   // looked like "nothing happens" — the sheet just stayed open.
-  const [createError, setCreateError] = useState('');
+  const { error: createError, setError: setCreateError, run: runCreate } = useAction();
   return (<Sheet title="New group" onClose={onClose} maxHeight="88vh">
       <label>Group name</label><input style={input} placeholder="e.g. Bali Trip 🌴" value={name} onChange={e=>setName(e.target.value)} />
       <button type="button" onClick={()=>setShowCurrency(true)} style={{width:'100%',textAlign:'left',background:'var(--field)',border:'var(--border-w) solid var(--border)',borderRadius:'var(--radius-card)',padding:14,margin:'4px 0 12px',color:'var(--text)',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}><span><span style={{display:'block',fontSize:12,color:'var(--muted)'}}>Default currency</span><span style={{display:'block',marginTop:2}}>{cur} <span style={{color:'var(--muted)'}}>· {CURRENCY_INFO[cur]?.name || ''}</span></span></span><Chev /></button>
       {showCurrency && <CurrencyPickerSheet current={cur} onClose={()=>setShowCurrency(false)} onPick={(c:string)=>{setCur(c); setShowCurrency(false);}} />}
-      <AsyncButton style={{...primary, width:'100%', padding:'14px', fontSize:16}} onClick={async()=>{setCreateError(''); try{const d = await api('/api/groups','POST',{name,defaultCurrency:cur}); onDone(d);}catch(e:any){setCreateError(e.message);}}}>Create group</AsyncButton>
-      {createError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:12,marginBottom:0}}>{createError}</p>}
+      <AsyncButton style={{...primary,...wide}} onClick={runCreate(async()=>{const d = await api('/api/groups','POST',{name,defaultCurrency:cur}); onDone(d);})}>Create group</AsyncButton>
+      <FieldError msg={createError} top={12} />
   </Sheet>);
 }

@@ -64,17 +64,21 @@ web/                 Vite + React frontend, served as static assets by a Worker
   public/            manifest.webmanifest, sw.js, privacy.html, icons/, version.json (generated at build)
 worker/              Cloudflare Worker API
   src/index.ts       REST API + auth, admin, invites, groups, expenses, payments
-  src/logic.ts       currencies, minor units, splits, greedy simplification
+  src/logic.ts       balances, greedy simplification (re-exports shared/money.ts)
   src/push.ts        Web Push sender (VAPID)
   migrations/0001–0010.sql   D1 schema (see docs/spec.md)
   wrangler.toml      Worker + D1 binding (DB)
 ```
 
+shared/
+  money.ts           currencies, symbols, minor units, formatting, equal/percent
+                     splits — imported by both web/ and worker/
+
 ## Local development
 
 ```bash
 # API
-cd worker && npm install && npm run typecheck
+cd worker && npm install && npm run typecheck && npm test
 # Frontend
 cd ../web && npm install && npm run build
 # Frontend dev server (point it at a Worker with VITE_API_URL):
@@ -119,6 +123,10 @@ string in the UI.
    are `openid email profile` (non-sensitive, no verification review); the consent
    screen is published (In production), so any Google account can sign in. The
    privacy policy link is `/privacy.html`.
+
+**Shared code:** both Workers import `shared/money.ts`. Add `shared/*` to
+each Worker's build watch paths, or a commit that only touches `shared/`
+won't redeploy either one.
 
 **Deployment sequencing rule — read before changing the schema.** Code inside
 `worker/` triggers the API Worker deployment, so check-in order sequences schema

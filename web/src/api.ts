@@ -25,8 +25,11 @@ export async function api(path: string, method = 'GET', body?: any) {
   if (!res.ok) { const err: any = new Error(data.error || `Request failed (${res.status})`); err.status = res.status; throw err; }
   return data;
 }
-export const CURRENCIES = ['SGD','USD','EUR','GBP','AUD','CAD','JPY','KRW','VND','HKD','TWD','CNY','INR','MYR','THB','IDR','PHP','NZD','CHF'];
-export const CATEGORIES = ['Food & Drink','Transport','Accommodation','Activities','Shopping','Other'];
+import { CATEGORIES as SHARED_CATEGORIES, CURRENCIES as SHARED_CURRENCIES, formatAmount, minorToInput, parseAmountToMinor } from '../../shared/money';
+export { CURRENCY_INFO, isZeroDecimal } from '../../shared/money';
+// Widened to string[] for the UI, which mixes these with API strings.
+export const CURRENCIES: string[] = [...SHARED_CURRENCIES];
+export const CATEGORIES: string[] = [...SHARED_CATEGORIES];
 // PUSH NOTIFICATIONS (Web Push), Nov 2026: the VAPID public key the
 // browser subscribes with. PUBLIC by design — it is not a secret. The
 // matching private key is the VAPID_PRIVATE_KEY Worker secret (runtime
@@ -105,15 +108,11 @@ export async function fetchVersion(): Promise<string | null> {
     return typeof d?.buildId === 'string' ? d.buildId : null;
   } catch { return null; }
 }
-const SYM: Record<string,string> = { SGD:'S$', USD:'$', EUR:'€', GBP:'£', AUD:'A$', CAD:'C$', JPY:'¥', KRW:'₩', VND:'₫', HKD:'HK$', TWD:'NT$', CNY:'¥', INR:'₹', MYR:'RM', THB:'฿', IDR:'Rp', PHP:'₱', NZD:'NZ$', CHF:'CHF ' };
-export function fmt(minor: number, cur: string) {
-  const zero = ['JPY','KRW','VND'].includes(cur);
-  const sign = minor < 0 ? '-' : ''; const abs = Math.abs(minor);
-  return zero ? `${sign}${SYM[cur]||cur+' '}${abs.toLocaleString()}` : `${sign}${SYM[cur]||cur+' '}${(abs/100).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
-}
-export function toMinor(input: string, cur: string): number | null {
-  const n = Number(String(input).replace(/,/g,'').trim());
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return ['JPY','KRW','VND'].includes(cur) ? Math.round(n) : Math.round(n*100);
-}
-export function fromMinor(minor: number, cur: string): string { return ['JPY','KRW','VND'].includes(cur) ? String(minor) : (minor/100).toFixed(2); }
+// Money helpers: thin names over shared/money.ts. fmt() formats in the
+// device's locale; the app formats every on-screen amount from minor
+// units with it and does not show the Worker's en-US `display` strings,
+// so one screen never mixes "1,234.56" and "1.234,56".
+const LOCALE = typeof navigator !== 'undefined' && navigator.language ? navigator.language : 'en-US';
+export const fmt = (minor: number, cur: string) => formatAmount(minor, cur, LOCALE);
+export const toMinor = (input: string, cur: string) => parseAmountToMinor(input, cur);
+export const fromMinor = (minor: number, cur: string) => minorToInput(minor, cur);

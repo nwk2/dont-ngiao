@@ -1,7 +1,7 @@
 import { googleAuthUrl } from '../google';
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
-import { AsyncButton, S, btn, homeCard, input, primary, EyeIcon } from '../ui';
+import { AsyncButton, S, btn, homeCard, input, primary, EyeIcon, wide } from '../ui';
 
 export function useBlink() {
   const [blink, setBlink] = useState(false);
@@ -118,7 +118,7 @@ export function Auth({ onAuth, error, loading, notice, inviteToken, onInvalidInv
     the account when there is none. No password, no Turnstile (Google
     does the bot check). The button follows Google's brand (white,
     Google "G"). */}
-    <button type="button" style={{...btn,width:'100%',padding:'14px',fontSize:16,background:'#fff',color:'#1f1f1f',border:'var(--border-w) solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',gap:10,marginBottom:12}} onClick={()=>{ window.location.href = googleAuthUrl(); }}>
+    <button type="button" style={{...btn,...wide,background:'#fff',color:'#1f1f1f',border:'var(--border-w) solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',gap:10,marginBottom:12}} onClick={()=>{ window.location.href = googleAuthUrl(); }}>
       <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82z"/><path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96H1.29v3.09C3.26 21.3 7.31 24 12 24z"/><path fill="#FBBC05" d="M5.27 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.98-3.09z"/><path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.98 3.09C6.22 6.86 8.87 4.75 12 4.75z"/></svg>
       <span>Sign in with Google</span>
     </button>
@@ -130,7 +130,7 @@ export function Auth({ onAuth, error, loading, notice, inviteToken, onInvalidInv
     {pet}
     <label>Email</label><input style={input} value={email} onChange={e=>setEmail(e.target.value)} onFocus={()=>{setFocus('email'); setLastField('email');}} onBlur={()=>setFocus(null)} />
     <label>Password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input ref={passwordRef} type={showPassword ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={password} onChange={e=>setPassword(e.target.value)} onFocus={()=>{setFocus('password'); setLastField('password');}} onBlur={()=>setFocus(null)} /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',display:'flex',lineHeight:1}} onMouseDown={e=>e.preventDefault()} onClick={()=>{setShowPassword(v=>!v); passwordRef.current?.focus();}}><EyeIcon off={showPassword} /></button></div>
-    <button style={{...primary, width:'100%', padding:'14px', fontSize:16, opacity: submitDisabled ? 0.6 : 1, cursor: submitDisabled ? 'not-allowed' : 'pointer'}} disabled={submitDisabled} onClick={()=>onAuth(email,password)}>{loading && <span className="btn-spinner" aria-hidden="true" />}{loading ? 'Logging in…' : 'Log in'}</button>
+    <button style={{...primary,...wide, opacity: submitDisabled ? 0.6 : 1, cursor: submitDisabled ? 'not-allowed' : 'pointer'}} disabled={submitDisabled} onClick={()=>onAuth(email,password)}>{loading && <span className="btn-spinner" aria-hidden="true" />}{loading ? 'Logging in…' : 'Log in'}</button>
     </div>
     <p style={{color:'var(--muted)',fontSize:13}}>Forgot your password? Ask the admin for a reset link.</p>
   </div>);
@@ -147,13 +147,13 @@ export function ResetPasswordView({ token }: { token: string }) {
     try { await api('/api/auth/reset-password', 'POST', { token, newPassword }); setDone(true); }
     catch (e: any) { setError(e.message); } finally { setLoading(false); }
   }
-  if (done) return (<div style={S}><h1>Password reset</h1><div style={homeCard}><p style={{marginTop:0}}>Your password has been changed. You can now log in with the new password.</p><button style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={()=>{ window.location.href = '/'; }}>Go to log in</button></div></div>);
+  if (done) return (<div style={S}><h1>Password reset</h1><div style={homeCard}><p style={{marginTop:0}}>Your password has been changed. You can now log in with the new password.</p><button style={{...primary,...wide}} onClick={()=>{ window.location.href = '/'; }}>Go to log in</button></div></div>);
   return (<div style={S}><h1>Reset password</h1><p style={{color:'var(--muted)'}}>Choose a new password. This link is single-use and expires after 24 hours.</p>
     <div style={homeCard}>
     {error && <p style={{color:'var(--danger-text)',marginTop:0}}>{error}</p>}
     <label>New password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={showPassword ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={newPassword} onChange={e=>setNewPassword(e.target.value)} /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',display:'flex',lineHeight:1}} onClick={()=>setShowPassword(v=>!v)}><EyeIcon off={showPassword} /></button></div>
     <label>Confirm new password</label><div style={{position:'relative',margin:'4px 0 10px'}}><input type={showPassword ? 'text' : 'password'} style={{...input,margin:0,paddingRight:44}} value={confirm} onChange={e=>setConfirm(e.target.value)} /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'transparent',border:'none',padding:4,cursor:'pointer',display:'flex',lineHeight:1}} onClick={()=>setShowPassword(v=>!v)}><EyeIcon off={showPassword} /></button></div>
-    <button style={{...primary, width:'100%', padding:'14px', fontSize:16, opacity: (loading || !newPassword || !confirm) ? 0.6 : 1, cursor: (loading || !newPassword || !confirm) ? 'not-allowed' : 'pointer'}} disabled={loading || !newPassword || !confirm} onClick={doReset}>{loading ? 'Resetting…' : 'Reset password'}</button>
+    <button style={{...primary,...wide, opacity: (loading || !newPassword || !confirm) ? 0.6 : 1, cursor: (loading || !newPassword || !confirm) ? 'not-allowed' : 'pointer'}} disabled={loading || !newPassword || !confirm} onClick={doReset}>{loading ? 'Resetting…' : 'Reset password'}</button>
     </div>
   </div>);
 }
@@ -183,13 +183,13 @@ export function InviteView({ token, onJoined, onCancel }: any) {
     catch(e:any){ setError(e.message); } finally { setJoining(false); }
   }
   if (state === 'loading') return (<div style={S}><h1>Duesy</h1><p style={{color:'var(--muted)'}}>Checking your invite…</p></div>);
-  if (state === 'error') return (<div style={S}><h1>Invite link</h1><div style={homeCard}><p style={{marginTop:0}}>{error}</p><p style={{fontSize:13,color:'var(--muted)'}}>The link may have been revoked, or the group may have been deleted or archived.</p><button style={{...primary,width:'100%',padding:'14px',fontSize:16}} onClick={onCancel}>Go to Home</button></div></div>);
+  if (state === 'error') return (<div style={S}><h1>Invite link</h1><div style={homeCard}><p style={{marginTop:0}}>{error}</p><p style={{fontSize:13,color:'var(--muted)'}}>The link may have been revoked, or the group may have been deleted or archived.</p><button style={{...primary,...wide}} onClick={onCancel}>Go to Home</button></div></div>);
   return (<div style={S}><h1>You're invited</h1><div style={homeCard}>
     <div style={{fontSize:20,fontWeight:700}}>{invite.groupName}</div>
     <p style={{color:'var(--muted)',marginTop:4}}>{invite.inviterName} invited you to join this group.</p>
     {error && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4}}>{error}</p>}
-    <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} disabled={joining} onClick={join}>{joining ? 'Joining…' : 'Join group'}</AsyncButton>
-    <div style={{marginTop:12}}><button style={{...btn,width:'100%',padding:'14px',fontSize:16}} onClick={onCancel}>Not now</button></div>
+    <AsyncButton style={{...primary,...wide}} disabled={joining} onClick={join}>{joining ? 'Joining…' : 'Join group'}</AsyncButton>
+    <div style={{marginTop:12}}><button style={{...btn,...wide}} onClick={onCancel}>Not now</button></div>
     <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,marginTop:12}}>Joining adds you to this group, using your account name and email. If someone added you as a placeholder with this email, you're already a member — the group will open instead.</p>
   </div></div>);
 }

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api, fetchVersion } from '../api';
 import { readSavedGroup } from '../prefs';
-import { AsyncButton, PickerSheet, balHairline, input, pickCheck, primary, tabPill, tabPillActive, tabTrack, useSheetDrag } from '../ui';
+import { AsyncButton, PickerSheet, balHairline, input, pickCheck, primary, tabPill, tabPillActive, tabTrack, useSheetDrag, wide, FieldError } from '../ui';
 
 // FEEDBACK, Nov 2026: in-app feedback from signed-in users
 // (auth-only — no anonymous path). Three doors (You view Feedback
@@ -68,8 +68,8 @@ export function FeedbackSheet({ initialGroupId, groups, onClose }: any) {
         <button type="button" disabled={locked} onClick={()=>setShowGroupPicker(true)} style={{width:'100%',textAlign:'left',background:'var(--field)',border:'var(--border-w) solid var(--border)',borderRadius:'var(--radius-card)',padding:14,marginBottom:12,color:'var(--text)',cursor:locked?'default':'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',opacity:locked?0.5:1}}><span><span style={{display:'block',fontSize:12,color:'var(--muted)'}}>Group</span><span style={{display:'block',marginTop:2}}>{groupName}</span></span><span style={{color:'var(--muted)'}}>›</span></button>
         <label>Message</label>
         <textarea style={{...input,minHeight:120,resize:'vertical'}} placeholder="What happened, or what would you like to see?" value={message} maxLength={2000} disabled={locked} onChange={e=>setMessage(e.target.value)} aria-label="Message" />
-        {fbError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:8,marginBottom:0}}>{fbError}</p>}
-        <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} disabled={locked || !message.trim()} onClick={doSend}>{sent ? (<span style={{display:'inline-flex',alignItems:'center',gap:8}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>Sent</span>) : 'Send'}</AsyncButton>
+        <FieldError msg={fbError} top={8} />
+        <AsyncButton style={{...primary,...wide}} disabled={locked || !message.trim()} onClick={doSend}>{sent ? (<span style={{display:'inline-flex',alignItems:'center',gap:8}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>Sent</span>) : 'Send'}</AsyncButton>
       </>    </div>
     {showGroupPicker && <PickerSheet title="Group" onClose={()=>setShowGroupPicker(false)}>
       <div style={{marginTop:6}}>

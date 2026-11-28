@@ -2,7 +2,7 @@ import { Estimate } from './Fx';
 import React, { useState } from 'react';
 import { api, fmt, fromMinor, toMinor } from '../api';
 import { DateField, fmtDate, todayIso } from '../calendar';
-import { AsyncButton, CURRENCY_INFO, CategoryPickerSheet, Chev, CurrencyPickerSheet, EXP_CAT_COLORS, PayerPickerSheet, Sheet, avatar, balCard, balHairline, catIcon, initials, input, memberDotColor, personDisplay, primary, tabPill, tabPillActive } from '../ui';
+import { AsyncButton, CURRENCY_INFO, CategoryPickerSheet, Chev, CurrencyPickerSheet, EXP_CAT_COLORS, PayerPickerSheet, Sheet, avatar, balCard, balHairline, catIcon, initials, input, memberDotColor, personDisplay, primary, tabPill, tabPillActive, tabTrack, wide, FieldError } from '../ui';
 
 // New expenses start on the category most recently entered in this group
 // (by created_at, not expense date), falling back to Other.
@@ -133,8 +133,8 @@ export function ExpenseModal({ group, expense, onClose, reload }: any) {
           <button type="button" onClick={()=>setShowPayerPicker(true)} style={rowBtn}><span style={{fontSize:15,color:'var(--muted)',flexShrink:0}}>Paid by</span><span style={{flex:1}} /><span style={{display:'flex',alignItems:'center',gap:8}}><span style={{...avatar,width:28,height:28,fontSize:12,background:memberDotColor(group,payer)}}>{initials(payerPerson.name)}</span><span style={{fontSize:15}}>{payerPerson.label}</span></span><Chev /></button>
           <button type="button" onClick={()=>setShowSplit(v=>!v)} style={rowBtn}><span style={{fontSize:15,color:'var(--muted)',flexShrink:0}}>Split</span><span style={{flex:1}} /><span style={{fontSize:15,color:split.ok?'var(--text)':'var(--warn-text)'}}>{splitLabel} · {selected.length} {selected.length===1?'person':'people'}</span><Chev open={showSplit} /></button>
           {showSplit && <div style={{borderTop:balHairline,padding:14}}>
-            <div role="radiogroup" aria-label="Split type" style={{display:'flex',background:'var(--field)',borderRadius:'var(--radius-pill)',padding:3,marginBottom:6}}>
-              {([['equal','Equal'],['exact','Exact'],['percent','%']] as const).map(([k,l])=>(<button key={k} type="button" role="radio" aria-checked={splitType===k} onClick={()=>setSplitType(k)} style={splitType===k?{...tabPillActive,flex:1,minHeight:36}:{...tabPill,flex:1,minHeight:36}}>{l}</button>))}
+            <div role="radiogroup" aria-label="Split type" style={{...tabTrack,marginBottom:8}}>
+              {([['equal','Equal'],['exact','Exact'],['percent','%']] as const).map(([k,l])=>(<button key={k} type="button" role="radio" aria-checked={splitType===k} onClick={()=>setSplitType(k)} style={splitType===k?tabPillActive:tabPill}>{l}</button>))}
             </div>
             {group.members.map((m:any,mi:number)=>{
               const isSel = selected.includes(m.id);
@@ -152,8 +152,8 @@ export function ExpenseModal({ group, expense, onClose, reload }: any) {
           {showDate && <div style={{borderTop:balHairline,padding:14}}><DateField id="exp-date" value={date} onChange={setDate} autoOpen /></div>}
         </div>
         {expense && group.payments && group.payments.length > 0 && <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,marginTop:12,marginBottom:0}}>People have already settled in this group — editing this expense will change balances.</p>}
-        {modalError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:12,marginBottom:0}}>{modalError}</p>}
-        <AsyncButton disabled={(!!expense && !dirty) || !split.ok} style={{...primary, width:'100%', padding:'14px', fontSize:16, marginTop:8, ...((expense && !dirty) || !split.ok ? {background:'var(--accent-disabled)', borderColor:'var(--accent-disabled)', color:'var(--accent-text-disabled)', cursor:'not-allowed'} : {})}} onClick={async()=>{
+        <FieldError msg={modalError} top={12} />
+        <AsyncButton disabled={(!!expense && !dirty) || !split.ok} style={{...primary,...wide, marginTop:8, ...((expense && !dirty) || !split.ok ? {background:'var(--accent-disabled)', borderColor:'var(--accent-disabled)', color:'var(--accent-text-disabled)', cursor:'not-allowed'} : {})}} onClick={async()=>{
           setModalError('');
           const amountMinor = toMinor(amount, currency); if (amountMinor===null) { setModalError('Enter a valid positive amount'); return; }
           const body: any = { description, amountMinor, currency, date, paidByMemberId: payer, category, splitType, participants: selected };

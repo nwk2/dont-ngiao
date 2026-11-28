@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CATEGORIES, CURRENCIES } from './api';
+import { CATEGORIES, CURRENCIES, CURRENCY_INFO } from './api';
 
 export const S = { maxWidth: 640, margin: '0 auto', padding: '16px', paddingTop: 24, paddingBottom: 90 } as const; // DESKTOP CAP, Nov 2026: maxW was a typo (not a real CSS property), so the 640px cap never applied and the main content stretched full-width on desktop. maxWidth makes every view using S a centred 640px column on wide screens, matching the sheets (which already cap at 640) — on a phone (<640px) it is full-width as before.
  // TOP BLUR, 22 Nov 2026: the topmost element on a screen renders soft — measured on Wai's Home screenshot, the avatar's top edge and "Wk" are fuzzy while "Mai ngiao, mai drama." below is sharp. No blur/mask/gradient exists anywhere in the code; body already adds env(safe-area-inset-top) and S adds 16px, so the header sits ~16px below the safe-area edge — and the translucent status bar's blur feather reaches a few px past that edge. Same phenomenon as Haven the same evening, fixed there with +8px. 16px -> 24px top padding moves every S screen's topmost element clear of the feather. Group Settings already adds the safe area again on top of body's, so it is unaffected by this change.
@@ -87,6 +87,32 @@ export const payerChip: React.CSSProperties = { fontSize:11, background:'transpa
 export const currencyChip: React.CSSProperties = { fontSize:12, background:'var(--tint-bg)', padding:'3px 10px', borderRadius:'var(--radius-pill)', color:'var(--tint-text)', fontWeight:600, whiteSpace:'nowrap' };
 export const btn: React.CSSProperties = { minHeight:44, boxSizing:'border-box', padding:'0 18px', display:'inline-flex', alignItems:'center', justifyContent:'center', gap:8, borderRadius:'var(--radius-pill)', border:'var(--border-w) solid var(--muted)', background:'var(--card)', color:'var(--text)', fontFamily:'inherit', fontSize:15, fontWeight:600, boxShadow:'var(--shadow)', cursor:'pointer', textDecoration:'none' };
 export const primary: React.CSSProperties = { ...btn, background:'var(--accent)', color:'var(--accent-text)', borderColor:'var(--accent)' };
+// Full-width action button size (sheet footers, settings actions):
+// spread after the colour style, e.g. {...primary, ...wide}.
+export const wide: React.CSSProperties = { width:'100%', padding:'14px', fontSize:16 };
+// Destructive button (Delete, Remove, Leave, Revoke, Log out).
+export const dangerBtn: React.CSSProperties = { ...btn, background:'var(--danger-bg)', borderColor:'var(--danger-bg)', color:'var(--danger-text)', fontWeight:600 };
+// Async action with a local error, for sheet/settings buttons: clears the
+// error, runs the call, and keeps the message if it throws. Errors stay
+// next to the button that caused them (a sheet's error must never go to a
+// screen-level setError behind the scrim).
+//   const save = useAction();
+//   <AsyncButton onClick={save.run(async () => { ...; reload(d); })}>Save</AsyncButton>
+//   <FieldError msg={save.error} />
+export function useAction() {
+  const [error, setError] = useState('');
+  const run = (fn: () => Promise<unknown>) => async () => {
+    setError('');
+    try { await fn(); } catch (e: any) { setError(e?.message || 'Something went wrong'); }
+  };
+  return { error, setError, run };
+}
+// Inline error under a field or above a sheet's button. Renders nothing
+// when there is no message; role=alert so screen readers announce it.
+export function FieldError({ msg, top = 8 }: { msg?: string | null; top?: number }) {
+  if (!msg) return null;
+  return <p role="alert" style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:top,marginBottom:0}}>{msg}</p>;
+}
 // Chunk 9: one shared compact style for the Spend by category controls, so
 // Group, Mine, and the currency select look like a set. Compact (down from
 // the inherited ~16px button size), explicit height so the native select
@@ -313,30 +339,9 @@ export function groupBalancesByVerb(items: any[]) {
   return groups;
 }
 
-// CURRENCY INFO, 2026-11-06: symbol + full name per code, for the
-// currency picker sheet (searchable list). Symbols mirror ExpenseModal's
-// old local sym() map; names are the standard currency names.
-export const CURRENCY_INFO: Record<string, {sym: string; name: string}> = {
-  SGD: {sym: 'S$', name: 'Singapore Dollar'},
-  USD: {sym: '$', name: 'US Dollar'},
-  EUR: {sym: '€', name: 'Euro'},
-  GBP: {sym: '£', name: 'British Pound'},
-  AUD: {sym: 'A$', name: 'Australian Dollar'},
-  CAD: {sym: 'C$', name: 'Canadian Dollar'},
-  JPY: {sym: '¥', name: 'Japanese Yen'},
-  KRW: {sym: '₩', name: 'South Korean Won'},
-  VND: {sym: '₫', name: 'Vietnamese Dong'},
-  HKD: {sym: 'HK$', name: 'Hong Kong Dollar'},
-  TWD: {sym: 'NT$', name: 'New Taiwan Dollar'},
-  CNY: {sym: '¥', name: 'Chinese Yuan'},
-  INR: {sym: '₹', name: 'Indian Rupee'},
-  MYR: {sym: 'RM', name: 'Malaysian Ringgit'},
-  THB: {sym: '฿', name: 'Thai Baht'},
-  IDR: {sym: 'Rp', name: 'Indonesian Rupiah'},
-  PHP: {sym: '₱', name: 'Philippine Peso'},
-  NZD: {sym: 'NZ$', name: 'New Zealand Dollar'},
-  CHF: {sym: 'CHF', name: 'Swiss Franc'},
-};
+// CURRENCY_INFO (symbol + name per code) lives in shared/money.ts;
+// re-exported here so screens keep importing it from ui.
+export { CURRENCY_INFO } from './api';
 // Chevron for grouped-form rows (line SVG, not the text '›' — the old
 // currency pill's text chevron was part of the amateur look). Rotates
 // 90° when the row's inline editor is open (Split/Date).

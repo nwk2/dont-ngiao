@@ -7,7 +7,7 @@
 // A tiny store (useSyncExternalStore) so any screen can read the rates and
 // open the rate sheet without threading props through every component.
 import { useSyncExternalStore } from 'react';
-import { api, fmt, CURRENCIES } from './api';
+import { api, fmt, CURRENCIES, isZeroDecimal } from './api';
 
 export type Fx = {
   home: string | null;            // null when off or not chosen
@@ -23,7 +23,6 @@ const subscribe = (l: () => void) => { listeners.add(l); return () => { listener
 export function useFx(): Fx { return useSyncExternalStore(subscribe, () => state); }
 
 const CACHE_KEY = (base: string) => `dont-ngiao:fx:${base}`;
-const ZERO = ['JPY', 'KRW', 'VND'];
 
 /** Called by App whenever the signed-in user's home currency is known or changes. */
 export async function setHomeCurrency(code: string | null | undefined) {
@@ -52,15 +51,15 @@ export async function refreshRates() {
 export function toHome(fx: Fx, minor: number, cur: string): number | null {
   if (!fx.home || cur === fx.home) return null;
   const r = fx.rates[cur]; if (!(r > 0)) return null;
-  const major = ZERO.includes(cur) ? minor : minor / 100;
+  const major = isZeroDecimal(cur) ? minor : minor / 100;
   return major / r;
 }
 /** "S$36" for 100 and up (whole units signal it's rough), "S$14.75" below. */
 export function fmtEstimate(home: string, major: number): string {
   const abs = Math.abs(major);
-  const minor = ZERO.includes(home) ? Math.round(abs) : abs >= 100 ? Math.round(abs) * 100 : Math.round(abs * 100);
+  const minor = isZeroDecimal(home) ? Math.round(abs) : abs >= 100 ? Math.round(abs) * 100 : Math.round(abs * 100);
   const s = fmt(minor, home);
-  return abs >= 100 && !ZERO.includes(home) ? s.replace(/\.00$/, '') : s;
+  return abs >= 100 && !isZeroDecimal(home) ? s.replace(/\.00$/, '') : s;
 }
 /** "≈ S$36", or null when no estimate applies. */
 export function estimate(fx: Fx, minor: number, cur: string): string | null {
@@ -72,7 +71,7 @@ export function totalInHome(fx: Fx, items: { minor: number; cur: string }[]): nu
   if (!fx.home || !items.some(i => i.cur !== fx.home)) return null;
   let sum = 0;
   for (const i of items) {
-    if (i.cur === fx.home) { sum += ZERO.includes(i.cur) ? i.minor : i.minor / 100; continue; }
+    if (i.cur === fx.home) { sum += isZeroDecimal(i.cur) ? i.minor : i.minor / 100; continue; }
     const v = toHome(fx, i.minor, i.cur); if (v === null) return null; sum += v;
   }
   return sum;

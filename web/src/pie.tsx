@@ -1,5 +1,5 @@
 import React from 'react';
-import { fmt, CATEGORIES } from './api';
+import { fmt, CATEGORIES, isZeroDecimal } from './api';
 import { Estimate } from './components/Fx';
 // Category charts (no chart library dependency). Pie = overall breakdown
 // by category. DailyBar = spend per day, stacked by category.
@@ -23,8 +23,7 @@ function catColor(cat: string) { return CAT_COLORS[cat] || 'var(--muted)'; }
 // Short label for the top of a bar: "¥980", "¥39.4k", "S$1.2k", "₩1.5M".
 // Rough on purpose; the exact figure is in the tap tooltip.
 function compact(minor: number, cur: string) {
-  const zero = ['JPY','KRW','VND'].includes(cur);
-  const major = zero ? minor : minor / 100;
+  const major = isZeroDecimal(cur) ? minor : minor / 100;
   const sym = fmt(0, cur).replace(/[\d.,]+$/, '');
   const short = (v: number, unit: string) => `${sym}${(v >= 100 ? Math.round(v) : Math.round(v * 10) / 10).toLocaleString()}${unit}`;
   if (major >= 1e6) return short(major / 1e6, 'M');
