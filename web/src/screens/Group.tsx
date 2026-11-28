@@ -291,10 +291,10 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
         is N-ary (picker fits). appearance:none + custom chevron, so the
         native select arrows don't double up with the chevron. */}
         <div style={{display:'flex',gap:8,alignItems:'center',justifyContent:'space-between',flexWrap:'wrap'}}>
-          <div style={{display:'flex',background:'var(--field)',borderRadius:'var(--radius-pill)',padding:3,flexShrink:0}}>
-            <button style={catView==='group'?{...tabPillActive,flex:'none',padding:'8px 16px'}:{...tabPill,flex:'none',padding:'8px 16px'}} onClick={()=>setCatView('group')}>Group</button>
-            <button style={catView==='mine'?{...tabPillActive,flex:'none',padding:'8px 16px'}:{...tabPill,flex:'none',padding:'8px 16px'}} onClick={()=>setCatView('mine')}>Mine</button>
-            <button style={catView==='members'?{...tabPillActive,flex:'none',padding:'8px 16px'}:{...tabPill,flex:'none',padding:'8px 16px'}} onClick={()=>setCatView('members')}>Members</button>
+          <div style={{...tabTrack, flexShrink:0}}>
+            <button style={catView==='group'?tabPillActive:tabPill} onClick={()=>setCatView('group')}>Group</button>
+            <button style={catView==='mine'?tabPillActive:tabPill} onClick={()=>setCatView('mine')}>Mine</button>
+            <button style={catView==='members'?tabPillActive:tabPill} onClick={()=>setCatView('members')}>Members</button>
           </div>
           {currencies.length>1 && <span style={{display:'flex',alignItems:'center',gap:4,marginLeft:'auto'}}><select aria-label="Chart currency" style={{background:'transparent',border:'none',color:'var(--text)',fontSize:14,padding:'8px 0',appearance:'none',cursor:'pointer',outline:'none'}} value={cur} onChange={e=>setCatCur(e.target.value)}>{currencies.map(c=><option key={c}>{c}</option>)}</select><span aria-hidden="true" style={{color:'var(--muted)',pointerEvents:'none'}}>▾</span></span>}
         </div>
