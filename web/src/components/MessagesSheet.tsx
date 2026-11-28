@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api';
-import { AsyncButton, Sheet, Sk, balHairline, input, primary } from '../ui';
+import { AsyncButton, Chev, Sheet, Sk, balHairline, input, primary } from '../ui';
 
 // Your messages (Haven-style feedback threads): everything you've sent
 // from Send feedback, with the team's replies. Opening a thread marks its
@@ -58,7 +58,7 @@ export function MessagesSheet({ onClose, onChanged }: { onClose: () => void; onC
           <span aria-label={i.unread ? 'New reply' : undefined} style={{width:8,height:8,borderRadius:'50%',background:i.unread?'var(--accent)':'transparent',flexShrink:0}} />
           <span style={{minWidth:0}}><span style={{display:'block',fontWeight:i.unread?700:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{i.message}</span><span style={{display:'block',fontSize:13,color:'var(--muted)'}}>{TYPE[i.type] || 'Feedback'} · {when(i.updatedAt)} · {i.label}</span></span>
         </span>
-        <span style={{color:'var(--muted)',flexShrink:0}}>›</span>
+        <Chev />
       </button>))}
     </div>}
   </Sheet>);

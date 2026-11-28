@@ -16,6 +16,12 @@ export function fmtDate(iso: string) {
   const [y,m,d] = iso.split('-').map(Number);
   return new Date(y, m-1, d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
+// Short date for lists: drops the year only when it is this year, so an
+// old payment never reads as a recent one ("14 Dec 2025" vs "2 Nov").
+export function fmtDateShort(iso: string) {
+  const full = fmtDate(iso);
+  return iso.slice(0, 4) === String(new Date().getFullYear()) ? full.replace(/ \d{4}$/, '') : full;
+}
 export function todayIso() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 export function DateField({ value, onChange, id, autoOpen }: { value: string; onChange: (v: string)=>void; id: string; autoOpen?: boolean }) {
   // autoOpen: when the field is revealed by expanding a row (Add expense

@@ -1,8 +1,8 @@
 import { Estimate } from './Fx';
 import React, { useState } from 'react';
-import { api, fromMinor, toMinor } from '../api';
+import { api, fmt, fromMinor, toMinor } from '../api';
 import { DateField, fmtDate, todayIso } from '../calendar';
-import { AsyncButton, CURRENCY_INFO, CategoryPickerSheet, Chev, CurrencyPickerSheet, EXP_CAT_COLORS, PayerPickerSheet, Sheet, avatar, balCard, balHairline, catIcon, initials, input, memberDotColor, personDisplay, primary } from '../ui';
+import { AsyncButton, CURRENCY_INFO, CategoryPickerSheet, Chev, CurrencyPickerSheet, EXP_CAT_COLORS, PayerPickerSheet, Sheet, avatar, balCard, balHairline, catIcon, initials, input, memberDotColor, personDisplay, primary, tabPill, tabPillActive } from '../ui';
 
 // New expenses start on the category most recently entered in this group
 // (by created_at, not expense date), falling back to Other.
@@ -38,6 +38,35 @@ export function ExpenseModal({ group, expense, onClose, reload }: any) {
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false); const [showCategoryPicker, setShowCategoryPicker] = useState(false); const [showPayerPicker, setShowPayerPicker] = useState(false); const [showSplit, setShowSplit] = useState(false); const [showDate, setShowDate] = useState(false);
   const toggle = (id:string)=> setSelected(s=> s.includes(id) ? s.filter(x=>x!==id) : [...s, id]);
   const splitLabel = splitType==='equal' ? 'Equally' : splitType==='exact' ? 'Exact amounts' : 'Percentages';
+  // LIVE SPLIT TOTAL, Nov 2026 polish: Exact and Percent show a running
+  // total under the rows, and Save stays disabled (with the reason on the
+  // button) until the split balances. Mirrors the worker's checks, which
+  // stay as the backstop: participants >= 1, exact sums to the total,
+  // percentages sum to 100 (+-0.001).
+  const totalMinor = toMinor(amount, currency);
+  const exactMinors = selected.map(id => toMinor(exact[id] || '', currency));
+  const exactAllValid = exactMinors.every(v => v !== null);
+  const exactSum = exactMinors.reduce((a: number, v) => a + (v || 0), 0);
+  const pctSum = selected.reduce((a, id) => a + (Number(percents[id]) || 0), 0);
+  const pctRound = Math.round(pctSum * 1000) / 1000;
+  const split: { ok: boolean; reason: string; status: React.ReactNode | null } = (() => {
+    if (selected.length === 0) return { ok: false, reason: 'Pick at least one person', status: null };
+    if (splitType === 'exact') {
+      if (totalMinor === null) return { ok: false, reason: 'Enter the total first', status: null };
+      const left = totalMinor - exactSum;
+      const ok = exactAllValid && left === 0;
+      const reason = !exactAllValid ? 'Fill in every amount' : left > 0 ? `Assign ${fmt(left, currency)} more to save` : left < 0 ? `${fmt(-left, currency)} too much — lower an amount` : '';
+      const pct = totalMinor > 0 ? Math.min(100, Math.max(0, exactSum / totalMinor * 100)) : 0;
+      return { ok, reason, status: <SplitMeter pct={pct} ok={ok} over={left < 0} left={`${fmt(exactSum, currency)} of ${fmt(totalMinor, currency)}`} right={ok ? 'Adds up' : left > 0 ? `${fmt(left, currency)} left` : `${fmt(-left, currency)} over`} /> };
+    }
+    if (splitType === 'percent') {
+      const left = Math.round((100 - pctSum) * 1000) / 1000;
+      const ok = Math.abs(100 - pctSum) <= 0.001;
+      const reason = ok ? '' : left > 0 ? `Add ${left}% more to save` : `${-left}% too much — lower one`;
+      return { ok, reason, status: <SplitMeter pct={Math.min(100, Math.max(0, pctSum))} ok={ok} over={left < 0} left={`${pctRound}% of 100%`} right={ok ? 'Adds up' : left > 0 ? `${left}% left` : `${-left}% over`} /> };
+    }
+    return { ok: true, reason: '', status: null };
+  })();
   // EDIT: Save stays disabled until something actually changed — an
   // unedited expense must not look clickable. The baseline is the stored
   // expense: the edit form always starts in 'exact' mode with the stored
@@ -102,9 +131,11 @@ export function ExpenseModal({ group, expense, onClose, reload }: any) {
           <button type="button" onClick={()=>setShowCategoryPicker(true)} style={rowBtn}><span style={{fontSize:15,color:'var(--muted)',flexShrink:0}}>Category</span><span style={{flex:1}} /><span style={{display:'flex',alignItems:'center',gap:8}}><span style={{width:28,height:28,borderRadius:8,background:EXP_CAT_COLORS[category] || 'var(--muted)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{catIcon(category)}</span><span style={{fontSize:15}}>{category}</span></span><Chev /></button>
           <button type="button" onClick={()=>setShowCurrencyPicker(true)} style={rowBtn}><span style={{fontSize:15,color:'var(--muted)',flexShrink:0}}>Currency</span><span style={{flex:1}} /><span style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:15}}>{currency}</span><span style={{fontSize:15,color:'var(--muted)'}}>· {CURRENCY_INFO[currency]?.name || ''}</span></span><Chev /></button>
           <button type="button" onClick={()=>setShowPayerPicker(true)} style={rowBtn}><span style={{fontSize:15,color:'var(--muted)',flexShrink:0}}>Paid by</span><span style={{flex:1}} /><span style={{display:'flex',alignItems:'center',gap:8}}><span style={{...avatar,width:28,height:28,fontSize:12,background:memberDotColor(group,payer)}}>{initials(payerPerson.name)}</span><span style={{fontSize:15}}>{payerPerson.label}</span></span><Chev /></button>
-          <button type="button" onClick={()=>setShowSplit(v=>!v)} style={rowBtn}><span style={{fontSize:15,color:'var(--muted)',flexShrink:0}}>Split</span><span style={{flex:1}} /><span style={{fontSize:15}}>{splitLabel} · {selected.length} people</span><Chev open={showSplit} /></button>
+          <button type="button" onClick={()=>setShowSplit(v=>!v)} style={rowBtn}><span style={{fontSize:15,color:'var(--muted)',flexShrink:0}}>Split</span><span style={{flex:1}} /><span style={{fontSize:15,color:split.ok?'var(--text)':'var(--warn-text)'}}>{splitLabel} · {selected.length} {selected.length===1?'person':'people'}</span><Chev open={showSplit} /></button>
           {showSplit && <div style={{borderTop:balHairline,padding:14}}>
-            <select style={{...input,marginTop:0}} value={splitType} onChange={e=>setSplitType(e.target.value as any)}><option value="equal">Equal</option><option value="exact">Exact amounts</option><option value="percent">Percentages</option></select>
+            <div role="radiogroup" aria-label="Split type" style={{display:'flex',background:'var(--field)',borderRadius:'var(--radius-pill)',padding:3,marginBottom:6}}>
+              {([['equal','Equal'],['exact','Exact'],['percent','%']] as const).map(([k,l])=>(<button key={k} type="button" role="radio" aria-checked={splitType===k} onClick={()=>setSplitType(k)} style={splitType===k?{...tabPillActive,flex:1,minHeight:36}:{...tabPill,flex:1,minHeight:36}}>{l}</button>))}
+            </div>
             {group.members.map((m:any,mi:number)=>{
               const isSel = selected.includes(m.id);
               return (<button key={m.id} type="button" onClick={()=>toggle(m.id)} style={{display:'flex',alignItems:'center',gap:12,width:'100%',background:'transparent',border:'none',borderTop:mi===0?'none':balHairline,padding:'12px 0',color:'var(--text)',cursor:'pointer',textAlign:'left'}}>
@@ -115,23 +146,33 @@ export function ExpenseModal({ group, expense, onClose, reload }: any) {
                 <span aria-hidden="true" style={{width:24,height:24,borderRadius:'50%',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',background:isSel?'var(--accent)':'transparent',border:isSel?'none':'1px solid var(--check-border)'}}>{isSel && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent-text)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>}</span>
               </button>);
             })}
+            {split.status}
           </div>}
           <button type="button" onClick={()=>setShowDate(v=>!v)} style={rowBtn}><span style={{fontSize:15,color:'var(--muted)',flexShrink:0}}>Date</span><span style={{flex:1}} /><span style={{fontSize:15}}>{date===todayIso() ? `Today · ${fmtDate(date)}` : fmtDate(date)}</span><Chev open={showDate} /></button>
           {showDate && <div style={{borderTop:balHairline,padding:14}}><DateField id="exp-date" value={date} onChange={setDate} autoOpen /></div>}
         </div>
         {expense && group.payments && group.payments.length > 0 && <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,marginTop:12,marginBottom:0}}>People have already settled in this group — editing this expense will change balances.</p>}
         {modalError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:12,marginBottom:0}}>{modalError}</p>}
-        <AsyncButton disabled={!!expense && !dirty} style={{...primary, width:'100%', padding:'14px', fontSize:16, marginTop:8, ...(expense && !dirty ? {background:'var(--accent-disabled)', borderColor:'var(--accent-disabled)', color:'var(--accent-text-disabled)', cursor:'not-allowed'} : {})}} onClick={async()=>{
+        <AsyncButton disabled={(!!expense && !dirty) || !split.ok} style={{...primary, width:'100%', padding:'14px', fontSize:16, marginTop:8, ...((expense && !dirty) || !split.ok ? {background:'var(--accent-disabled)', borderColor:'var(--accent-disabled)', color:'var(--accent-text-disabled)', cursor:'not-allowed'} : {})}} onClick={async()=>{
           setModalError('');
           const amountMinor = toMinor(amount, currency); if (amountMinor===null) { setModalError('Enter a valid positive amount'); return; }
           const body: any = { description, amountMinor, currency, date, paidByMemberId: payer, category, splitType, participants: selected };
           if (splitType==='percent') body.percents = selected.map(id=>Number(percents[id]||0));
           if (splitType==='exact') { const arr = selected.map(id=>toMinor(exact[id]||'', currency)); if (arr.some(v=>v===null)) { setModalError('Enter valid exact amounts'); return; } body.exactAmounts = arr; }
           try { const d = expense ? await api(`/api/groups/${group.id}/expenses/${expense.id}`,'PATCH',body) : await api(`/api/groups/${group.id}/expenses`,'POST',body); reload(d); } catch(e:any){ setModalError(e.message); }
-        }}>Save</AsyncButton>
+        }}>{split.ok ? 'Save' : split.reason}</AsyncButton>
     </Sheet>
     {showCurrencyPicker && <CurrencyPickerSheet current={currency} onClose={()=>setShowCurrencyPicker(false)} onPick={(c:string)=>{setCurrency(c); setShowCurrencyPicker(false);}} />}
     {showCategoryPicker && <CategoryPickerSheet current={category} onClose={()=>setShowCategoryPicker(false)} onPick={(c:string)=>{setCategory(c); setShowCategoryPicker(false);}} />}
     {showPayerPicker && <PayerPickerSheet group={group} current={payer} onClose={()=>setShowPayerPicker(false)} onPick={(id:string)=>{setPayer(id); setShowPayerPicker(false);}} />}
   </>);
+}
+
+// Running total bar under the split rows (Exact / Percent).
+function SplitMeter({ pct, ok, over, left, right }: { pct: number; ok: boolean; over: boolean; left: string; right: string }) {
+  const color = ok ? 'var(--tint-text)' : over ? 'var(--danger-text)' : 'var(--warn-text)';
+  return (<div style={{marginTop:8}} aria-live="polite">
+    <div style={{height:6,borderRadius:'var(--radius-pill)',background:'var(--field)',overflow:'hidden'}}><div style={{height:'100%',width:`${pct}%`,background:color}} /></div>
+    <div style={{display:'flex',justifyContent:'space-between',gap:8,fontSize:13,marginTop:6}}><span style={{color:'var(--muted)',fontVariantNumeric:'tabular-nums'}}>{left}</span><span style={{color,fontWeight:700,fontVariantNumeric:'tabular-nums'}}>{right}</span></div>
+  </div>);
 }

@@ -1,12 +1,12 @@
 import { Estimate, RateLine } from '../components/Fx';
 import { fmtEstimate, totalInHome, useFx } from '../fx';
 import React, { useEffect, useRef, useState } from 'react';
-import { CURRENCIES, api, fmt, fromMinor, toMinor } from '../api';
-import { DateField, fmtDate, todayIso } from '../calendar';
+import { api, fmt, fromMinor, toMinor } from '../api';
+import { DateField, fmtDate, fmtDateShort, todayIso } from '../calendar';
 import { ExpenseModal } from '../components/ExpenseSheet';
 import { OnboardingPrompts } from '../components/Onboarding';
 import { DailyBar, Pie } from '../pie';
-import { AsyncButton, CAT_GLYPH_VARS, CategoryPickerSheet, Chev, CloseButton, ConfirmSheet, EXP_CAT_COLORS, PayerPickerSheet, PickerSheet, S, Sheet, Sk, avatar, balCard, balHairline, balRow, btn, card, catIcon, currencyChip, emptyBox, homeCard, iconBtn, initials, input, logIcon, memberDotColor, noAccountChip, payerChip, personDisplay, primary, rowCard, tabPill, tabPillActive, tabTrack, useSheetDrag } from '../ui';
+import { AsyncButton, CURRENCY_INFO, CurrencyPickerSheet, CAT_GLYPH_VARS, CategoryPickerSheet, Chev, CloseButton, ConfirmSheet, EXP_CAT_COLORS, PayerPickerSheet, PickerSheet, S, Sheet, Sk, avatar, balCard, balHairline, balRow, btn, card, catIcon, currencyChip, emptyBox, homeCard, iconBtn, initials, input, logIcon, memberDotColor, noAccountChip, payerChip, personDisplay, pressable, primary, rowCard, tabPill, tabPillActive, tabTrack } from '../ui';
 
 // GroupSkeleton is ALL skeleton, no real buttons: the ← Groups button
 // used to be a real, tappable button (so a user could cancel a pending
@@ -41,6 +41,7 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
   const [detailExpense, setDetailExpense] = useState<any>(null);
   const [settle, setSettle] = useState<any>(null);
   const [confirm, setConfirm] = useState<any>(null);
+  const [detailPayment, setDetailPayment] = useState<any>(null);
   // Member detail sheet (option C, 2026-11-05): tapping a member row opens
   // a bottom sheet, like You's tappable rows (Edit name, Archive Groups).
   // Edit email + Remove live inside the sheet, NOT on the row and NOT
@@ -319,9 +320,9 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
             <div style={{width:'50%',flexShrink:0,boxSizing:'border-box'}}><DailyBar expenses={group.expenses} myMemberId={group.myMemberId} view={catView} currency={cur} /></div>
           </div>
         </div>
-        <div style={{display:'flex',justifyContent:'center',gap:8,marginTop:8}}>
-          <button type="button" aria-label="Show pie chart" style={{width:8,height:8,borderRadius:'50%',border:'none',padding:0,cursor:'pointer',background:catChart==='pie' ? 'var(--accent)' : 'var(--border)'}} onClick={()=>setCatChart('pie')} />
-          <button type="button" aria-label="Show bar chart" style={{width:8,height:8,borderRadius:'50%',border:'none',padding:0,cursor:'pointer',background:catChart==='bar' ? 'var(--accent)' : 'var(--border)'}} onClick={()=>setCatChart('bar')} />
+        <div style={{display:'flex',justifyContent:'center',gap:0,marginTop:2}}>
+          <button type="button" aria-label="Show pie chart" aria-pressed={catChart==='pie'} style={{width:44,height:28,border:'none',padding:0,background:'transparent',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setCatChart('pie')}><span style={{width:8,height:8,borderRadius:'50%',background:catChart==='pie' ? 'var(--accent)' : 'var(--border)'}} /></button>
+          <button type="button" aria-label="Show bar chart" aria-pressed={catChart==='bar'} style={{width:44,height:28,border:'none',padding:0,background:'transparent',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setCatChart('bar')}><span style={{width:8,height:8,borderRadius:'50%',background:catChart==='bar' ? 'var(--accent)' : 'var(--border)'}} /></button>
         </div>
         </>)}
         {catView==='members' && (<div style={{width:'100%',maxWidth:360}}>
@@ -382,7 +383,7 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
             const net = iPaid ? (lent>0 ? { label:'you lent', amt:fmt(lent,e.currency), color:'var(--tint-text)' } : { label:'just you', amt:e.display, color:'var(--muted)' })
               : mySplit ? { label:'you borrowed', amt:fmt(myShare,e.currency), color:'var(--danger-text)' }
               : { label:'not involved', amt:e.display, color:'var(--muted)' };
-            return (<div key={e.id} style={{...balRow,cursor:'pointer',borderBottom:ei===arr.length-1?'none':balHairline}} onClick={()=>setDetailExpense(e)}>
+            return (<div key={e.id} style={{...balRow,cursor:'pointer',borderBottom:ei===arr.length-1?'none':balHairline}} {...pressable(()=>setDetailExpense(e))}>
               <span style={{width:40,height:40,borderRadius:12,background:EXP_CAT_COLORS[e.category] || 'var(--field)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{catIcon(e.category)}</span>
               <div style={{flex:1,minWidth:0,lineHeight:1.4}}><div style={{fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.description}</div><div style={{fontSize:13,color:'var(--muted)'}}>{iPaid ? 'You' : e.payerName} paid {e.display}</div></div>
               <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',flexShrink:0,lineHeight:1.4}}><div style={{fontSize:12,color:net.color}}>{net.label}</div><strong style={{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums',color:net.color}}>{net.amt}</strong><Estimate minor={e.amount_minor} cur={e.currency} style={{fontSize:12}} /></div>
@@ -453,9 +454,9 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
         // SETTLE AUTH, Nov 2026: mirror the server rule in the UI — only
         // the creditor can settle, except when the creditor is a
         // placeholder (no account), in which case the debtor may. Anyone
-        // else gets a disabled button + an explanation, not a hidden
-        // button, so a debtor is not left wondering why there is no
-        // Settle button (same pattern as the Leave grey-out).
+        // else (in practice: you, the debtor) gets a '<creditor> settles'
+        // label and a one-line instruction on the row, instead of a dead
+        // button explained by a footnote (Nov 2026 polish).
         const toMember = group.members.find((m:any)=>m.id===s.toMemberId);
         const canSettle = group.myMemberId === s.toMemberId || (toMember && !toMember.hasAccount && group.myMemberId === s.fromMemberId);
         return (<div key={i} style={{...balRow,justifyContent:'space-between',borderBottom:i===mySuggestions.length-1?'none':balHairline}}>
@@ -467,29 +468,41 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
           <div style={{flex:1,minWidth:0,lineHeight:1.4}}>
             <div>{from.label} <span style={{color:'var(--muted)'}}>{from.memberId===group.myMemberId?'owe':'owes'}</span> {to.memberId===group.myMemberId?'you':to.label}</div>
             <div style={{marginTop:4}}><strong>{s.display}</strong></div>
+            {!canSettle && !group.isArchived && <div style={{fontSize:13,color:'var(--muted)',marginTop:2}}>Pay {to.label}, then they record it here</div>}
           </div>
-          {!group.isArchived && <button style={{...primary,flexShrink:0,background:canSettle?'var(--accent)':'var(--accent-disabled)',borderColor:canSettle?'var(--accent)':'var(--accent-disabled)',color:canSettle?'var(--accent-text)':'var(--accent-text-disabled)',cursor:canSettle?'pointer':'not-allowed'}} disabled={!canSettle} onClick={()=>setSettle(s)}>Settle</button>}
+          {!group.isArchived && (canSettle
+            ? <button style={{...primary,flexShrink:0}} onClick={()=>setSettle(s)}>Settle</button>
+            : <span style={{flexShrink:0,fontSize:12,fontWeight:600,color:'var(--warn-text)',background:'var(--warn-bg)',borderRadius:'var(--radius-pill)',padding:'4px 10px',whiteSpace:'nowrap'}}>{to.label} settles</span>)}
         </div>);
       })}</div>}
-      <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,margin:'8px 0 0'}}>Only the creditor can settle. If a Settle button is dark, you're the one who owes — the other person has to settle it. Edit the amount in the sheet to pay part of it.</p>
+      {!group.isArchived && mySuggestions.some((s:any)=>{ const tm = group.members.find((m:any)=>m.id===s.toMemberId); return group.myMemberId === s.toMemberId || (tm && !tm.hasAccount && group.myMemberId === s.fromMemberId); }) && <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,margin:'8px 0 0'}}>Tap Settle once the money has changed hands. You can lower the amount for a part payment.</p>}
         </>);
       })()}
       <h3 style={{margin:'20px 0 8px',fontSize:17}}>Recorded payments</h3>
+      {/* RECORDED PAYMENTS, Nov 2026 polish: amount in its own right
+      column like Expenses; the year shows when it isn't this year; rows
+      you're part of open a small detail sheet holding Delete, instead of
+      a red Delete button on every row. One footnote instead of two. */}
       {group.payments.length>0 ? <div style={balCard}>{group.payments.map((p:any,pi:number)=>{
         const from = personDisplay(group, p.from_member_id, p.fromName);
         const to = personDisplay(group, p.to_member_id, p.toName);
-        return (<div key={p.id} style={{...balRow,justifyContent:'space-between',borderBottom:pi===group.payments.length-1?'none':balHairline}}>
-          <div style={{display:'flex',alignItems:'center',flexShrink:0}}><span style={{...avatar,width:28,height:28,fontSize:12,background:memberDotColor(group, from.memberId)}}>{initials(from.name)}</span><span style={{...avatar,width:28,height:28,fontSize:12,marginLeft:-10,border:'2px solid var(--card)',background:memberDotColor(group, to.memberId)}}>{initials(to.name)}</span></div>
-          <div style={{flex:1,minWidth:0,lineHeight:1.4}}>
-            <div>{from.label} <span style={{color:'var(--muted)'}}>paid</span> {to.memberId===group.myMemberId?'you':to.label}</div>
-            <div style={{fontSize:13,lineHeight:1.4,marginTop:4}}><strong>{p.display}</strong> <span style={{color:'var(--muted)'}}>· {fmtDate(p.date).replace(/ \d{4}$/,'')}</span></div>
-            {paymentErrors[p.id] && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:4,marginBottom:0}}>{paymentErrors[p.id]}</p>}
-          </div>
-          {!group.isArchived && (group.myMemberId === p.from_member_id || group.myMemberId === p.to_member_id) && <button style={{...btn,flexShrink:0,background:'var(--danger-bg)',borderColor:'var(--danger-bg)',color:'var(--danger-text)',fontWeight:600}} onClick={()=>setConfirm({title:'Delete payment?',message:`Delete the ${p.display} payment from ${from.label} to ${to.label} on ${fmtDate(p.date)}? This cannot be undone.`,onError:(msg:string)=>setPaymentErrors(prev=>({...prev,[p.id]:msg})),action:async()=>{const d = await api(`/api/groups/${group.id}/payments/${p.id}`,'DELETE'); reload(d);}})}>Delete</button>}
-        </div>);
+        const mine = !group.isArchived && (group.myMemberId === p.from_member_id || group.myMemberId === p.to_member_id);
+        const inner = (<>
+          <span style={{display:'flex',alignItems:'center',flexShrink:0}}><span style={{...avatar,width:28,height:28,fontSize:12,background:memberDotColor(group, from.memberId)}}>{initials(from.name)}</span><span style={{...avatar,width:28,height:28,fontSize:12,marginLeft:-10,border:'2px solid var(--card)',background:memberDotColor(group, to.memberId)}}>{initials(to.name)}</span></span>
+          <span style={{flex:1,minWidth:0,lineHeight:1.4}}>
+            <span style={{display:'block'}}>{from.label} <span style={{color:'var(--muted)'}}>paid</span> {to.memberId===group.myMemberId?'you':to.label}</span>
+            <span style={{display:'block',fontSize:13,color:'var(--muted)'}}>{fmtDateShort(p.date)}</span>
+            {paymentErrors[p.id] && <span style={{display:'block',color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:4}}>{paymentErrors[p.id]}</span>}
+          </span>
+          <strong style={{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums',flexShrink:0}}>{p.display}</strong>
+          {mine ? <Chev /> : <span style={{width:16,flexShrink:0}} />}
+        </>);
+        const rowStyle: React.CSSProperties = {...balRow,borderBottom:pi===group.payments.length-1?'none':balHairline};
+        return mine
+          ? <button key={p.id} type="button" onClick={()=>setDetailPayment(p)} style={{...rowStyle,width:'100%',background:'transparent',border:'none',borderBottom:rowStyle.borderBottom,color:'var(--text)',textAlign:'left',cursor:'pointer',font:'inherit'}}>{inner}</button>
+          : <div key={p.id} style={rowStyle}>{inner}</div>;
       })}</div> : <div style={balCard}><div style={{...balRow,color:'var(--muted)'}}>No recorded payments yet.</div></div>}
-      <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,margin:'8px 0 0'}}>Delete shows only on payments you're part of — as the person who paid or the person who was paid.</p>
-      <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,margin:'16px 0 0'}}>This only records the payment.</p>
+      <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.45,margin:'8px 0 0'}}>Records only — no money moves.{group.payments.some((p:any)=>group.myMemberId===p.from_member_id || group.myMemberId===p.to_member_id) && !group.isArchived ? ' Tap one of yours to delete it.' : ''}</p>
       </>)}
     </>}
     {showMembers && (<Sheet title="Members" onClose={()=>setShowMembers(false)} maxHeight="88vh"><div style={{marginTop:16}}>
@@ -502,7 +515,7 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
           {m.email ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.email}</div>) : (!m.hasAccount ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4}}>No email set — add one so they can sign in with Google using it</div>) : null)}
           {!m.hasAccount && m.email ? (<div style={{fontSize:13,color:'var(--muted)',lineHeight:1.4}}>They can sign in with Google using this email to join</div>) : null}
         </div>
-        {tappable && <span style={{color:'var(--muted)',flexShrink:0}}>›</span>}
+        {tappable && <Chev />}
       </div>);})}</div>}
       {!group.isArchived && <div style={{display:'flex',flexDirection:'column',gap:12,marginTop:12}}><InviteMember groupId={group.id} setConfirm={setConfirm} /><AddMember groupId={group.id} reload={reload} /></div>}
     </div></Sheet>)}
@@ -548,16 +561,22 @@ export function GroupView({ group, setGroup, tab, setTab, back, reload, error, s
     </div></Sheet>)}
     {showMenu && <PickerSheet title={group.name} onClose={()=>setShowMenu(false)}>
       <div className="flat-list" style={{marginTop:12,background:'var(--field)',borderRadius:'var(--radius-card)',overflow:'hidden'}}>
-        <button className="flat-row" onClick={()=>{setShowMenu(false); setShowMembers(true);}}><span>Members</span><span style={{color:'var(--muted)'}}>{group.members.length} ›</span></button>
-        <button className="flat-row" onClick={()=>{setShowMenu(false); setShowLog(true);}}><span>Log</span><span style={{color:'var(--muted)'}}>›</span></button>
-        <button className="flat-row" onClick={()=>{setShowMenu(false); setShowSettings(true);}}><span>Group settings</span><span style={{color:'var(--muted)'}}>›</span></button>
-        <button className="flat-row" onClick={()=>{setShowMenu(false); onFeedback();}}><span>Send feedback</span><span style={{color:'var(--muted)'}}>›</span></button>
+        <button className="flat-row" onClick={()=>{setShowMenu(false); setShowMembers(true);}}><span>Members</span><span style={{display:'flex',alignItems:'center',gap:6,color:'var(--muted)',minWidth:0,textAlign:'right'}}>{group.members.length}<Chev /></span></button>
+        <button className="flat-row" onClick={()=>{setShowMenu(false); setShowLog(true);}}><span>Log</span><Chev /></button>
+        <button className="flat-row" onClick={()=>{setShowMenu(false); setShowSettings(true);}}><span>Group settings</span><Chev /></button>
+        <button className="flat-row" onClick={()=>{setShowMenu(false); onFeedback();}}><span>Send feedback</span><Chev /></button>
       </div>
     </PickerSheet>}
+    {detailPayment && (()=>{ const p = detailPayment; const from = personDisplay(group, p.from_member_id, p.fromName); const to = personDisplay(group, p.to_member_id, p.toName); return (<Sheet title="Payment" onClose={()=>setDetailPayment(null)}>
+      <div style={{marginTop:14}}><strong style={{fontSize:20,fontVariantNumeric:'tabular-nums'}}>{p.display}</strong></div>
+      <div style={{marginTop:4}}>{from.label} <span style={{color:'var(--muted)'}}>paid</span> {to.memberId===group.myMemberId?'you':to.label}</div>
+      <div style={{fontSize:13,color:'var(--muted)',marginTop:2,marginBottom:16}}>{fmtDate(p.date)}</div>
+      <button type="button" style={{...btn,width:'100%',padding:'14px',fontSize:16,background:'var(--danger-bg)',borderColor:'var(--danger-bg)',color:'var(--danger-text)'}} onClick={()=>{setDetailPayment(null); setConfirm({title:'Delete payment?',message:`Delete the ${p.display} payment from ${from.label} to ${to.label} on ${fmtDate(p.date)}? This cannot be undone.`,onError:(msg:string)=>setPaymentErrors(prev=>({...prev,[p.id]:msg})),action:async()=>{const d = await api(`/api/groups/${group.id}/payments/${p.id}`,'DELETE'); reload(d);}});}}>Delete payment</button>
+    </Sheet>); })()}
     {detailExpense && <ExpenseDetailSheet group={group} expense={detailExpense} onClose={()=>setDetailExpense(null)} setConfirm={setConfirm} reload={reload} onEdit={()=>{setDetailExpense(null); setEditExpense(detailExpense);}} />}
     {showExpense && <ExpenseModal group={group} onClose={()=>setShowExpense(false)} reload={(d?:any)=>{setShowExpense(false); reload(d);}} />}
     {editExpense && <ExpenseModal group={group} expense={editExpense} onClose={()=>setEditExpense(null)} reload={(d?:any)=>{setEditExpense(null); reload(d);}} />}
-    {settle && <SettleModal group={group} suggestion={settle} onClose={()=>setSettle(null)} reload={(d?:any)=>{setSettle(null); reload(d);}} setError={setError} />}
+    {settle && <SettleModal group={group} suggestion={settle} onClose={()=>setSettle(null)} reload={(d?:any)=>{setSettle(null); reload(d);}} />}
     {showSettings && <SettingsModal group={group} onClose={()=>setShowSettings(false)} reload={(d?:any)=>{setShowSettings(false); reload(d);}} back={back} />}
     {confirm && <ConfirmSheet title={confirm.title} message={confirm.message} confirmLabel={confirm.confirmLabel} onCancel={()=>setConfirm(null)} onConfirm={async()=>{try{await confirm.action();}catch(er:any){if (confirm.onError) confirm.onError(er.message); else setError(er.message);}finally{setConfirm(null);}}} />}
   </div>);
@@ -673,11 +692,11 @@ export function ExpenseDetailSheet({ group, expense: e, onClose, setConfirm, rel
   // the sheet stays open (the action throws before onClose(), so the
   // confirm wrapper's onError is what displays it — not the global error).
   const [sheetError, setSheetError] = useState('');
-  const drag = useSheetDrag(onClose);
-  return (<div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
-    <div style={{background:'var(--bg)',borderTop:'var(--outline-w) solid var(--border)',borderRadius:'22px 22px 0 0',padding:16,paddingBottom:'calc(16px + env(safe-area-inset-bottom, 0px))',width:'100%',maxWidth:640,maxHeight:'80vh',overflowY:'auto',transform:drag.dragY?`translateY(${drag.dragY}px)`:undefined,transition:drag.dragging?'none':'transform 0.2s ease-out'}}>
-      <div style={{width:36,height:4,borderRadius:'var(--radius-pill)',background:'var(--border)',margin:'0 auto 12px',touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown} />
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,touchAction:'none',cursor:'grab'}} onPointerDown={drag.onPointerDown}><div style={{flex:1,minWidth:0}}><h2 style={{margin:0,marginBottom:4}}>{e.description}</h2><div style={{marginBottom:6,display:'flex',alignItems:'baseline',gap:8,flexWrap:'wrap'}}><strong style={{fontSize:20}}>{e.display}</strong><Estimate minor={e.amount_minor} cur={e.currency} style={{fontSize:14}} /></div><div><span style={{fontSize:12,background:EXP_CAT_COLORS[e.category] || 'var(--muted)',color:CAT_GLYPH_VARS[e.category] || 'var(--text)',padding:'2px 6px',borderRadius:'var(--radius-pill)'}}>{e.category}</span></div></div><CloseButton onClick={onClose} /></div>
+  // SHARED SHEET, Nov 2026 polish: was a hand-built copy of Sheet with a
+  // lighter scrim, a fainter 36x4 grabber, 80vh and 16px bottom padding.
+  // No title prop: the header below is richer than Sheet's <h2> row.
+  return (<Sheet onClose={onClose} maxHeight="88vh">
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}><div style={{flex:1,minWidth:0}}><h2 style={{margin:0,marginBottom:4}}>{e.description}</h2><div style={{marginBottom:6,display:'flex',alignItems:'baseline',gap:8,flexWrap:'wrap'}}><strong style={{fontSize:20}}>{e.display}</strong><Estimate minor={e.amount_minor} cur={e.currency} style={{fontSize:14}} /></div><div><span style={{fontSize:12,background:EXP_CAT_COLORS[e.category] || 'var(--muted)',color:CAT_GLYPH_VARS[e.category] || 'var(--text)',padding:'2px 6px',borderRadius:'var(--radius-pill)'}}>{e.category}</span></div></div><CloseButton onClick={onClose} /></div>
       {/* 22 Nov 2026: this row used to live inside the header's flex:1 column, so the date right-aligned to the column edge — measured on Wai's screenshot it ended at device x 974, ~100px short of the sheet edge, while the payer card below reaches 1073. The day header's "Today ¥6,100" total, by contrast, is flush to its container edge. The row now sits outside the header so it spans the full sheet width. The v181 1px translateY nudge is reverted with it: the baselines were already aligned (both at device row 1567), the offset was horizontal, not vertical. */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:12,fontSize:13,color:'var(--muted)',marginTop:6}}><span style={{minWidth:0}}>Split between {e.splits.length} people</span><span style={{whiteSpace:'nowrap',flexShrink:0}}>{fmtDate(e.date)}</span></div>
       <div style={{marginTop:12}}>{e.splits.map((s:any)=>{const member = group.members.find((x:any)=>x.id===s.member_id); const pd = personDisplay(group, s.member_id, member?.name); const isMine = group.myMemberId && s.member_id===group.myMemberId; return (<div key={s.member_id} style={{...rowCard,display:'flex',alignItems:'center',gap:12,background:isMine?'var(--tint-bg)':'var(--card)'}}>
@@ -688,26 +707,37 @@ export function ExpenseDetailSheet({ group, expense: e, onClose, setConfirm, rel
       {sheetError && <p style={{color:'var(--danger-text)',fontSize:13,lineHeight:1.4,marginTop:12,marginBottom:0}}>{sheetError}</p>}
       {!group.isArchived && <button style={{...btn,width:'100%',padding:'14px',fontSize:16,marginTop:12}} onClick={onEdit}>Edit expense</button>}
       {!group.isArchived && <button style={{...btn,width:'100%',padding:'14px',fontSize:16,marginTop:12,background:'var(--danger-bg)',borderColor:'var(--danger-bg)',color:'var(--danger-text)'}} onClick={()=>setConfirm({title:'Delete expense?',message:`Delete '${e.description}' (${e.display})? This will also remove its splits. This cannot be undone.`,onError:(msg:string)=>setSheetError(msg),action:async()=>{const d = await api(`/api/groups/${group.id}/expenses/${e.id}`,'DELETE'); onClose(); reload(d);}})}>Delete expense</button>}
-    </div>
-  </div>);
+  </Sheet>);
 }
-export function SettleModal({ group, suggestion, onClose, reload, setError }: any) {
+export function SettleModal({ group, suggestion, onClose, reload }: any) {
   const [amount, setAmount] = useState(fromMinor(suggestion.amountMinor, suggestion.currency));
   const [date, setDate] = useState(todayIso());
+  // Errors render INSIDE the sheet (Nov 2026 polish). They used to go to
+  // GroupView's setError, which draws behind the scrim — a failed Settle
+  // looked like nothing happened. Same fix as Settings / New group.
+  const [settleError, setSettleError] = useState('');
   const minor = toMinor(amount, suggestion.currency);
   const remaining = minor===null ? null : suggestion.amountMinor - minor;
-  return (<Sheet title="Settle" showClose={false} onClose={onClose}>
-    <p>{suggestion.fromName} → {suggestion.toName} · {suggestion.currency}</p>
-      <p style={{color:'var(--muted)'}}>This only records the payment.</p>
-      <label>Amount ({suggestion.currency})</label><input style={input} value={amount} onChange={e=>setAmount(e.target.value)} />
-      {remaining!==null && remaining>0 && <p style={{color:'var(--warn-text)'}}>Partial payment: {fmt(remaining, suggestion.currency)} will remain outstanding.</p>}
-      {remaining!==null && remaining<0 && <p style={{color:'var(--danger-text)'}}>Amount exceeds the outstanding {fmt(suggestion.amountMinor, suggestion.currency)}.</p>}
-      <label>Date</label><div style={{marginBottom:10}}><DateField id="pay-date" value={date} onChange={setDate} /></div>
-      <div style={{display:'flex',gap:8}}><AsyncButton style={{...primary,flex:1}} disabled={minor===null || minor<=0 || minor>suggestion.amountMinor} onClick={async()=>{try{const d = await api(`/api/groups/${group.id}/payments`,'POST',{fromMemberId:suggestion.fromMemberId,toMemberId:suggestion.toMemberId,amountMinor:minor,currency:suggestion.currency,date}); reload(d);}catch(e:any){setError(e.message);}}}>Settle</AsyncButton><button style={{...btn,flex:1}} onClick={onClose}>Cancel</button></div>
+  const from = personDisplay(group, suggestion.fromMemberId, suggestion.fromName);
+  const to = personDisplay(group, suggestion.toMemberId, suggestion.toName);
+  const pays = from.label==='You' ? 'pay' : 'pays';
+  return (<Sheet title="Settle up" onClose={onClose} draggable={false} closeOnBackdrop={false}>
+    <div style={{display:'flex',alignItems:'center',gap:10,margin:'14px 0 12px'}}>
+      <span style={{display:'flex',flexShrink:0}}><span style={{...avatar,width:28,height:28,fontSize:12,background:memberDotColor(group, from.memberId)}}>{initials(from.name)}</span><span style={{...avatar,width:28,height:28,fontSize:12,marginLeft:-10,border:'2px solid var(--bg)',background:memberDotColor(group, to.memberId)}}>{initials(to.name)}</span></span>
+      <span>{from.label} {pays} <strong>{to.label==='You' ? 'you' : to.label}</strong> · {suggestion.currency}</span>
+    </div>
+    <label>Amount ({suggestion.currency})</label><input style={input} inputMode="decimal" value={amount} onChange={e=>setAmount(e.target.value)} onFocus={e=>e.target.select()} />
+    {remaining!==null && remaining>0 && <p style={{color:'var(--warn-text)',fontSize:13,marginTop:0}}>Partial payment: {fmt(remaining, suggestion.currency)} will remain outstanding.</p>}
+    {remaining!==null && remaining<0 && <p style={{color:'var(--danger-text)',fontSize:13,marginTop:0}}>Amount exceeds the outstanding {fmt(suggestion.amountMinor, suggestion.currency)}.</p>}
+    <p style={{fontSize:13,color:'var(--muted)',marginTop:0}}>Only records the payment — no money moves.</p>
+    <label>Date</label><div style={{marginBottom:10}}><DateField id="pay-date" value={date} onChange={setDate} /></div>
+    {settleError && <p role="alert" style={{background:'var(--danger-bg)',color:'var(--danger-text)',borderRadius:'var(--radius-card)',padding:'10px 12px',fontSize:13,lineHeight:1.4,margin:'0 0 10px'}}>{settleError}</p>}
+    <AsyncButton style={{...primary,width:'100%',padding:'14px',fontSize:16}} disabled={minor===null || minor<=0 || minor>suggestion.amountMinor} onClick={async()=>{setSettleError(''); try{const d = await api(`/api/groups/${group.id}/payments`,'POST',{fromMemberId:suggestion.fromMemberId,toMemberId:suggestion.toMemberId,amountMinor:minor,currency:suggestion.currency,date}); reload(d);}catch(e:any){setSettleError(e.message);}}}>{minor && minor>0 ? `Settle ${fmt(minor, suggestion.currency)}` : 'Settle'}</AsyncButton>
   </Sheet>);
 }
 export function SettingsModal({ group, onClose, reload, back }: any) {
   const [name, setName] = useState(group.name); const [cur, setCur] = useState(group.defaultCurrency);
+  const [showCurrency, setShowCurrency] = useState(false);
   const hasExpense = !!group.myHasExpense;
   // LEAVE BLOCKERS, 2026-11-06: the server now blocks Leave on
   // payments and a non-zero balance too (not just expenses), because
@@ -743,7 +773,8 @@ export function SettingsModal({ group, onClose, reload, back }: any) {
     <div style={{maxWidth:640,margin:'0 auto',padding:16,paddingTop:'calc(16px + env(safe-area-inset-top, 0px))',paddingBottom:'calc(16px + env(safe-area-inset-bottom, 0px))'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h2>Group settings</h2><CloseButton onClick={onClose} /></div>
       <label>Group name</label><input style={input} value={name} onChange={e=>setName(e.target.value)} />
-      <label>Default currency</label><select style={input} value={cur} onChange={e=>setCur(e.target.value)}>{CURRENCIES.map(c=><option key={c}>{c}</option>)}</select>
+      <button type="button" onClick={()=>setShowCurrency(true)} style={{width:'100%',textAlign:'left',background:'var(--field)',border:'var(--border-w) solid var(--border)',borderRadius:'var(--radius-card)',padding:14,margin:'4px 0 12px',color:'var(--text)',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}><span><span style={{display:'block',fontSize:12,color:'var(--muted)'}}>Default currency</span><span style={{display:'block',marginTop:2}}>{cur} <span style={{color:'var(--muted)'}}>· {CURRENCY_INFO[cur]?.name || ''}</span></span></span><Chev /></button>
+      {showCurrency && <CurrencyPickerSheet current={cur} onClose={()=>setShowCurrency(false)} onPick={(c:string)=>{setCur(c); setShowCurrency(false);}} />}
       <div style={{display:'flex',flexDirection:'column',gap:12}}>
         <AsyncButton style={{...primary, width:'100%', padding:'14px', fontSize:16, opacity: dirty?1:0.5, cursor: dirty?'pointer':'not-allowed'}} disabled={!dirty} onClick={async()=>{setSettingsError(''); try{const d = await api(`/api/groups/${group.id}`,'PATCH',{name,defaultCurrency:cur}); reload(d);}catch(e:any){setSettingsError(e.message);}}}>Save settings</AsyncButton>
         {group.isArchived
